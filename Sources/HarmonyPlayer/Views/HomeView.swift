@@ -6,6 +6,7 @@ struct HomeView: View {
     let recentTracks: [Track]
     let favoriteTracks: [Track]
     let openAlbum: (AlbumGroup) -> Void
+    let openNowPlaying: () -> Void
 
     @EnvironmentObject private var player: AudioPlayer
     @EnvironmentObject private var library: LibraryStore
@@ -94,13 +95,7 @@ struct HomeView: View {
             }
 
             let rawLyrics = await AudioMetadataLoader.lyrics(for: track)
-            let lines = LyricsParser.parse(rawLyrics)
-                .filter { line in
-                    !line.text.isEmpty
-                        && !line.text.contains("词：")
-                        && !line.text.contains("曲：")
-                }
-            loadedFeaturedLyrics = Array(lines.dropFirst(2).prefix(4).map(\.text))
+            loadedFeaturedLyrics = LyricsParser.parse(rawLyrics).map(\.text)
         }
     }
 
@@ -122,13 +117,25 @@ struct HomeView: View {
 
             if let track = featuredTrack {
                 ZStack(alignment: .bottomTrailing) {
-                    LazyArtworkView(track: track, size: 184, cornerRadius: 20)
+                    Button {
+                        openFeaturedPlayer(track)
+                    } label: {
+                        LazyArtworkView(track: track, size: 184, cornerRadius: 20)
+                    }
+                    .buttonStyle(.plain)
+                    .help("进入播放界面")
 
-                    PlaybackStateBadge(
-                        isPlaying: player.isPlaying && player.currentTrack?.id == track.id,
-                        size: 30
-                    )
-                    .padding(10)
+                    Button {
+                        toggleFeaturedPlayback(track)
+                    } label: {
+                        PlaybackStateBadge(
+                            isPlaying: player.isPlaying && player.currentTrack?.id == track.id,
+                            size: 32
+                        )
+                        .padding(10)
+                    }
+                    .buttonStyle(.plain)
+                    .help(player.isPlaying && player.currentTrack?.id == track.id ? "暂停" : "播放")
                 }
             } else {
                 ArtworkView(image: nil, size: 184, cornerRadius: 20)
@@ -228,6 +235,21 @@ struct HomeView: View {
         }
     }
 
+    private func toggleFeaturedPlayback(_ track: Track) {
+        if player.currentTrack?.id == track.id {
+            player.togglePlayback()
+        } else {
+            player.play(track, in: tracks.isEmpty ? [track] : tracks)
+        }
+    }
+
+    private func openFeaturedPlayer(_ track: Track) {
+        if player.currentTrack?.id != track.id {
+            player.play(track, in: tracks.isEmpty ? [track] : tracks)
+        }
+        openNowPlaying()
+    }
+
     private func play(_ track: Track, in list: [Track]) {
         if player.currentTrack?.id == track.id {
             player.togglePlayback()
@@ -241,30 +263,91 @@ struct HomeView: View {
     }
 
     private var lyricPassage: [String] {
-        if featuredTrack?.id == player.currentTrack?.id {
-            let passage = player.lyricPassage(maxLines: 4)
-            if !passage.isEmpty { return passage }
-        }
-        if !loadedFeaturedLyrics.isEmpty {
-            return loadedFeaturedLyrics
-        }
-        if let track = featuredTrack {
+        let source: [String]
+        if featuredTrack?.id == player.currentTrack?.id, !player.lyricLines.isEmpty {
+            source = player.lyricLines.map(\.text)
+        } else if !loadedFeaturedLyrics.isEmpty {
+            source = loadedFeaturedLyrics
+        } else if let track = featuredTrack {
             return ["正在播放：\(track.displayTitle)"]
+        } else {
+            return ["让每一次播放都留在自己的音乐宇宙里"]
         }
-        return ["让每一次播放都留在自己的音乐宇宙里"]
+
+        return curatedLyrics(from: source)
     }
 
     private var lyricPassageText: String {
-        lyricPassage.prefix(4).joined(separator: "\n")
+        lyricPassage.joined(separator: "\n")
+    }
+
+    private func curatedLyrics(from source: [String]) -> [String] {
+        let cleaned = source
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty && !isCreditLine($0) }
+
+        guard !cleaned.isEmpty else { return [] }
+
+        let totalLength = cleaned.reduce(0) { $0 + $1.count }
+        let desiredCount = totalLength < 80 ? 4 : 3
+        guard cleaned.count > desiredCount else { return Array(cleaned.prefix(4)) }
+
+        let midpoint = cleaned.count / 2
+        let start = max(0, min(midpoint - desiredCount / 2, cleaned.count - desiredCount))
+        return Array(cleaned[start..<(start + desiredCount)])
+    }
+
+    private func isCreditLine(_ line: String) -> Bool {
+        let value = line.lowercased()
+        let creditKeywords = [
+            "作词", "作曲", "编曲", "制作", "监制", "出品", "录音", "混音", "母带",
+            "吉他", "贝斯", "鼓", "键盘", "钢琴", "和声", "合声", "口琴", "midi",
+            "op:", "sp:", "词：", "曲：", "producer", "composer", "lyricist", "arranger"
+        ]
+        return creditKeywords.contains { value.contains($0) }
     }
 
     private var greeting: String {
         let hour = Calendar.current.component(.hour, from: .now)
+        let day = Calendar.current.ordinality(of: .day, in: .year, for: .now) ?? 0
+        let messages: [String]
+
         switch hour {
-        case 5..<12: return "早上好"
-        case 12..<18: return "下午好"
-        default: return "晚上好"
+        case 5..<12:
+            messages = [
+                "早安，听一段清风",
+                "晨光正好，适合戴上耳机",
+                "清晨有光，音乐有风",
+                "Good morning. Let the music wake gently.",
+                "新的一天，从一首喜欢的歌开始"
+            ]
+        case 12..<18:
+            messages = [
+                "午后好，给世界一点留白",
+                "把喧闹调低，把音乐调近",
+                "阳光正好，适合听一首慢歌",
+                "Good afternoon. Take a breath and press play.",
+                "且听风吟，且行且歌"
+            ]
+        case 18..<23:
+            messages = [
+                "晚上好，让音乐替今天收尾",
+                "夜色渐深，适合一首温柔的歌",
+                "灯亮起时，让音乐陪你",
+                "Good evening. Let the melody stay a little longer.",
+                "今晚，把时间交给旋律"
+            ]
+        default:
+            messages = [
+                "夜深了，听点安静的吧",
+                "星河入夜，音乐入心",
+                "今晚的最后一首歌，选你喜欢的",
+                "Good night. End the day with a gentle song.",
+                "把一天的喧闹，留在最后一首旋律里"
+            ]
         }
+
+        return messages[(day + hour) % messages.count]
     }
 
     private var heroSubtitle: String {
