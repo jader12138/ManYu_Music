@@ -10,6 +10,8 @@ struct NowPlayingView: View {
     @AppStorage("ManyuMusic.lyricsFontSize") private var lyricsFontSize = 18.0
     @AppStorage("ManyuMusic.lyricsFontDesign") private var lyricsFontDesignRaw = "rounded"
     @AppStorage("ManyuMusic.lyricsColor") private var lyricsColorRaw = "auto"
+    @AppStorage("ManyuMusic.lyricsLineSpacing") private var lyricsLineSpacing = 0.9
+    @AppStorage("ManyuMusic.lyricsVisibleLines") private var lyricsVisibleLines = 9.0
 
     var body: some View {
         ZStack {
@@ -194,6 +196,8 @@ struct NowPlayingView: View {
                     lyricsFontSize = 18
                     lyricsFontDesignRaw = "rounded"
                     lyricsColorRaw = "auto"
+                    lyricsLineSpacing = 0.9
+                    lyricsVisibleLines = 9
                 }
                 .buttonStyle(.link)
             }
@@ -218,6 +222,60 @@ struct NowPlayingView: View {
 
                 Button {
                     lyricsFontSize = min(30, lyricsFontSize + 1)
+                } label: {
+                    Image(systemName: "plus")
+                        .frame(width: 26, height: 26)
+                }
+                .buttonStyle(.borderless)
+            }
+
+            HStack(spacing: 12) {
+                Text("行距")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 38, alignment: .leading)
+
+                Button {
+                    lyricsLineSpacing = max(0.7, lyricsLineSpacing - 0.05)
+                } label: {
+                    Image(systemName: "minus")
+                        .frame(width: 26, height: 26)
+                }
+                .buttonStyle(.borderless)
+
+                Text(String(format: "%.2f", lyricsLineSpacing))
+                    .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                    .frame(width: 42)
+
+                Button {
+                    lyricsLineSpacing = min(1.4, lyricsLineSpacing + 0.05)
+                } label: {
+                    Image(systemName: "plus")
+                        .frame(width: 26, height: 26)
+                }
+                .buttonStyle(.borderless)
+            }
+
+            HStack(spacing: 12) {
+                Text("行数")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 38, alignment: .leading)
+
+                Button {
+                    lyricsVisibleLines = max(5, lyricsVisibleLines - 1)
+                } label: {
+                    Image(systemName: "minus")
+                        .frame(width: 26, height: 26)
+                }
+                .buttonStyle(.borderless)
+
+                Text("\(Int(lyricsVisibleLines))")
+                    .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                    .frame(width: 42)
+
+                Button {
+                    lyricsVisibleLines = min(13, lyricsVisibleLines + 1)
                 } label: {
                     Image(systemName: "plus")
                         .frame(width: 26, height: 26)
@@ -312,7 +370,9 @@ struct NowPlayingView: View {
                     seek: player.seek,
                     baseFontSize: CGFloat(lyricsFontSize),
                     fontDesign: lyricsFontDesign,
-                    textColor: lyricsTextColor
+                    textColor: lyricsTextColor,
+                    lineSpacingScale: CGFloat(lyricsLineSpacing),
+                    visibleLineCount: Int(lyricsVisibleLines)
                 )
             }
 
@@ -406,15 +466,10 @@ struct NowPlayingHeaderControls: View {
     var body: some View {
         HStack(spacing: 12) {
             Button(action: close) {
-                Image(systemName: "chevron.down")
-                    .font(.system(size: 14, weight: .bold))
-                    .foregroundStyle(Color.hpTextPrimary.opacity(0.72))
-                    .frame(width: 40, height: 40)
-                    .background(Color.hpTextPrimary.opacity(0.07), in: Circle())
-                    .overlay {
-                        Circle()
-                            .stroke(Color.hpTextPrimary.opacity(0.08), lineWidth: 1)
-                    }
+                Image(systemName: "arrowtriangle.down.fill")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(Color.hpTextPrimary.opacity(0.62))
+                    .frame(width: 34, height: 34)
             }
             .buttonStyle(.plain)
             .help("返回资料库")

@@ -70,6 +70,15 @@ struct MainView: View {
         }
         .background(AppBackground())
         .frame(minWidth: 860, minHeight: 540)
+        .overlay(alignment: .top) {
+            if !showNowPlaying {
+                Color.hpNavy.opacity(0.28)
+                    .frame(height: 30)
+                    .offset(y: -30)
+                    .ignoresSafeArea(.container, edges: .top)
+                    .allowsHitTesting(false)
+            }
+        }
         .dropDestination(for: URL.self) { urls, _ in
             guard !urls.isEmpty else { return false }
             library.add(urls: urls)

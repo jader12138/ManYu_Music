@@ -100,6 +100,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         for window in NSApp.windows where window.isVisible {
             window.toolbar = nil
+            window.titlebarAppearsTransparent = true
+            window.titlebarSeparatorStyle = .none
             window.minSize = NSSize(width: 840, height: 520)
 
             let current = window.frame
