@@ -8,35 +8,46 @@ struct TrackListView: View {
     @EnvironmentObject private var library: LibraryStore
     @EnvironmentObject private var player: AudioPlayer
 
-    var body: some View {
-        VStack(spacing: 0) {
-            if showsHeader {
-                header
-                Divider().opacity(0.18)
-            }
+    private let headerHeight: CGFloat = 28
+    private let headerDividerHeight: CGFloat = 1
 
-            List {
-                ForEach(tracks) { track in
-                    TrackRow(
-                        track: track,
-                        isCurrent: player.currentTrack?.id == track.id,
-                        isPlaying: player.isPlaying,
-                        isFavorite: library.isFavorite(track),
-                        play: { onPlay(track) },
-                        toggleFavorite: { library.toggleFavorite(track) },
-                        reveal: { library.reveal(track) },
-                        remove: { library.remove(track) }
-                    )
-                    .listRowInsets(EdgeInsets(top: 1, leading: 10, bottom: 1, trailing: 10))
-                    .listRowSeparator(.hidden)
-                    .listRowBackground(Color.clear)
+    var body: some View {
+        GeometryReader { geometry in
+            VStack(spacing: 0) {
+                if showsHeader {
+                    header
+                        .frame(height: headerHeight)
+                    Divider().opacity(0.18)
                 }
+
+                ScrollView {
+                    LazyVStack(spacing: 0) {
+                        ForEach(tracks) { track in
+                            TrackRow(
+                                track: track,
+                                isCurrent: player.currentTrack?.id == track.id,
+                                isPlaying: player.isPlaying,
+                                isFavorite: library.isFavorite(track),
+                                play: { onPlay(track) },
+                                toggleFavorite: { library.toggleFavorite(track) },
+                                reveal: { library.reveal(track) },
+                                remove: { library.remove(track) }
+                            )
+                            .padding(.vertical, 1)
+                            .padding(.horizontal, 10)
+                        }
+                    }
+                }
+                .frame(
+                    width: geometry.size.width,
+                    height: max(0, geometry.size.height - (showsHeader ? headerHeight + headerDividerHeight : 0))
+                )
+                .scrollContentBackground(.hidden)
+                .defaultScrollAnchor(.top)
+                .scrollBounceBehavior(.basedOnSize)
             }
-            .listStyle(.plain)
-            .scrollContentBackground(.hidden)
-            .padding(.top, -140)
+            .frame(width: geometry.size.width, height: geometry.size.height, alignment: .top)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private var header: some View {
