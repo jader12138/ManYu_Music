@@ -206,11 +206,10 @@ final class AudioPlayer: ObservableObject {
         currentTrack = track
         currentTime = 0
         duration = track.duration
-        artwork = nil
-        artworkPalette = nil
         lyricLines = []
-        DockArtworkController.shared.update(artwork: nil, isPlaying: false)
 
+        // Keep the previous artwork and Dock icon visible until the next
+        // track's artwork has loaded. This removes the one-frame Dock flicker.
         let item = AVPlayerItem(url: track.url)
         player.replaceCurrentItem(with: item)
         player.volume = Float(volume)
