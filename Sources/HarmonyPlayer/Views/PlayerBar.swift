@@ -9,6 +9,7 @@ struct PlayerBar: View {
     @EnvironmentObject private var player: AudioPlayer
     @EnvironmentObject private var library: LibraryStore
     @State private var scrubTime: Double?
+    @FocusState private var isPlaybackControlFocused: Bool
 
     var body: some View {
         GeometryReader { geometry in
@@ -23,6 +24,12 @@ struct PlayerBar: View {
             .frame(width: geometry.size.width, height: geometry.size.height)
         }
         .frame(height: 72)
+        .onAppear {
+            focusPlaybackControl()
+        }
+        .onChange(of: player.currentTrack?.id) { _, _ in
+            focusPlaybackControl()
+        }
         .background {
             VisualEffectView(material: .headerView, blendingMode: .withinWindow)
                 .overlay(Color.hpNavyDeep.opacity(0.76))
@@ -155,6 +162,9 @@ struct PlayerBar: View {
                     }
                 }
                 .buttonStyle(.plain)
+                .focusable()
+                .focused($isPlaybackControlFocused)
+                .focusEffectDisabled()
                 .disabled(player.currentTrack == nil)
 
                 IconButton(systemName: "forward.fill", help: "下一首", size: 15) {
@@ -312,6 +322,16 @@ struct PlayerBar: View {
     private func shortRemaining(_ seconds: TimeInterval) -> String {
         let minutes = max(0, Int(ceil(seconds / 60)))
         return "\(minutes)m"
+    }
+
+    private func focusPlaybackControl() {
+        for delay in [0.12, 0.45, 0.9, 1.4] {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                guard player.currentTrack != nil else { return }
+                NSApp.keyWindow?.makeFirstResponder(nil)
+                isPlaybackControlFocused = true
+            }
+        }
     }
 
     private var repeatHelp: String {

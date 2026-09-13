@@ -84,6 +84,13 @@ struct MainView: View {
             }
         }
         .animation(.easeInOut(duration: 0.2), value: library.importNotice)
+        .onAppear {
+            searchIsFocused = false
+            player.restorePlaybackState(from: library.tracks)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                searchIsFocused = false
+            }
+        }
         .onReceive(NotificationCenter.default.publisher(for: .focusLibrarySearch)) { _ in
             searchIsFocused = true
         }

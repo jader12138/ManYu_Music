@@ -5,6 +5,7 @@ import MediaPlayer
 
 @MainActor
 final class AudioPlayer: ObservableObject {
+    static let rememberPlaybackKey = "ManyuMusic.rememberPlaybackState"
     @Published private(set) var currentTrack: Track?
     @Published private(set) var isPlaying = false
     @Published private(set) var currentTime: Double = 0
@@ -32,6 +33,10 @@ final class AudioPlayer: ObservableObject {
     private var cancellables = Set<AnyCancellable>()
     private var itemStatusObservation: NSKeyValueObservation?
     private var sleepTimerTask: Task<Void, Never>?
+    private var willTerminateObserver: NSObjectProtocol?
+    private var keyEventMonitor: Any?
+    private var lastPersistedSecond = -1
+    private var didAttemptPlaybackRestore = false
     private let volumeKey = "HarmonyPlayer.playbackVolume"
 
     init() {
@@ -41,6 +46,82 @@ final class AudioPlayer: ObservableObject {
         player.automaticallyWaitsToMinimizeStalling = false
         configurePlayerObservation()
         configureRemoteCommands()
+
+        keyEventMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            guard event.keyCode == 49,
+                  event.modifierFlags.intersection(.deviceIndependentFlagsMask).isEmpty,
+                  !(NSApp.keyWindow?.firstResponder is NSTextView) else {
+                return event
+            }
+
+            Task { @MainActor in
+                self?.togglePlayback()
+            }
+            return nil
+        }
+
+        willTerminateObserver = NotificationCenter.default.addObserver(
+            forName: NSApplication.willTerminateNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                self?.persistPlaybackState(force: true)
+            }
+        }
+    }
+
+    func restorePlaybackState(from availableTracks: [Track]) {
+        guard !didAttemptPlaybackRestore else { return }
+        didAttemptPlaybackRestore = true
+
+        guard rememberPlaybackState, currentTrack == nil else { return }
+
+        let defaults = UserDefaults.standard
+        guard let trackIDString = defaults.string(forKey: PlaybackStateKeys.trackID),
+              let trackID = UUID(uuidString: trackIDString),
+              let track = availableTracks.first(where: { $0.id == trackID }),
+              FileManager.default.fileExists(atPath: track.url.path) else {
+            return
+        }
+
+        let tracksByID = Dictionary(uniqueKeysWithValues: availableTracks.map { ($0.id, $0) })
+        let savedQueue = (defaults.array(forKey: PlaybackStateKeys.queueIDs) as? [String] ?? [])
+            .compactMap(UUID.init(uuidString:))
+            .compactMap { tracksByID[$0] }
+        let restoredQueue = savedQueue.isEmpty ? [track] : savedQueue
+
+        queue = restoredQueue
+        currentIndex = restoredQueue.firstIndex(where: { $0.id == track.id }) ?? 0
+        currentTrack = track
+        duration = track.duration
+
+        let savedTime = defaults.double(forKey: PlaybackStateKeys.currentTime)
+        currentTime = max(0, min(savedTime, track.duration > 0 ? track.duration : savedTime))
+
+        let item = AVPlayerItem(url: track.url)
+        player.replaceCurrentItem(with: item)
+        player.volume = Float(volume)
+        player.seek(
+            to: CMTime(seconds: currentTime, preferredTimescale: 600),
+            toleranceBefore: .zero,
+            toleranceAfter: .zero
+        )
+
+        observeStatus(of: item)
+        refreshDuration(for: track)
+        loadArtwork(for: track)
+        loadLyrics(for: track)
+        updateNowPlaying()
+    }
+
+    func clearRememberedPlaybackState() {
+        let defaults = UserDefaults.standard
+        defaults.removeObject(forKey: PlaybackStateKeys.trackID)
+        defaults.removeObject(forKey: PlaybackStateKeys.queueIDs)
+        defaults.removeObject(forKey: PlaybackStateKeys.currentIndex)
+        defaults.removeObject(forKey: PlaybackStateKeys.currentTime)
+        lastPersistedSecond = -1
     }
 
     func play(_ track: Track, in tracks: [Track]) {
@@ -80,6 +161,7 @@ final class AudioPlayer: ObservableObject {
 
     func pause() {
         player.pause()
+        persistPlaybackState(force: true)
         updateNowPlaying()
     }
 
@@ -105,6 +187,7 @@ final class AudioPlayer: ObservableObject {
             toleranceAfter: .zero
         )
         currentTime = target
+        persistPlaybackState(force: true)
         updateNowPlaying()
     }
 
@@ -120,6 +203,7 @@ final class AudioPlayer: ObservableObject {
         if let currentIndex, insertionIndex <= currentIndex {
             self.currentIndex = currentIndex + 1
         }
+        persistPlaybackState(force: true)
     }
 
     func addToQueue(_ track: Track) {
@@ -127,6 +211,7 @@ final class AudioPlayer: ObservableObject {
         if currentIndex == nil {
             currentIndex = queue.indices.last
         }
+        persistPlaybackState(force: true)
     }
 
     func removeFromQueue(at offsets: IndexSet) {
@@ -140,6 +225,7 @@ final class AudioPlayer: ObservableObject {
         } else {
             currentIndex = queue.isEmpty ? nil : 0
         }
+        persistPlaybackState(force: true)
     }
 
     func clearQueue() {
@@ -150,12 +236,14 @@ final class AudioPlayer: ObservableObject {
         }
         queue = [currentTrack]
         currentIndex = 0
+        persistPlaybackState(force: true)
     }
 
     func moveQueue(from offsets: IndexSet, to destination: Int) {
         guard let currentID = currentTrack?.id else { return }
         queue.move(fromOffsets: offsets, toOffset: destination)
         currentIndex = queue.firstIndex(where: { $0.id == currentID })
+        persistPlaybackState(force: true)
     }
 
     func setSleepTimer(minutes: Int?) {
@@ -219,6 +307,7 @@ final class AudioPlayer: ObservableObject {
         refreshDuration(for: track)
         loadArtwork(for: track)
         loadLyrics(for: track)
+        persistPlaybackState(force: true)
         updateNowPlaying()
     }
 
@@ -242,6 +331,7 @@ final class AudioPlayer: ObservableObject {
                 let seconds = time.seconds
                 guard seconds.isFinite else { return }
                 self.currentTime = seconds
+                self.persistPlaybackState(force: false)
 
                 if self.duration <= 0,
                    let itemDuration = self.player.currentItem?.duration.seconds,
@@ -300,6 +390,30 @@ final class AudioPlayer: ObservableObject {
 
     func refreshDockIcon() {
         DockArtworkController.shared.update(artwork: artwork, isPlaying: isPlaying)
+    }
+
+    private var rememberPlaybackState: Bool {
+        let defaults = UserDefaults.standard
+        if defaults.object(forKey: Self.rememberPlaybackKey) == nil {
+            return true
+        }
+        return defaults.bool(forKey: Self.rememberPlaybackKey)
+    }
+
+    private func persistPlaybackState(force: Bool) {
+        guard rememberPlaybackState, let currentTrack else { return }
+
+        let wholeSecond = Int(currentTime)
+        if !force, wholeSecond < 5 || wholeSecond % 5 != 0 || wholeSecond == lastPersistedSecond {
+            return
+        }
+
+        lastPersistedSecond = wholeSecond
+        let defaults = UserDefaults.standard
+        defaults.set(currentTrack.id.uuidString, forKey: PlaybackStateKeys.trackID)
+        defaults.set(queue.map { $0.id.uuidString }, forKey: PlaybackStateKeys.queueIDs)
+        defaults.set(currentIndex ?? 0, forKey: PlaybackStateKeys.currentIndex)
+        defaults.set(currentTime, forKey: PlaybackStateKeys.currentTime)
     }
 
     var currentLyricText: String? {
@@ -449,4 +563,12 @@ final class AudioPlayer: ObservableObject {
     private func saveVolume() {
         UserDefaults.standard.set(volume, forKey: volumeKey)
     }
+
+
+private enum PlaybackStateKeys {
+    static let trackID = "ManyuMusic.playback.trackID"
+    static let queueIDs = "ManyuMusic.playback.queueIDs"
+    static let currentIndex = "ManyuMusic.playback.currentIndex"
+    static let currentTime = "ManyuMusic.playback.currentTime"
+}
 }

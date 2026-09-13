@@ -15,25 +15,28 @@ struct TrackListView: View {
                 Divider().opacity(0.18)
             }
 
-            ScrollView {
-                LazyVStack(spacing: 2) {
-                    ForEach(tracks) { track in
-                        TrackRow(
-                            track: track,
-                            isCurrent: player.currentTrack?.id == track.id,
-                            isPlaying: player.isPlaying,
-                            isFavorite: library.isFavorite(track),
-                            play: { onPlay(track) },
-                            toggleFavorite: { library.toggleFavorite(track) },
-                            reveal: { library.reveal(track) },
-                            remove: { library.remove(track) }
-                        )
-                    }
+            List {
+                ForEach(tracks) { track in
+                    TrackRow(
+                        track: track,
+                        isCurrent: player.currentTrack?.id == track.id,
+                        isPlaying: player.isPlaying,
+                        isFavorite: library.isFavorite(track),
+                        play: { onPlay(track) },
+                        toggleFavorite: { library.toggleFavorite(track) },
+                        reveal: { library.reveal(track) },
+                        remove: { library.remove(track) }
+                    )
+                    .listRowInsets(EdgeInsets(top: 1, leading: 10, bottom: 1, trailing: 10))
+                    .listRowSeparator(.hidden)
+                    .listRowBackground(Color.clear)
                 }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 8)
             }
+            .listStyle(.plain)
+            .scrollContentBackground(.hidden)
+            .padding(.top, -140)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private var header: some View {

@@ -115,6 +115,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             )
             window.setFrame(target, display: true, animate: false)
         }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+            NSApp.windows.first(where: { $0.isVisible })?.makeFirstResponder(nil)
+        }
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {

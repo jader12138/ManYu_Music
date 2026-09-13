@@ -34,6 +34,7 @@ struct SettingsView: View {
 
     @AppStorage(AppIconStyle.storageKey) private var appIconStyleRaw = AppIconStyle.automatic.rawValue
     @AppStorage(DockArtworkController.showsArtworkKey) private var showDockArtwork = true
+    @AppStorage(AudioPlayer.rememberPlaybackKey) private var rememberPlaybackState = true
     @AppStorage(RecommendationSettings.frequencyKey)
     private var recommendationFrequencyRaw = RecommendationFrequency.daily.rawValue
     @AppStorage(RecommendationSettings.independentKey)
@@ -226,6 +227,40 @@ struct SettingsView: View {
                         .labelsHidden()
                         .onChange(of: showDockArtwork) { _, _ in
                             player.refreshDockIcon()
+                        }
+                }
+            }
+
+            settingsCard(
+                title: "播放记忆",
+                subtitle: "下次打开时恢复上次的歌曲和进度"
+            ) {
+                HStack(spacing: 14) {
+                    ZStack {
+                        Circle()
+                            .fill(Color.hpAccent.opacity(0.12))
+                            .frame(width: 38, height: 38)
+                        Image(systemName: "clock.arrow.circlepath")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundStyle(Color.hpAccent)
+                    }
+
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("记住上次播放状态")
+                            .font(.system(size: 12, weight: .semibold))
+                        Text("重启后保持暂停，按空格从上次位置继续")
+                            .font(.system(size: 10))
+                            .foregroundStyle(Color.hpTextPrimary.opacity(0.42))
+                    }
+
+                    Spacer()
+
+                    Toggle("", isOn: $rememberPlaybackState)
+                        .labelsHidden()
+                        .onChange(of: rememberPlaybackState) { _, enabled in
+                            if !enabled {
+                                player.clearRememberedPlaybackState()
+                            }
                         }
                 }
             }
