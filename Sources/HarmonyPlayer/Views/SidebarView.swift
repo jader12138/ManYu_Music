@@ -436,7 +436,29 @@ struct PlaylistNameEditor: View {
 }
 
 struct BrandMark: View {
+    @Environment(\.colorScheme) private var colorScheme
+    @AppStorage(AppIconStyle.storageKey) private var appIconStyleRaw = AppIconStyle.automatic.rawValue
+
     var body: some View {
+        Group {
+            if let icon = appIconImage {
+                Image(nsImage: icon)
+                    .resizable()
+                    .interpolation(.high)
+                    .aspectRatio(contentMode: .fit)
+            } else {
+                fallbackMark
+            }
+        }
+        .frame(width: 40, height: 40)
+    }
+
+    private var appIconImage: NSImage? {
+        let style = AppIconStyle(rawValue: appIconStyleRaw) ?? .automatic
+        return AppIconStyleManager.image(for: style, colorScheme: colorScheme)
+    }
+
+    private var fallbackMark: some View {
         ZStack {
             RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .fill(

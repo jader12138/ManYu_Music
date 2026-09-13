@@ -6,7 +6,6 @@ final class DockArtworkController {
 
     static let showsArtworkKey = "ManyuMusic.dockArtwork"
 
-    private var defaultIcon: NSImage?
     private var renderedArtwork: NSImage?
     private var renderedPlayingState: Bool?
     private var renderedForSetting = false
@@ -47,29 +46,13 @@ final class DockArtworkController {
     }
 
     func refreshSetting() {
-        if !UserDefaults.standard.bool(forKey: Self.showsArtworkKey) {
-            restoreDefaultIcon()
-            return
-        }
-
         renderedForSetting = false
         renderedArtwork = nil
         renderedPlayingState = nil
     }
 
     private func restoreDefaultIcon() {
-        guard renderedForSetting || renderedArtwork != nil else { return }
-
-        if defaultIcon == nil {
-            defaultIcon = NSApplication.shared.applicationIconImage
-                ?? NSImage(named: NSImage.applicationIconName)
-        }
-
-        if let defaultIcon {
-            NSApplication.shared.applicationIconImage = defaultIcon
-            NSApplication.shared.dockTile.display()
-        }
-
+        AppIconStyleManager.apply()
         renderedArtwork = nil
         renderedPlayingState = nil
         renderedForSetting = false

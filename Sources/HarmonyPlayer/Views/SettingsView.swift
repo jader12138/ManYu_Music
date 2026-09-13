@@ -5,7 +5,9 @@ struct SettingsView: View {
     @EnvironmentObject private var player: AudioPlayer
     @EnvironmentObject private var library: LibraryStore
 
+    @AppStorage(AppIconStyle.storageKey) private var appIconStyleRaw = AppIconStyle.automatic.rawValue
     @AppStorage(DockArtworkController.showsArtworkKey) private var showDockArtwork = true
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         TabView {
@@ -40,6 +42,54 @@ struct SettingsView: View {
                 .pickerStyle(.segmented)
 
                 Text("白天使用冰蓝白色调，夜间使用深海军蓝。")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Section("应用图标") {
+                HStack(spacing: 18) {
+                    ForEach(AppIconStyle.allCases) { style in
+                        Button {
+                            appIconStyleRaw = style.rawValue
+                            DockArtworkController.shared.refreshSetting()
+                            player.refreshDockIcon()
+                            AppIconStyleManager.apply()
+                        } label: {
+                            VStack(spacing: 7) {
+                                if let image = AppIconStyleManager.image(
+                                    for: style,
+                                    colorScheme: colorScheme
+                                ) {
+                                    Image(nsImage: image)
+                                        .resizable()
+                                        .interpolation(.high)
+                                        .frame(width: 58, height: 58)
+                                }
+
+                                Text(style.title)
+                                    .font(.system(size: 11, weight: .semibold))
+                                    .foregroundStyle(
+                                        appIconStyleRaw == style.rawValue
+                                            ? Color.hpAccent
+                                            : Color.primary.opacity(0.62)
+                                    )
+                            }
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 7)
+                            .background(
+                                appIconStyleRaw == style.rawValue
+                                    ? Color.hpAccent.opacity(0.10)
+                                    : Color.clear,
+                                in: RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            )
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .center)
+                .padding(.vertical, 4)
+
+                Text("自动模式跟随白天/夜间主题，也可以强制使用深色或浅色图标。")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
