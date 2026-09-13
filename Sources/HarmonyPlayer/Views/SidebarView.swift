@@ -436,6 +436,9 @@ struct PlaylistNameEditor: View {
 }
 
 struct BrandMark: View {
+    @Environment(\.colorScheme) private var colorScheme
+    @AppStorage(AppIconStyle.storageKey) private var appIconStyleRaw = AppIconStyle.automatic.rawValue
+
     var body: some View {
         Group {
             if let icon = appIconImage {
@@ -451,11 +454,8 @@ struct BrandMark: View {
     }
 
     private var appIconImage: NSImage? {
-        if let url = Bundle.main.url(forResource: "AppIcon", withExtension: "png"),
-           let image = NSImage(contentsOf: url) {
-            return image
-        }
-        return NSImage(named: "AppIcon")
+        let style = AppIconStyle(rawValue: appIconStyleRaw) ?? .automatic
+        return AppIconStyleManager.image(for: style, colorScheme: colorScheme)
     }
 
     private var fallbackMark: some View {

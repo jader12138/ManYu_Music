@@ -34,16 +34,19 @@ enum AppAppearance: String, CaseIterable, Identifiable {
 
 @MainActor
 final class ThemeStore: ObservableObject {
+    static let appearanceKey = "ManyuMusic.appearance"
+
     @Published var appearance: AppAppearance {
         didSet {
-            UserDefaults.standard.set(appearance.rawValue, forKey: storageKey)
+            UserDefaults.standard.set(appearance.rawValue, forKey: Self.appearanceKey)
+            DispatchQueue.main.async {
+                AppIconStyleManager.apply()
+            }
         }
     }
 
-    private let storageKey = "ManyuMusic.appearance"
-
     init() {
-        let rawValue = UserDefaults.standard.string(forKey: storageKey)
+        let rawValue = UserDefaults.standard.string(forKey: Self.appearanceKey)
         appearance = AppAppearance(rawValue: rawValue ?? "") ?? .dark
     }
 
