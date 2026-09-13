@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 struct MainView: View {
@@ -20,14 +21,22 @@ struct MainView: View {
     var body: some View {
         GeometryReader { geometry in
             if showNowPlaying {
-                NowPlayingView(transitionNamespace: nowPlayingTransition) {
-                    withAnimation(.easeInOut(duration: 0.24)) {
-                        showNowPlaying = false
-                    }
-                }
+                NowPlayingView(transitionNamespace: nowPlayingTransition)
                 .transition(.opacity.combined(with: .scale(scale: 0.985)))
                 .frame(width: geometry.size.width, height: geometry.size.height)
-                .clipped()
+                .background {
+                    NowPlayingBackdrop()
+                        .ignoresSafeArea(.container, edges: .top)
+                }
+                .overlay(alignment: .topLeading) {
+                    NowPlayingHeaderControls {
+                        withAnimation(.easeInOut(duration: 0.24)) {
+                            showNowPlaying = false
+                        }
+                    }
+                    .padding(.leading, 24)
+                    .padding(.top, 16)
+                }
             } else {
                 VStack(spacing: 0) {
                     HStack(spacing: 0) {
@@ -61,6 +70,19 @@ struct MainView: View {
         }
         .background(AppBackground())
         .frame(minWidth: 860, minHeight: 540)
+        .overlay(alignment: .top) {
+            if !showNowPlaying {
+                HStack(spacing: 0) {
+                    Color.clear
+                        .frame(width: 238)
+                    Color.hpNavy.opacity(0.28)
+                }
+                .frame(height: 30)
+                .offset(y: -30)
+                .ignoresSafeArea(.container, edges: .top)
+                .allowsHitTesting(false)
+            }
+        }
         .dropDestination(for: URL.self) { urls, _ in
             guard !urls.isEmpty else { return false }
             library.add(urls: urls)
@@ -87,9 +109,16 @@ struct MainView: View {
         .onAppear {
             searchIsFocused = false
             player.restorePlaybackState(from: library.tracks)
+            updateWindowBackground()
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
                 searchIsFocused = false
             }
+        }
+        .onChange(of: showNowPlaying) { _, _ in
+            updateWindowBackground()
+        }
+        .onReceive(player.$artworkPalette) { _ in
+            updateWindowBackground()
         }
         .onReceive(NotificationCenter.default.publisher(for: .focusLibrarySearch)) { _ in
             searchIsFocused = true
@@ -370,6 +399,21 @@ struct MainView: View {
             player.togglePlayback()
         } else {
             player.play(track, in: tracks)
+        }
+    }
+
+    private func updateWindowBackground() {
+        let windows = NSApp.windows.filter(\.isVisible)
+        guard !windows.isEmpty else { return }
+
+        for window in windows {
+            if showNowPlaying {
+                window.isOpaque = false
+                window.backgroundColor = .clear
+            } else {
+                window.isOpaque = true
+                window.backgroundColor = .windowBackgroundColor
+            }
         }
     }
 

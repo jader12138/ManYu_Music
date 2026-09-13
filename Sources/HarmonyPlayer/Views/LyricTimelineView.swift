@@ -7,12 +7,15 @@ struct LyricTimelineView: View {
     var baseFontSize: CGFloat = 18
     var fontDesign: Font.Design = .rounded
     var textColor: Color = .hpTextPrimary
+    var lineSpacingScale: CGFloat = 0.9
+    var visibleLineCount: Int = 9
 
     var body: some View {
         GeometryReader { geometry in
+            let stackSpacing = max(8, baseFontSize * 0.72 * lineSpacingScale)
             ScrollViewReader { proxy in
                 ScrollView(.vertical, showsIndicators: false) {
-                    LazyVStack(spacing: max(13, baseFontSize * 0.82)) {
+                    LazyVStack(spacing: stackSpacing) {
                         ForEach(Array(lines.enumerated()), id: \.element.id) { index, line in
                             lyricLine(line, index: index)
                                 .id(index)
@@ -66,7 +69,9 @@ struct LyricTimelineView: View {
     private func lyricLine(_ line: LyricLine, index: Int) -> some View {
         let isCurrent = index == currentIndex
         let distance = currentIndex >= 0 ? abs(index - currentIndex) : 0
-        let visibleOpacity = max(0.12, 0.56 - Double(distance) * 0.13)
+        let visibleRadius = max(2, visibleLineCount / 2)
+        let fadeStep = 0.46 / Double(visibleRadius)
+        let visibleOpacity = max(0.10, 0.58 - Double(distance) * fadeStep)
 
         return Button {
             guard let time = line.time else { return }
@@ -82,7 +87,7 @@ struct LyricTimelineView: View {
                 .multilineTextAlignment(.center)
                 .lineSpacing(max(3, baseFontSize * 0.22))
                 .padding(.horizontal, 14)
-                .padding(.vertical, 3)
+                .padding(.vertical, max(1.5, baseFontSize * 0.12 * lineSpacingScale))
                 .scaleEffect(isCurrent ? 1.025 : max(0.92, 1 - CGFloat(distance) * 0.012))
                 .blur(radius: distance > 2 ? 0.35 : 0)
                 .shadow(

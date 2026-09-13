@@ -17,7 +17,6 @@ struct HarmonyPlayerApp: App {
                 .preferredColorScheme(theme.appearance.colorScheme)
         }
         .windowStyle(.hiddenTitleBar)
-        .windowToolbarStyle(.unifiedCompact)
         .defaultSize(width: 1080, height: 650)
         .commands {
             CommandGroup(replacing: .appSettings) {
@@ -91,6 +90,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         DispatchQueue.main.async {
             Self.fitWindowsToVisibleScreen()
         }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+            Self.fitWindowsToVisibleScreen()
+        }
     }
 
     private static func fitWindowsToVisibleScreen() {
@@ -100,6 +102,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let maxHeight = max(520, visible.height - 32)
 
         for window in NSApp.windows where window.isVisible {
+            window.toolbar = nil
+            window.titlebarAppearsTransparent = true
+            window.titleVisibility = .hidden
+            window.titlebarSeparatorStyle = .none
+            window.styleMask.insert(.fullSizeContentView)
+            window.isOpaque = false
+            window.backgroundColor = .clear
+            if let frameView = window.contentView?.superview {
+                frameView.wantsLayer = true
+                frameView.layer?.backgroundColor = NSColor.clear.cgColor
+                frameView.layer?.isOpaque = false
+            }
             window.minSize = NSSize(width: 840, height: 520)
 
             let current = window.frame

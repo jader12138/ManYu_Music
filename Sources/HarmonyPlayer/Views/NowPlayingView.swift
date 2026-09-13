@@ -3,32 +3,30 @@ import SwiftUI
 
 struct NowPlayingView: View {
     let transitionNamespace: Namespace.ID
-    let close: () -> Void
 
     @EnvironmentObject private var player: AudioPlayer
-    @Environment(\.colorScheme) private var colorScheme
     @State private var scrubTime: Double?
     @State private var showingLyricsStyle = false
     @AppStorage("ManyuMusic.lyricsFontSize") private var lyricsFontSize = 18.0
     @AppStorage("ManyuMusic.lyricsFontDesign") private var lyricsFontDesignRaw = "rounded"
     @AppStorage("ManyuMusic.lyricsColor") private var lyricsColorRaw = "auto"
+    @AppStorage("ManyuMusic.lyricsLineSpacing") private var lyricsLineSpacing = 0.9
+    @AppStorage("ManyuMusic.lyricsVisibleLines") private var lyricsVisibleLines = 9.0
 
     var body: some View {
         ZStack {
-            immersiveBackground
+            NowPlayingBackdrop()
 
             GeometryReader { geometry in
                 let artworkSize = min(
-                    360,
-                    max(190, min(geometry.size.height * 0.45, geometry.size.width * 0.25))
+                    400,
+                    max(190, min(geometry.size.height * 0.52, geometry.size.width * 0.30))
                 )
-                let lyricsHeight = min(470, max(220, geometry.size.height - 130))
+                let lyricsHeight = min(640, max(260, geometry.size.height - 70))
                 let horizontalPadding = max(24, min(52, geometry.size.width * 0.045))
 
                 VStack(spacing: 0) {
-                    topBar
-
-                    Spacer(minLength: 8)
+                    Spacer(minLength: 78)
 
                     HStack(alignment: .center, spacing: max(24, horizontalPadding * 0.85)) {
                         albumPanel(artworkSize: artworkSize)
@@ -37,89 +35,14 @@ struct NowPlayingView: View {
                         lyricsPanel
                             .frame(maxWidth: .infinity)
                             .frame(height: lyricsHeight)
-                            .offset(y: -24)
                     }
                     .padding(.horizontal, horizontalPadding)
 
-                    Spacer(minLength: 8)
+                    Spacer(minLength: 0)
                 }
                 .frame(width: geometry.size.width, height: geometry.size.height)
             }
         }
-    }
-
-    private var immersiveBackground: some View {
-        let palette = player.artworkPalette ?? .fallback
-        let primary = Color(nsColor: palette.primary)
-        let secondary = Color(nsColor: palette.secondary)
-
-        return ZStack {
-            if let artwork = player.artwork {
-                Image(nsImage: artwork)
-                    .resizable()
-                    .aspectRatio(contentMode: .fill)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .blur(radius: 72)
-                    .scaleEffect(1.16)
-                    .opacity(colorScheme == .dark ? 0.48 : 0.30)
-            }
-
-            LinearGradient(
-                colors: colorScheme == .dark
-                    ? [
-                        primary.opacity(0.58),
-                        secondary.opacity(0.34),
-                        Color.hpNavyDeep.opacity(0.97)
-                    ]
-                    : [
-                        primary.opacity(0.27),
-                        Color.white.opacity(0.78),
-                        secondary.opacity(0.18)
-                    ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-
-            Circle()
-                .fill(primary.opacity(colorScheme == .dark ? 0.28 : 0.18))
-                .frame(width: 620, height: 620)
-                .blur(radius: 160)
-                .offset(x: 420, y: -340)
-
-            Circle()
-                .fill(secondary.opacity(colorScheme == .dark ? 0.18 : 0.13))
-                .frame(width: 460, height: 460)
-                .blur(radius: 150)
-                .offset(x: -430, y: 320)
-        }
-        .animation(.easeInOut(duration: 0.65), value: player.currentTrack?.id)
-    }
-
-    private var topBar: some View {
-        HStack(spacing: 13) {
-            VStack(alignment: .leading, spacing: 1) {
-                Text("正在播放")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(Color.hpTextPrimary.opacity(0.92))
-                Text("漫域音乐")
-                    .font(.system(size: 9, weight: .medium))
-                    .foregroundStyle(Color.hpTextPrimary.opacity(0.36))
-            }
-
-            Spacer()
-
-            if let track = player.currentTrack {
-                Text(track.url.pathExtension.uppercased())
-                    .font(.system(size: 8, weight: .bold))
-                    .foregroundStyle(Color.hpAccent)
-                    .padding(.horizontal, 7)
-                    .padding(.vertical, 4)
-                    .background(Color.hpAccent.opacity(0.13), in: RoundedRectangle(cornerRadius: 5))
-            }
-        }
-        .padding(.horizontal, 24)
-        .padding(.top, 34)
-        .frame(height: 86)
     }
 
     private func albumPanel(artworkSize: CGFloat) -> some View {
@@ -129,8 +52,17 @@ struct NowPlayingView: View {
 
             VStack(spacing: 8) {
                 Text(player.currentTrack?.displayTitle ?? "还未播放")
-                    .font(.system(size: 28, weight: .bold, design: .rounded))
-                    .foregroundStyle(Color.hpTextPrimary)
+                    .font(.system(size: 30, weight: .semibold, design: .rounded))
+                    .foregroundStyle(
+                        LinearGradient(
+                            colors: [
+                                Color.hpTextPrimary.opacity(0.92),
+                                Color.hpAccentSecondary.opacity(0.88)
+                            ],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                    )
                     .lineLimit(1)
                     .minimumScaleFactor(0.72)
                     .multilineTextAlignment(.center)
@@ -183,16 +115,14 @@ struct NowPlayingView: View {
             }
 
             HStack(spacing: 16) {
-                Button(action: close) {
-                    Image(systemName: "chevron.down")
-                        .font(.system(size: 11, weight: .bold))
-                        .foregroundStyle(Color.hpTextPrimary.opacity(0.44))
-                        .frame(width: 30, height: 30)
+                IconButton(
+                    systemName: "shuffle",
+                    isActive: player.isShuffle,
+                    help: player.isShuffle ? "关闭随机播放" : "随机播放",
+                    size: 14
+                ) {
+                    player.isShuffle.toggle()
                 }
-                .buttonStyle(.plain)
-                .help("返回资料库")
-
-                Spacer(minLength: 0)
 
                 IconButton(systemName: "backward.fill", help: "上一首", size: 14) {
                     player.previous()
@@ -217,9 +147,14 @@ struct NowPlayingView: View {
                 }
                 .disabled(player.queue.isEmpty)
 
-                Spacer(minLength: 0)
-
-                Color.clear.frame(width: 30, height: 30)
+                IconButton(
+                    systemName: player.repeatMode.systemImage,
+                    isActive: player.repeatMode.isActive,
+                    help: repeatHelp,
+                    size: 14
+                ) {
+                    player.repeatMode.advance()
+                }
             }
         }
         .padding(.horizontal, 4)
@@ -242,6 +177,14 @@ struct NowPlayingView: View {
         return Color(hex: lyricsColorRaw) ?? Color.hpTextPrimary
     }
 
+    private var repeatHelp: String {
+        switch player.repeatMode {
+        case .off: "开启列表循环"
+        case .all: "切换为单曲循环"
+        case .one: "关闭循环"
+        }
+    }
+
     private var lyricsStylePanel: some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack {
@@ -252,6 +195,8 @@ struct NowPlayingView: View {
                     lyricsFontSize = 18
                     lyricsFontDesignRaw = "rounded"
                     lyricsColorRaw = "auto"
+                    lyricsLineSpacing = 0.9
+                    lyricsVisibleLines = 9
                 }
                 .buttonStyle(.link)
             }
@@ -276,6 +221,60 @@ struct NowPlayingView: View {
 
                 Button {
                     lyricsFontSize = min(30, lyricsFontSize + 1)
+                } label: {
+                    Image(systemName: "plus")
+                        .frame(width: 26, height: 26)
+                }
+                .buttonStyle(.borderless)
+            }
+
+            HStack(spacing: 12) {
+                Text("行距")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 38, alignment: .leading)
+
+                Button {
+                    lyricsLineSpacing = max(0.7, lyricsLineSpacing - 0.05)
+                } label: {
+                    Image(systemName: "minus")
+                        .frame(width: 26, height: 26)
+                }
+                .buttonStyle(.borderless)
+
+                Text(String(format: "%.2f", lyricsLineSpacing))
+                    .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                    .frame(width: 42)
+
+                Button {
+                    lyricsLineSpacing = min(1.4, lyricsLineSpacing + 0.05)
+                } label: {
+                    Image(systemName: "plus")
+                        .frame(width: 26, height: 26)
+                }
+                .buttonStyle(.borderless)
+            }
+
+            HStack(spacing: 12) {
+                Text("行数")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 38, alignment: .leading)
+
+                Button {
+                    lyricsVisibleLines = max(5, lyricsVisibleLines - 1)
+                } label: {
+                    Image(systemName: "minus")
+                        .frame(width: 26, height: 26)
+                }
+                .buttonStyle(.borderless)
+
+                Text("\(Int(lyricsVisibleLines))")
+                    .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                    .frame(width: 42)
+
+                Button {
+                    lyricsVisibleLines = min(13, lyricsVisibleLines + 1)
                 } label: {
                     Image(systemName: "plus")
                         .frame(width: 26, height: 26)
@@ -370,7 +369,9 @@ struct NowPlayingView: View {
                     seek: player.seek,
                     baseFontSize: CGFloat(lyricsFontSize),
                     fontDesign: lyricsFontDesign,
-                    textColor: lyricsTextColor
+                    textColor: lyricsTextColor,
+                    lineSpacingScale: CGFloat(lyricsLineSpacing),
+                    visibleLineCount: Int(lyricsVisibleLines)
                 )
             }
 
@@ -401,7 +402,86 @@ struct NowPlayingView: View {
                 }
             }
             .padding(.top, 2)
+            .padding(.trailing, 8)
         }
         .frame(maxWidth: 500, alignment: .topLeading)
+    }
+}
+
+struct NowPlayingBackdrop: View {
+    @EnvironmentObject private var player: AudioPlayer
+    @Environment(\.colorScheme) private var colorScheme
+
+    var body: some View {
+        let palette = player.artworkPalette ?? .fallback
+        let primary = Color(nsColor: palette.primary)
+        let secondary = Color(nsColor: palette.secondary)
+
+        ZStack {
+            if let artwork = player.artwork {
+                Image(nsImage: artwork)
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .blur(radius: 72)
+                    .scaleEffect(1.16)
+                    .opacity(colorScheme == .dark ? 0.48 : 0.30)
+            }
+
+            LinearGradient(
+                colors: colorScheme == .dark
+                    ? [
+                        primary.opacity(0.58),
+                        secondary.opacity(0.34),
+                        Color.hpNavyDeep.opacity(0.97)
+                    ]
+                    : [
+                        primary.opacity(0.27),
+                        Color.white.opacity(0.78),
+                        secondary.opacity(0.18)
+                    ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+
+            Circle()
+                .fill(primary.opacity(colorScheme == .dark ? 0.28 : 0.18))
+                .frame(width: 620, height: 620)
+                .blur(radius: 160)
+                .offset(x: 420, y: -340)
+
+            Circle()
+                .fill(secondary.opacity(colorScheme == .dark ? 0.18 : 0.13))
+                .frame(width: 460, height: 460)
+                .blur(radius: 150)
+                .offset(x: -430, y: 320)
+        }
+        .animation(.easeInOut(duration: 0.65), value: player.currentTrack?.id)
+    }
+}
+
+struct NowPlayingHeaderControls: View {
+    let close: () -> Void
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Button(action: close) {
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 18, weight: .heavy, design: .rounded))
+                    .foregroundStyle(Color.hpTextPrimary.opacity(0.34))
+                    .frame(width: 38, height: 38)
+            }
+            .buttonStyle(.plain)
+            .help("返回资料库")
+
+            VStack(alignment: .leading, spacing: 1) {
+                Text("正在播放")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(Color.hpTextPrimary.opacity(0.88))
+                Text("漫域音乐")
+                    .font(.system(size: 9, weight: .medium))
+                    .foregroundStyle(Color.hpTextPrimary.opacity(0.36))
+            }
+        }
     }
 }
