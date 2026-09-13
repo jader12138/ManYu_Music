@@ -10,13 +10,13 @@
 
 ## 日常开发
 
-开始任务前先刷新远端，并从 `main` 创建当前开发分支。一个小工作流可以连续包含一到两项相关功能或修复，不需要为每次微调重复创建分支：
+开始任务前先刷新远端，并从一个功能创建一个 `codex/*` 分支：
 
 ```bash
 git fetch origin
 git switch main
 git pull --ff-only
-git switch -c codex/workstream-name
+git switch -c codex/feature-name
 ```
 
 完成代码和文档后：
@@ -26,10 +26,10 @@ git status
 git diff --check
 git add <changed-files>
 git commit -m "feat: concise description"
-git push -u origin codex/workstream-name
+git push -u origin codex/feature-name
 ```
 
-不要直接在 `main` 上开发，也不要在未获批时合并功能分支。只有工作流独立、风险较高或需要单独发布时，才拆分新的 `codex/*` 分支。
+不要直接在 `main` 上开发，也不要在未获批时合并功能分支。
 
 ## 文档更新要求
 
@@ -75,7 +75,7 @@ git push -u origin codex/workstream-name
 ```bash
 git switch main
 git pull --ff-only
-git merge --no-ff codex/workstream-name
+git merge --no-ff codex/feature-name
 ```
 
 推送并验证：
@@ -84,6 +84,15 @@ git merge --no-ff codex/workstream-name
 git push origin main
 git ls-remote origin refs/heads/main
 ```
+
+合并完成后立即删除已经用完的功能分支：
+
+```bash
+git branch -d codex/feature-name
+git push origin --delete codex/feature-name
+```
+
+如果分支曾经被 rebase、压缩或人工确认已安全保存，可以改用 `git branch -D` 删除本地引用。
 
 如果用户明确要求发布，推送后继续创建 GitHub Release：
 
@@ -143,6 +152,11 @@ git ls-remote origin refs/heads/main refs/tags/vX.Y.Z
 ```
 
 标签、`VERSION`、`CHANGELOG.md` 和 `docs/releases/vX.Y.Z.md` 中的版本号必须一致。
+
+## 结束语规则
+
+- 每次功能完成或成功合并后，最终回复必须单独一行以“完成了喵，恭喜主人喵！”结束。
+- 普通问答、状态检查、代码审查、规划和未完成工作不使用该结束语。
 
 ### 6. 重置未发布记录
 
