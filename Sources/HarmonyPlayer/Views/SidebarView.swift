@@ -437,6 +437,28 @@ struct PlaylistNameEditor: View {
 
 struct BrandMark: View {
     var body: some View {
+        Group {
+            if let icon = appIconImage {
+                Image(nsImage: icon)
+                    .resizable()
+                    .interpolation(.high)
+                    .aspectRatio(contentMode: .fit)
+            } else {
+                fallbackMark
+            }
+        }
+        .frame(width: 40, height: 40)
+    }
+
+    private var appIconImage: NSImage? {
+        if let url = Bundle.main.url(forResource: "AppIcon", withExtension: "png"),
+           let image = NSImage(contentsOf: url) {
+            return image
+        }
+        return NSImage(named: "AppIcon")
+    }
+
+    private var fallbackMark: some View {
         ZStack {
             RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .fill(

@@ -24,6 +24,7 @@ mkdir -p "$APP_PATH/Contents/Resources"
 install -m 755 "$BIN_DIR/HarmonyPlayer" "$APP_PATH/Contents/MacOS/HarmonyPlayer"
 install -m 644 "$ROOT_DIR/Resources/Info.plist" "$APP_PATH/Contents/Info.plist"
 install -m 644 "$ROOT_DIR/Resources/AppIcon.icns" "$APP_PATH/Contents/Resources/AppIcon.icns"
+install -m 644 "$ROOT_DIR/Resources/AppIcon.png" "$APP_PATH/Contents/Resources/AppIcon.png"
 
 /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $APP_VERSION" "$APP_PATH/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $BUILD_NUMBER" "$APP_PATH/Contents/Info.plist"
