@@ -19,14 +19,14 @@ struct NowPlayingView: View {
 
             GeometryReader { geometry in
                 let artworkSize = min(
-                    360,
-                    max(190, min(geometry.size.height * 0.45, geometry.size.width * 0.25))
+                    400,
+                    max(190, min(geometry.size.height * 0.52, geometry.size.width * 0.30))
                 )
-                let lyricsHeight = min(470, max(220, geometry.size.height - 130))
+                let lyricsHeight = min(640, max(260, geometry.size.height - 70))
                 let horizontalPadding = max(24, min(52, geometry.size.width * 0.045))
 
                 VStack(spacing: 0) {
-                    Spacer(minLength: 86)
+                    Spacer(minLength: 78)
 
                     HStack(alignment: .center, spacing: max(24, horizontalPadding * 0.85)) {
                         albumPanel(artworkSize: artworkSize)
@@ -35,11 +35,10 @@ struct NowPlayingView: View {
                         lyricsPanel
                             .frame(maxWidth: .infinity)
                             .frame(height: lyricsHeight)
-                            .offset(y: -24)
                     }
                     .padding(.horizontal, horizontalPadding)
 
-                    Spacer(minLength: 8)
+                    Spacer(minLength: 0)
                 }
                 .frame(width: geometry.size.width, height: geometry.size.height)
             }
@@ -403,6 +402,7 @@ struct NowPlayingView: View {
                 }
             }
             .padding(.top, 2)
+            .padding(.trailing, 8)
         }
         .frame(maxWidth: 500, alignment: .topLeading)
     }
@@ -466,10 +466,10 @@ struct NowPlayingHeaderControls: View {
     var body: some View {
         HStack(spacing: 12) {
             Button(action: close) {
-                Image(systemName: "arrowtriangle.down.fill")
-                    .font(.system(size: 10, weight: .bold))
-                    .foregroundStyle(Color.hpTextPrimary.opacity(0.62))
-                    .frame(width: 34, height: 34)
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 18, weight: .heavy, design: .rounded))
+                    .foregroundStyle(Color.hpTextPrimary.opacity(0.34))
+                    .frame(width: 38, height: 38)
             }
             .buttonStyle(.plain)
             .help("返回资料库")

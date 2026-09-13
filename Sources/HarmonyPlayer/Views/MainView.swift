@@ -72,11 +72,15 @@ struct MainView: View {
         .frame(minWidth: 860, minHeight: 540)
         .overlay(alignment: .top) {
             if !showNowPlaying {
-                Color.hpNavy.opacity(0.28)
-                    .frame(height: 30)
-                    .offset(y: -30)
-                    .ignoresSafeArea(.container, edges: .top)
-                    .allowsHitTesting(false)
+                HStack(spacing: 0) {
+                    Color.clear
+                        .frame(width: 238)
+                    Color.hpNavy.opacity(0.28)
+                }
+                .frame(height: 30)
+                .offset(y: -30)
+                .ignoresSafeArea(.container, edges: .top)
+                .allowsHitTesting(false)
             }
         }
         .dropDestination(for: URL.self) { urls, _ in
