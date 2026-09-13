@@ -407,19 +407,14 @@ struct MainView: View {
         let windows = NSApp.windows.filter(\.isVisible)
         guard !windows.isEmpty else { return }
 
-        let background: NSColor
-        if showNowPlaying, let palette = player.artworkPalette {
-            let fraction: CGFloat = theme.appearance == .dark ? 0.36 : 0.72
-            background = palette.primary
-                .blended(withFraction: fraction, of: .white)?
-                .withAlphaComponent(1)
-                ?? palette.primary.withAlphaComponent(1)
-        } else {
-            background = .windowBackgroundColor
-        }
-
         for window in windows {
-            window.backgroundColor = background
+            if showNowPlaying {
+                window.isOpaque = false
+                window.backgroundColor = .clear
+            } else {
+                window.isOpaque = true
+                window.backgroundColor = .windowBackgroundColor
+            }
         }
     }
 
