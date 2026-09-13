@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 struct MainView: View {
@@ -109,9 +110,16 @@ struct MainView: View {
         .onAppear {
             searchIsFocused = false
             player.restorePlaybackState(from: library.tracks)
+            updateWindowBackground()
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
                 searchIsFocused = false
             }
+        }
+        .onChange(of: showNowPlaying) { _, _ in
+            updateWindowBackground()
+        }
+        .onReceive(player.$artworkPalette) { _ in
+            updateWindowBackground()
         }
         .onReceive(NotificationCenter.default.publisher(for: .focusLibrarySearch)) { _ in
             searchIsFocused = true
@@ -392,6 +400,26 @@ struct MainView: View {
             player.togglePlayback()
         } else {
             player.play(track, in: tracks)
+        }
+    }
+
+    private func updateWindowBackground() {
+        let windows = NSApp.windows.filter(\.isVisible)
+        guard !windows.isEmpty else { return }
+
+        let background: NSColor
+        if showNowPlaying, let palette = player.artworkPalette {
+            let fraction: CGFloat = theme.appearance == .dark ? 0.36 : 0.72
+            background = palette.primary
+                .blended(withFraction: fraction, of: .white)?
+                .withAlphaComponent(1)
+                ?? palette.primary.withAlphaComponent(1)
+        } else {
+            background = .windowBackgroundColor
+        }
+
+        for window in windows {
+            window.backgroundColor = background
         }
     }
 
