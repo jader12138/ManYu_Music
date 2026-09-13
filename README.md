@@ -1,133 +1,92 @@
-import AppKit
-import SwiftUI
+# 漫域音乐 MANYU MUSIC
 
-@main
-struct HarmonyPlayerApp: App {
-    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
-    @StateObject private var library = LibraryStore()
-    @StateObject private var player = AudioPlayer()
-    @StateObject private var theme = ThemeStore()
+漫域音乐是一款原生 macOS 本地音乐播放器，使用 SwiftUI、AVFoundation 和 MediaPlayer 构建。应用以本地资料库为核心，提供歌曲、专辑、艺术家、文件夹、歌单、播放队列、歌词与 Dock 专辑封面等功能。
 
-    var body: some Scene {
-        WindowGroup {
-            MainView()
-                .environmentObject(library)
-                .environmentObject(player)
-                .environmentObject(theme)
-                .preferredColorScheme(theme.appearance.colorScheme)
-        }
-        .windowStyle(.hiddenTitleBar)
-        .windowToolbarStyle(.unifiedCompact)
-        .defaultSize(width: 1080, height: 650)
-        Settings {
-            SettingsView()
-                .environmentObject(theme)
-                .environmentObject(player)
-                .environmentObject(library)
-        }
+当前稳定版本为 `3.8.0`。`main` 中还包含已经合并、但尚未正式分配版本号的更新，具体记录见 [发布记录](docs/releases/unreleased.md)。
 
-        .commands {
-            CommandMenu("播放") {
-                Button(player.isPlaying ? "暂停" : "播放") {
-                    player.togglePlayback()
-                }
-                .keyboardShortcut("p", modifiers: .command)
-                .disabled(player.currentTrack == nil)
+## 主要功能
 
-                Divider()
+### 播放与资料库
 
-                Button("下一首") {
-                    player.next()
-                }
-                .keyboardShortcut(.rightArrow, modifiers: .command)
-                .disabled(player.queue.isEmpty)
+- 支持 MP3、M4A、AAC、FLAC、WAV、AIFF、CAF 等 macOS 可解码格式
+- 支持导入单个文件或整个文件夹，并支持拖拽导入
+- 提供歌曲、专辑、艺术家和文件夹四种浏览方式
+- 提供最近添加、最近播放、我喜欢和播放历史
+- 支持新建、重命名和删除歌单，并管理歌单歌曲
+- 支持搜索、收藏、排序、在访达中显示和歌曲信息查看
+- 支持播放队列、下一首播放、随机播放、列表循环和单曲循环
+- 支持睡眠定时，以及 macOS 媒体键和系统“正在播放”面板
+- 自动保存资料库、音量、队列和上次播放状态
 
-                Button("上一首") {
-                    player.previous()
-                }
-                .keyboardShortcut(.leftArrow, modifiers: .command)
-                .disabled(player.queue.isEmpty)
+### 歌词与播放界面
 
-                Button("快进 10 秒") {
-                    player.seek(to: player.currentTime + 10)
-                }
-                .keyboardShortcut(.rightArrow, modifiers: [.command, .option])
-                .disabled(player.currentTrack == nil)
+- 支持音频内嵌歌词、同名 LRC 歌词和逐句时间轴高亮
+- 支持调整歌词字号、字体和颜色
+- 播放页根据专辑封面提取主色，并同步调整背景与控制区域
+- 首页显示当前专辑封面、实时歌词和播放状态
+- 支持从首页平滑进入沉浸式播放界面
+- 首页“最近播放”在当前停留期间保持顺序稳定
 
-                Button("后退 10 秒") {
-                    player.seek(to: player.currentTime - 10)
-                }
-                .keyboardShortcut(.leftArrow, modifiers: [.command, .option])
-                .disabled(player.currentTrack == nil)
+### 外观与系统集成
 
-                Divider()
+- 提供白天、夜间两种主题
+- 提供自动、深色、浅色三档 App 图标选择
+- 支持播放时在 Dock 显示专辑封面
+- Dock 专辑封面使用透明安全边距和状态角标
+- 设置界面与主界面统一为主题化玻璃风格
 
-                Menu("循环模式") {
-                    ForEach(RepeatMode.allCases, id: \.rawValue) { mode in
-                        Button {
-                            player.repeatMode = mode
-                        } label: {
-                            if player.repeatMode == mode {
-                                Label(mode.title, systemImage: "checkmark")
-                            } else {
-                                Text(mode.title)
-                            }
-                        }
-                    }
-                }
+### 元数据与性能
 
-                Toggle("随机播放", isOn: $player.isShuffle)
-            }
-        }
-    }
-}
+- 原生解析 FLAC、Vorbis Comment 和 PICTURE 内嵌元数据
+- 异步读取标题、艺人、专辑、时长和封面
+- 大资料库采用限流并发导入，避免阻塞列表滚动
+- 封面缓存带内存上限，适合较大的本地音乐库
 
-final class AppDelegate: NSObject, NSApplicationDelegate {
-    func applicationDidFinishLaunching(_ notification: Notification) {
-        NSApp.setActivationPolicy(.regular)
-        NSApp.activate(ignoringOtherApps: true)
-        AppIconStyleManager.apply()
+## 系统要求
 
-        DispatchQueue.main.async {
-            Self.fitWindowsToVisibleScreen()
-        }
-    }
+- macOS 14 或更高版本
+- Swift 5.10 或兼容工具链
+- 播放能力跟随 macOS AVFoundation；OGG、WMA 等格式需要系统解码器支持
 
-    private static func fitWindowsToVisibleScreen() {
-        guard let screen = NSScreen.main else { return }
-        let visible = screen.visibleFrame
-        let maxWidth = max(840, visible.width - 32)
-        let maxHeight = max(520, visible.height - 32)
+## 运行
 
-        for window in NSApp.windows where window.isVisible {
-            window.minSize = NSSize(width: 840, height: 520)
+```bash
+swift run
+```
 
-            let current = window.frame
-            let targetWidth = min(current.width, maxWidth)
-            let targetHeight = min(current.height, maxHeight)
-            guard targetWidth != current.width || targetHeight != current.height else { continue }
+## 构建应用
 
-            let target = NSRect(
-                x: visible.minX + (visible.width - targetWidth) / 2,
-                y: visible.minY + (visible.height - targetHeight) / 2,
-                width: targetWidth,
-                height: targetHeight
-            )
-            window.setFrame(target, display: true, animate: false)
-        }
-    }
+```bash
+./scripts/build-app.sh
+```
 
-    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
-        true
-    }
-}
+生成的应用位于 `dist/漫域音乐.app`，可双击运行，也可以拖入“应用程序”目录。
 
-private extension RepeatMode {
-    var title: String {
-        switch self {
-        case .off: "关闭循环"
-        case .all: "列表循环"
-        case .one: "单曲循环"
-        }
-    }
-}
+## 快捷键
+
+- `⌘P`：播放或暂停
+- `⌘→`：下一首
+- `⌘←`：上一首
+- `⌘⌥→`：快进 10 秒
+- `⌘⌥←`：后退 10 秒
+
+## 项目结构
+
+```text
+Sources/HarmonyPlayer/   应用源码
+Resources/               图标和 Info.plist
+scripts/build-app.sh     macOS App 打包脚本
+docs/releases/           按版本永久保存的发布记录
+docs/VERSION_CONTROL.md  Git 与发布流程
+CHANGELOG.md             面向开发过程的简明更新日志
+VERSION                  当前稳定版本号
+```
+
+## 文档
+
+- [更新日志](CHANGELOG.md)
+- [发布记录索引](docs/releases/README.md)
+- [未发布更新](docs/releases/unreleased.md)
+- [Git 与版本管理](docs/VERSION_CONTROL.md)
+
+发布记录按版本独立保存。新版本只能新增文档或追加修订说明，不删除、不移除已有版本，也不覆盖历史发布内容。
