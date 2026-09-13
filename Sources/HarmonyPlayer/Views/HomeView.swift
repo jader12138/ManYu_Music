@@ -74,8 +74,7 @@ struct HomeView: View {
                 if tracks.isEmpty {
                     EmptyLibraryView(
                         isSearching: false,
-                        isDropTargeted: false,
-                        importAction: library.presentImportPanel
+                        isDropTargeted: false
                     )
                     .frame(minHeight: 280)
                 }

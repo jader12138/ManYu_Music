@@ -48,14 +48,14 @@ struct MainView: View {
                             .transition(.move(edge: .trailing).combined(with: .opacity))
                         }
                     }
-                    .frame(height: max(0, geometry.size.height - 88))
+                    .frame(height: max(0, geometry.size.height - 72))
 
                     PlayerBar(
                         showQueue: $showQueue,
                         showNowPlaying: $showNowPlaying,
                         transitionNamespace: nowPlayingTransition
                     )
-                        .frame(width: geometry.size.width, height: 88)
+                        .frame(width: geometry.size.width, height: 72)
                 }
             }
         }
@@ -166,8 +166,7 @@ struct MainView: View {
             } else if filteredTracks.isEmpty {
                 EmptyLibraryView(
                     isSearching: !normalizedSearch.isEmpty,
-                    isDropTargeted: isDropTargeted,
-                    importAction: library.presentImportPanel
+                    isDropTargeted: isDropTargeted
                 )
             } else {
                 sectionContent
@@ -305,29 +304,6 @@ struct MainView: View {
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
                     .stroke(searchIsFocused ? Color.hpAccent.opacity(0.62) : Color.hpTextPrimary.opacity(0.07), lineWidth: 1)
             }
-
-            Button {
-                library.presentImportPanel()
-            } label: {
-                HStack(spacing: 7) {
-                    if library.isImporting {
-                        ProgressView()
-                            .controlSize(.small)
-                            .tint(.white)
-                    } else {
-                        Image(systemName: "plus")
-                            .font(.system(size: 11, weight: .bold))
-                    }
-                    Text(library.isImporting ? "正在导入" : "导入")
-                        .font(.system(size: 12, weight: .semibold))
-                }
-                .padding(.horizontal, 14)
-                .frame(height: 34)
-                .foregroundStyle(.white)
-                .background(LinearGradient.hpAccentFill, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-            }
-            .buttonStyle(.plain)
-            .disabled(library.isImporting)
 
             IconButton(
                 systemName: theme.appearance == .dark ? "sun.max.fill" : "moon.stars.fill",

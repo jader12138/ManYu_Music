@@ -22,7 +22,7 @@ struct PlayerBar: View {
             .padding(.horizontal, geometry.size.width >= 1040 ? 18 : 12)
             .frame(width: geometry.size.width, height: geometry.size.height)
         }
-        .frame(height: 88)
+        .frame(height: 72)
         .background {
             VisualEffectView(material: .headerView, blendingMode: .withinWindow)
                 .overlay(Color.hpNavyDeep.opacity(0.76))
@@ -72,12 +72,12 @@ struct PlayerBar: View {
                     showNowPlaying.toggle()
                 }
             } label: {
-                HStack(spacing: 12) {
-                    ArtworkView(image: player.artwork, size: 52, cornerRadius: 11)
+                HStack(spacing: 10) {
+                    ArtworkView(image: player.artwork, size: 44, cornerRadius: 10)
                         .matchedGeometryEffect(id: "nowPlayingArtwork", in: transitionNamespace)
 
                     if let track = player.currentTrack {
-                        VStack(alignment: .leading, spacing: 4) {
+                        VStack(alignment: .leading, spacing: 3) {
                             Text(track.displayTitle)
                                 .font(.system(size: 12, weight: .semibold))
                                 .foregroundStyle(Color.hpTextPrimary)
@@ -142,10 +142,10 @@ struct PlayerBar: View {
                     ZStack {
                         Circle()
                             .fill(LinearGradient.hpAccentFill)
-                            .frame(width: 38, height: 38)
-                            .shadow(color: Color.hpAccent.opacity(0.26), radius: 8, y: 4)
+                            .frame(width: 32, height: 32)
+                            .shadow(color: Color.hpAccent.opacity(0.24), radius: 7, y: 3)
                         Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
-                            .font(.system(size: 14, weight: .bold))
+                            .font(.system(size: 12, weight: .bold))
                             .foregroundStyle(.white)
                             .offset(x: player.isPlaying ? 0 : 1)
                     }

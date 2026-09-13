@@ -131,6 +131,22 @@ struct SettingsView: View {
 
     private var librarySettings: some View {
         Form {
+            Section("添加音乐") {
+                Button {
+                    library.presentImportPanel()
+                } label: {
+                    Label(
+                        library.isImporting ? "正在导入…" : "添加音乐文件或文件夹…",
+                        systemImage: "plus.circle"
+                    )
+                }
+                .disabled(library.isImporting)
+
+                Text("支持 MP3、FLAC、M4A、AAC、WAV、AIFF、CAF 等格式。")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
             Section("本地资料库") {
                 LabeledContent("歌曲数量", value: "\(library.tracks.count)")
                 LabeledContent("专辑数量", value: "\(Set(library.tracks.map(\.displayAlbum)).count)")

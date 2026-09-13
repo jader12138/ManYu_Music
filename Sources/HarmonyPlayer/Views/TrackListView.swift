@@ -588,7 +588,6 @@ struct ArtistDetailView: View {
 struct EmptyLibraryView: View {
     let isSearching: Bool
     let isDropTargeted: Bool
-    let importAction: () -> Void
 
     var body: some View {
         VStack(spacing: 18) {
@@ -611,8 +610,8 @@ struct EmptyLibraryView: View {
             }
 
             if !isSearching {
-                Button(action: importAction) {
-                    Label("选择音乐文件或文件夹", systemImage: "plus")
+                SettingsLink {
+                    Label("前往设置添加音乐", systemImage: "gearshape.fill")
                         .font(.system(size: 12, weight: .semibold))
                         .padding(.horizontal, 18)
                         .padding(.vertical, 10)
@@ -621,7 +620,7 @@ struct EmptyLibraryView: View {
                 }
                 .buttonStyle(.plain)
 
-                Text("也可以直接把音乐拖进窗口")
+                Text("也可以在设置中导入文件夹")
                     .font(.system(size: 10))
                     .foregroundStyle(Color.hpTextPrimary.opacity(0.32))
             }
