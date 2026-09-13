@@ -1,0 +1,60 @@
+import SwiftUI
+
+struct TrackInfoView: View {
+    let track: Track
+
+    @EnvironmentObject private var library: LibraryStore
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            HStack {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("歌曲信息")
+                        .font(.system(size: 18, weight: .bold, design: .rounded))
+                    Text(track.displayTitle)
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+                Spacer()
+                IconButton(systemName: "xmark", help: "关闭", size: 12) {
+                    dismiss()
+                }
+            }
+
+            infoRow("标题", track.displayTitle)
+            infoRow("艺人", track.displayArtist)
+            infoRow("专辑", track.displayAlbum)
+            infoRow("时长", Track.formatTime(track.duration))
+            infoRow("格式", track.url.pathExtension.uppercased())
+            infoRow("播放次数", "\(library.playCount(for: track))")
+            infoRow("文件大小", fileSize)
+            infoRow("文件位置", track.url.path)
+        }
+        .padding(24)
+        .frame(width: 520)
+    }
+
+    private func infoRow(_ title: String, _ value: String) -> some View {
+        HStack(alignment: .top, spacing: 18) {
+            Text(title)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(.secondary)
+                .frame(width: 62, alignment: .trailing)
+
+            Text(value)
+                .font(.system(size: 11, weight: .medium))
+                .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private var fileSize: String {
+        guard let values = try? track.url.resourceValues(forKeys: [.fileSizeKey]),
+              let bytes = values.fileSize else {
+            return "未知"
+        }
+        return ByteCountFormatter.string(fromByteCount: Int64(bytes), countStyle: .file)
+    }
+}

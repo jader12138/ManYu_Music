@@ -1,0 +1,139 @@
+import AppKit
+import AVFoundation
+
+enum AudioMetadataLoader {
+    static let supportedExtensions: Set<String> = [
+        "mp3", "m4a", "aac", "wav", "wave", "aif", "aiff", "aifc",
+        "flac", "caf", "m4b", "mp4", "mov"
+    ]
+
+    static func makeTrack(
+        from url: URL,
+        id: UUID = UUID(),
+        dateAdded: Date = .now
+    ) async -> Track {
+        let standardizedURL = url.standardizedFileURL
+        let fallbackTitle = standardizedURL.deletingPathExtension().lastPathComponent
+        let asset = AVURLAsset(url: standardizedURL, options: [AVURLAssetPreferPreciseDurationAndTimingKey: true])
+
+        let duration = (try? await asset.load(.duration)).map(CMTimeGetSeconds) ?? 0
+        let metadata = (try? await asset.load(.commonMetadata)) ?? []
+        let embedded = await Task.detached(priority: .utility) {
+            EmbeddedMetadataReader.read(from: standardizedURL)
+        }.value
+
+        let metadataTitle = await stringValue(for: .commonKeyTitle, in: metadata)
+        let title = embedded?.title ?? metadataTitle
+
+        var artist = embedded?.artist
+        if artist == nil {
+            artist = await stringValue(for: .commonKeyArtist, in: metadata)
+        }
+        if artist == nil {
+            artist = await stringValue(for: .commonKeyAuthor, in: metadata)
+        }
+
+        let metadataAlbum = await stringValue(for: .commonKeyAlbumName, in: metadata)
+        let album = embedded?.album ?? metadataAlbum
+
+        return Track(
+            id: id,
+            url: standardizedURL,
+            title: title ?? fallbackTitle,
+            artist: artist ?? "",
+            album: album ?? "",
+            duration: duration.isFinite ? max(0, duration) : 0,
+            dateAdded: dateAdded
+        )
+    }
+
+    static func lyrics(for track: Track) async -> String? {
+        let lrcURL = track.url.deletingPathExtension().appendingPathExtension("lrc")
+        if let lrc = try? String(contentsOf: lrcURL, encoding: .utf8),
+           !lrc.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return lrc
+        }
+
+        let embedded = await Task.detached(priority: .utility) {
+            EmbeddedMetadataReader.read(from: track.url)
+        }.value
+        if let lyrics = embedded?.lyrics,
+           !lyrics.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return lyrics
+        }
+
+        let asset = AVURLAsset(url: track.url)
+        guard let metadata = try? await asset.load(.commonMetadata) else { return nil }
+        let lyricIdentifiers: [AVMetadataIdentifier] = [
+            .iTunesMetadataLyrics,
+            .id3MetadataUnsynchronizedLyric,
+            .id3MetadataSynchronizedLyric
+        ]
+
+        for identifier in lyricIdentifiers {
+            for item in AVMetadataItem.metadataItems(from: metadata, filteredByIdentifier: identifier) {
+                if let value = await stringValue(of: item) {
+                    return value
+                }
+            }
+        }
+        return nil
+    }
+
+    static func artwork(for track: Track) async -> NSImage? {
+        let embedded = await Task.detached(priority: .utility) {
+            EmbeddedMetadataReader.read(from: track.url)
+        }.value
+        if let data = embedded?.artworkData, let image = NSImage(data: data) {
+            return image
+        }
+
+        let asset = AVURLAsset(url: track.url)
+        guard let metadata = try? await asset.load(.commonMetadata) else { return nil }
+
+        let artworkIdentifiers: [AVMetadataIdentifier] = [
+            .commonIdentifierArtwork,
+            .quickTimeMetadataArtwork,
+            .iTunesMetadataCoverArt,
+            .id3MetadataAttachedPicture
+        ]
+
+        for identifier in artworkIdentifiers {
+            for item in AVMetadataItem.metadataItems(from: metadata, filteredByIdentifier: identifier) {
+                if let data = try? await item.load(.dataValue), let image = NSImage(data: data) {
+                    return image
+                }
+            }
+        }
+
+        // Some containers expose artwork under a format-specific key instead of commonKey.
+        for item in metadata {
+            guard let data = try? await item.load(.dataValue),
+                  let image = NSImage(data: data) else { continue }
+            if image.size.width >= 80, image.size.height >= 80 {
+                return image
+            }
+        }
+
+        return nil
+    }
+
+    private static func stringValue(of item: AVMetadataItem) async -> String? {
+        guard let rawValue = try? await item.load(.stringValue) else { return nil }
+        let value = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        return value.isEmpty ? nil : value
+    }
+
+    private static func stringValue(
+        for key: AVMetadataKey,
+        in metadata: [AVMetadataItem]
+    ) async -> String? {
+        for item in metadata where item.commonKey == key {
+            guard let rawValue = try? await item.load(.stringValue) else { continue }
+            let value = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !value.isEmpty else { continue }
+            return value
+        }
+        return nil
+    }
+}
