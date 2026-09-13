@@ -156,6 +156,11 @@ struct MainView: View {
                         withAnimation(.easeOut(duration: 0.18)) {
                             selectedAlbum = album
                         }
+                    },
+                    openNowPlaying: {
+                        withAnimation(.spring(response: 0.56, dampingFraction: 0.86)) {
+                            showNowPlaying = true
+                        }
                     }
                 )
             } else if filteredTracks.isEmpty {

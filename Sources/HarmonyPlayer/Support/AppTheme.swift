@@ -185,36 +185,66 @@ struct ArtworkView: View {
 struct PlaybackStateBadge: View {
     let isPlaying: Bool
     var size: CGFloat = 28
+    var palette: ArtworkPalette?
 
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
-        Image(systemName: isPlaying ? "pause.fill" : "play.fill")
-            .font(.system(size: size * 0.38, weight: .bold))
-            .foregroundStyle(.white)
-            .offset(x: isPlaying ? 0 : size * 0.035)
-            .frame(width: size, height: size)
-            .background {
-                Circle()
-                    .fill(badgeBackground)
-            }
-            .overlay {
-                Circle()
-                    .stroke(.white.opacity(colorScheme == .dark ? 0.28 : 0.45), lineWidth: 1)
-            }
-            .shadow(color: .black.opacity(0.16), radius: 4, y: 2)
+        ZStack {
+            Circle()
+                .fill(.ultraThinMaterial)
+
+            Circle()
+                .fill(badgeGradient)
+
+            Circle()
+                .trim(from: 0.08, to: 0.28)
+                .stroke(.white.opacity(colorScheme == .dark ? 0.42 : 0.52), lineWidth: 1.2)
+                .rotationEffect(.degrees(-35))
+                .padding(size * 0.12)
+
+            Image(systemName: isPlaying ? "pause.fill" : "play.fill")
+                .font(.system(size: size * 0.37, weight: .bold))
+                .foregroundStyle(.white)
+                .offset(x: isPlaying ? 0 : size * 0.035)
+        }
+        .frame(width: size, height: size)
+        .shadow(color: .black.opacity(0.15), radius: 7, y: 4)
     }
 
-    private var badgeBackground: AnyShapeStyle {
-        if colorScheme == .dark {
-            return AnyShapeStyle(Color.black.opacity(0.62))
-        }
-        return AnyShapeStyle(
-            LinearGradient(
-                colors: [Color.hpAccentSecondary, Color.hpAccent],
+    private var badgeGradient: LinearGradient {
+        if let palette {
+            return LinearGradient(
+                colors: [
+                    Color(nsColor: palette.secondary).opacity(colorScheme == .dark ? 0.72 : 0.88),
+                    Color(nsColor: palette.primary).opacity(colorScheme == .dark ? 0.64 : 0.80),
+                    Color.white.opacity(colorScheme == .dark ? 0.20 : 0.34)
+                ],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
             )
+        }
+
+        if colorScheme == .dark {
+            return LinearGradient(
+                colors: [
+                    Color.white.opacity(0.12),
+                    Color.hpAccent.opacity(0.68),
+                    Color.hpViolet.opacity(0.52)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        }
+
+        return LinearGradient(
+            colors: [
+                Color.hpAccentSecondary.opacity(0.94),
+                Color.hpAccent.opacity(0.88),
+                Color.hpViolet.opacity(0.72)
+            ],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
         )
     }
 }
