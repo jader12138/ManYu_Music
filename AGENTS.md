@@ -6,11 +6,11 @@ These instructions are mandatory for every coding task in this repository.
 
 - Never develop features directly on `main`.
 - Before making changes, fetch the latest `origin` and create a branch from `main` using the `codex/<short-feature-name>` naming pattern.
-- Keep one active development branch for a small workstream. Continue related tweaks and up to one or two small features on that branch instead of creating a new branch for every adjustment.
-- Split into another branch only when the work is independent, risky, or needs a separate release.
+- Create a new `codex/*` branch for each feature, fix, or documentation update.
 - Commit and push the feature branch to GitHub when a coherent milestone is complete.
 - Do not merge into `main` until the user explicitly approves the merge.
 - Do not create a release tag or publish a release until the user explicitly approves publication.
+- After the branch is merged into `main` or its changes are otherwise incorporated, delete the local and remote branch.
 
 ## Merge Reminder
 
@@ -54,3 +54,13 @@ After explicit approval only:
 6. Push `main` and the tag to GitHub.
 7. Verify the remote branch and tag with `git ls-remote`.
 8. Create or update the GitHub Release for the approved version.
+9. Delete the merged feature branch locally and remotely.
+
+## Completion Phrase
+
+- After every completed feature task or successful merge, end the final response with this exact phrase on its own line:
+
+  完成了喵，恭喜主人喵！
+
+- Use this phrase only for completed feature work or a successful merge.
+- Do not use it for ordinary questions, status checks, reviews, planning, or incomplete work.
