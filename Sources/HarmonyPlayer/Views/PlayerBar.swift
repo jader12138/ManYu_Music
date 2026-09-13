@@ -9,6 +9,7 @@ struct PlayerBar: View {
     @EnvironmentObject private var player: AudioPlayer
     @EnvironmentObject private var library: LibraryStore
     @State private var scrubTime: Double?
+    @FocusState private var isPlaybackControlFocused: Bool
 
     var body: some View {
         GeometryReader { geometry in
@@ -22,7 +23,13 @@ struct PlayerBar: View {
             .padding(.horizontal, geometry.size.width >= 1040 ? 18 : 12)
             .frame(width: geometry.size.width, height: geometry.size.height)
         }
-        .frame(height: 88)
+        .frame(height: 72)
+        .onAppear {
+            focusPlaybackControl()
+        }
+        .onChange(of: player.currentTrack?.id) { _, _ in
+            focusPlaybackControl()
+        }
         .background {
             VisualEffectView(material: .headerView, blendingMode: .withinWindow)
                 .overlay(Color.hpNavyDeep.opacity(0.76))
@@ -72,22 +79,26 @@ struct PlayerBar: View {
                     showNowPlaying.toggle()
                 }
             } label: {
-                HStack(spacing: 12) {
-                    ArtworkView(image: player.artwork, size: 52, cornerRadius: 11)
+                HStack(spacing: 10) {
+                    ArtworkView(image: player.artwork, size: 44, cornerRadius: 10)
                         .matchedGeometryEffect(id: "nowPlayingArtwork", in: transitionNamespace)
 
                     if let track = player.currentTrack {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(track.displayTitle)
-                                .font(.system(size: 12, weight: .semibold))
-                                .foregroundStyle(Color.hpTextPrimary)
-                                .lineLimit(1)
-                            Text(track.displayArtist)
-                                .font(.system(size: 10))
-                                .foregroundStyle(Color.hpTextPrimary.opacity(0.44))
-                                .lineLimit(1)
+                        HStack(spacing: 8) {
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(track.displayTitle)
+                                    .font(.system(size: 11, weight: .semibold))
+                                    .foregroundStyle(Color.hpTextPrimary)
+                                    .lineLimit(1)
+                                Text(track.displayArtist)
+                                    .font(.system(size: 10))
+                                    .foregroundStyle(Color.hpTextPrimary.opacity(0.44))
+                                    .lineLimit(1)
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+
+                            formatBadge(for: track)
                         }
-                        .frame(maxWidth: .infinity, alignment: .leading)
                     } else {
                         VStack(alignment: .leading, spacing: 4) {
                             Text("还没有播放歌曲")
@@ -142,15 +153,18 @@ struct PlayerBar: View {
                     ZStack {
                         Circle()
                             .fill(LinearGradient.hpAccentFill)
-                            .frame(width: 38, height: 38)
-                            .shadow(color: Color.hpAccent.opacity(0.26), radius: 8, y: 4)
+                            .frame(width: 32, height: 32)
+                            .shadow(color: Color.hpAccent.opacity(0.24), radius: 7, y: 3)
                         Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
-                            .font(.system(size: 14, weight: .bold))
+                            .font(.system(size: 12, weight: .bold))
                             .foregroundStyle(.white)
                             .offset(x: player.isPlaying ? 0 : 1)
                     }
                 }
                 .buttonStyle(.plain)
+                .focusable()
+                .focused($isPlaybackControlFocused)
+                .focusEffectDisabled()
                 .disabled(player.currentTrack == nil)
 
                 IconButton(systemName: "forward.fill", help: "下一首", size: 15) {
@@ -193,6 +207,15 @@ struct PlayerBar: View {
                     .frame(width: 40, alignment: .leading)
             }
         }
+    }
+
+    private func formatBadge(for track: Track) -> some View {
+        Text(track.url.pathExtension.uppercased())
+            .font(.system(size: 8, weight: .bold))
+            .foregroundStyle(Color.hpAccent)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 3)
+            .background(Color.hpAccent.opacity(0.12), in: RoundedRectangle(cornerRadius: 4))
     }
 
     private var sleepTimerMenu: some View {
@@ -261,15 +284,6 @@ struct PlayerBar: View {
 
     private var utilities: some View {
         HStack(spacing: 8) {
-            if let track = player.currentTrack {
-                Text(track.url.pathExtension.uppercased())
-                    .font(.system(size: 8, weight: .bold))
-                    .foregroundStyle(Color.hpAccent)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 3)
-                    .background(Color.hpAccent.opacity(0.12), in: RoundedRectangle(cornerRadius: 4))
-            }
-
             sleepTimerMenu
 
             Image(systemName: player.volume == 0 ? "speaker.slash.fill" : "speaker.wave.2.fill")
@@ -308,6 +322,16 @@ struct PlayerBar: View {
     private func shortRemaining(_ seconds: TimeInterval) -> String {
         let minutes = max(0, Int(ceil(seconds / 60)))
         return "\(minutes)m"
+    }
+
+    private func focusPlaybackControl() {
+        for delay in [0.12, 0.45, 0.9, 1.4] {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                guard player.currentTrack != nil else { return }
+                NSApp.keyWindow?.makeFirstResponder(nil)
+                isPlaybackControlFocused = true
+            }
+        }
     }
 
     private var repeatHelp: String {

@@ -48,14 +48,14 @@ struct MainView: View {
                             .transition(.move(edge: .trailing).combined(with: .opacity))
                         }
                     }
-                    .frame(height: max(0, geometry.size.height - 88))
+                    .frame(height: max(0, geometry.size.height - 72))
 
                     PlayerBar(
                         showQueue: $showQueue,
                         showNowPlaying: $showNowPlaying,
                         transitionNamespace: nowPlayingTransition
                     )
-                        .frame(width: geometry.size.width, height: 88)
+                        .frame(width: geometry.size.width, height: 72)
                 }
             }
         }
@@ -84,8 +84,22 @@ struct MainView: View {
             }
         }
         .animation(.easeInOut(duration: 0.2), value: library.importNotice)
+        .onAppear {
+            searchIsFocused = false
+            player.restorePlaybackState(from: library.tracks)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                searchIsFocused = false
+            }
+        }
         .onReceive(NotificationCenter.default.publisher(for: .focusLibrarySearch)) { _ in
             searchIsFocused = true
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .openSettings)) { _ in
+            withAnimation(.easeOut(duration: 0.16)) {
+                destination = .settings
+                selectedAlbum = nil
+                selectedArtist = nil
+            }
         }
         .onChange(of: destination) { _, _ in
             selectedAlbum = nil
@@ -128,7 +142,9 @@ struct MainView: View {
             header
             Divider().opacity(0.16)
 
-            if let playlist = activePlaylist {
+            if destination == .settings {
+                SettingsView()
+            } else if let playlist = activePlaylist {
                 PlaylistDetailView(playlist: playlist) {
                     destination = .section(.home)
                 } onPlay: { track, tracks in
@@ -166,8 +182,7 @@ struct MainView: View {
             } else if filteredTracks.isEmpty {
                 EmptyLibraryView(
                     isSearching: !normalizedSearch.isEmpty,
-                    isDropTargeted: isDropTargeted,
-                    importAction: library.presentImportPanel
+                    isDropTargeted: isDropTargeted
                 )
             } else {
                 sectionContent
@@ -277,6 +292,7 @@ struct MainView: View {
                 .help("排序")
             }
 
+            if destination != .settings {
             HStack(spacing: 7) {
                 Image(systemName: "magnifyingglass")
                     .font(.system(size: 11, weight: .medium))
@@ -305,29 +321,7 @@ struct MainView: View {
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
                     .stroke(searchIsFocused ? Color.hpAccent.opacity(0.62) : Color.hpTextPrimary.opacity(0.07), lineWidth: 1)
             }
-
-            Button {
-                library.presentImportPanel()
-            } label: {
-                HStack(spacing: 7) {
-                    if library.isImporting {
-                        ProgressView()
-                            .controlSize(.small)
-                            .tint(.white)
-                    } else {
-                        Image(systemName: "plus")
-                            .font(.system(size: 11, weight: .bold))
-                    }
-                    Text(library.isImporting ? "正在导入" : "导入")
-                        .font(.system(size: 12, weight: .semibold))
-                }
-                .padding(.horizontal, 14)
-                .frame(height: 34)
-                .foregroundStyle(.white)
-                .background(LinearGradient.hpAccentFill, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
             }
-            .buttonStyle(.plain)
-            .disabled(library.isImporting)
 
             IconButton(
                 systemName: theme.appearance == .dark ? "sun.max.fill" : "moon.stars.fill",
@@ -504,6 +498,9 @@ struct MainView: View {
     }
 
     private var headerTitle: String {
+        if destination == .settings {
+            return "设置"
+        }
         if let playlist = activePlaylist {
             return playlist.name
         }
@@ -517,6 +514,9 @@ struct MainView: View {
     }
 
     private var headerSubtitle: String {
+        if destination == .settings {
+            return "外观、图标、播放与资料库"
+        }
         if !normalizedSearch.isEmpty {
             return "找到 \(filteredTracks.count) 首歌曲"
         }
@@ -545,6 +545,7 @@ struct MainView: View {
     }
 
     private var showsSortMenu: Bool {
+        guard destination != .settings else { return false }
         guard selectedAlbum == nil, selectedArtist == nil else { return false }
         if activePlaylist != nil { return true }
         return section != .home && section != .albums && section != .artists && section != .folders

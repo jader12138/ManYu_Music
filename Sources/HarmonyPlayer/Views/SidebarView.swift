@@ -44,7 +44,6 @@ struct SidebarView: View {
                         ForEach(personalSections) { section in
                             sidebarButton(for: section)
                         }
-                        folderButton
                     }
 
                     HStack {
@@ -80,12 +79,17 @@ struct SidebarView: View {
                                 .padding(.vertical, 8)
                         }
                     }
-                    .padding(.bottom, 14)
+                    .padding(.bottom, 10)
+
+                    Divider()
+                        .opacity(0.10)
+                        .padding(.horizontal, 18)
+                        .padding(.vertical, 10)
+
+                    settingsButton
+                        .padding(.bottom, 14)
                 }
             }
-
-            importCard
-                .padding(14)
         }
         .frame(width: 238)
         .background {
@@ -130,32 +134,29 @@ struct SidebarView: View {
     }
 
     private var brand: some View {
-        HStack(spacing: 12) {
-            BrandMark()
-                .frame(width: 40, height: 40)
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text("漫域音乐")
-                    .font(.system(size: 17, weight: .bold, design: .rounded))
-                    .foregroundStyle(Color.hpTextPrimary)
-                Text("MANYU MUSIC")
-                    .font(.system(size: 8, weight: .bold))
-                    .foregroundStyle(Color.hpTextPrimary.opacity(0.42))
-                    .tracking(1.25)
+        Button {
+            withAnimation(.easeOut(duration: 0.16)) {
+                destination = .section(.home)
             }
+        } label: {
+            HStack(spacing: 12) {
+                BrandMark()
+                    .frame(width: 40, height: 40)
 
-            Spacer()
-
-            SettingsLink {
-                Image(systemName: "gearshape.fill")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(Color.hpTextPrimary.opacity(0.48))
-                    .frame(width: 28, height: 28)
-                    .background(Color.hpTextPrimary.opacity(0.055), in: Circle())
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("漫域音乐")
+                        .font(.system(size: 17, weight: .bold, design: .rounded))
+                        .foregroundStyle(Color.hpTextPrimary)
+                    Text("MANYU MUSIC")
+                        .font(.system(size: 8, weight: .bold))
+                        .foregroundStyle(Color.hpTextPrimary.opacity(0.42))
+                        .tracking(1.25)
+                }
             }
-            .buttonStyle(.plain)
-            .help("设置")
+            .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
+        .help("返回首页")
     }
 
     private func sectionTitle(_ title: String) -> some View {
@@ -165,31 +166,6 @@ struct SidebarView: View {
             .tracking(0.7)
             .padding(.horizontal, 20)
             .padding(.bottom, 8)
-    }
-
-    private var folderButton: some View {
-        Button {
-            library.presentImportPanel()
-        } label: {
-            HStack(spacing: 12) {
-                Image(systemName: "folder.fill")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(Color.hpGold)
-                    .frame(width: 20)
-                Text("导入文件夹")
-                    .font(.system(size: 13, weight: .medium))
-                Spacer()
-                Image(systemName: "plus")
-                    .font(.system(size: 10, weight: .bold))
-                    .foregroundStyle(Color.hpTextPrimary.opacity(0.36))
-            }
-            .foregroundStyle(Color.hpTextPrimary.opacity(0.82))
-            .padding(.horizontal, 12)
-            .frame(height: 39)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .padding(.horizontal, 10)
     }
 
     private func sidebarButton(for section: LibrarySection) -> some View {
@@ -290,59 +266,23 @@ struct SidebarView: View {
         .contentShape(Rectangle())
     }
 
-    private var importCard: some View {
-        VStack(alignment: .leading, spacing: 13) {
-            HStack(alignment: .firstTextBaseline) {
-                Text("\(library.tracks.count)")
-                    .font(.system(size: 25, weight: .bold, design: .rounded))
-                    .foregroundStyle(Color.hpTextPrimary)
-                Text("首音乐")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(Color.hpTextPrimary.opacity(0.46))
-                Spacer()
-                Button {
-                    library.rescanLibrary()
-                } label: {
-                    Image(systemName: "arrow.clockwise")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(Color.hpAccent)
-                        .frame(width: 26, height: 26)
-                        .background(Color.hpAccent.opacity(0.10), in: Circle())
-                }
-                .buttonStyle(.plain)
-                .help("重新扫描资料库")
-                .disabled(library.isImporting)
+    private var settingsButton: some View {
+        Button {
+            withAnimation(.easeOut(duration: 0.16)) {
+                destination = .settings
             }
-
-            Button {
-                library.presentImportPanel()
-            } label: {
-                HStack(spacing: 7) {
-                    if library.isImporting {
-                        ProgressView()
-                            .controlSize(.small)
-                            .tint(.white)
-                    } else {
-                        Image(systemName: "plus")
-                            .font(.system(size: 11, weight: .bold))
-                    }
-                    Text(library.isImporting ? "正在导入" : "添加音乐")
-                        .font(.system(size: 12, weight: .semibold))
-                }
-                .frame(maxWidth: .infinity)
-                .frame(height: 36)
-                .foregroundStyle(.white)
-                .background(LinearGradient.hpAccentFill, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-            }
-            .buttonStyle(.plain)
-            .disabled(library.isImporting)
+        } label: {
+            sidebarLabel(
+                title: "设置",
+                systemImage: "gearshape.fill",
+                iconColor: Color.hpTextPrimary.opacity(0.52),
+                count: nil,
+                selected: destination == .settings
+            )
         }
-        .padding(14)
-        .background(Color.hpTextPrimary.opacity(0.045), in: RoundedRectangle(cornerRadius: 15, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 15, style: .continuous)
-                .stroke(Color.hpTextPrimary.opacity(0.075), lineWidth: 1)
-        }
+        .buttonStyle(.plain)
+        .padding(.horizontal, 10)
+        .help("设置")
     }
 
     private func iconColor(for section: LibrarySection) -> Color {

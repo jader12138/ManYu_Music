@@ -19,19 +19,12 @@ struct HarmonyPlayerApp: App {
         .windowStyle(.hiddenTitleBar)
         .windowToolbarStyle(.unifiedCompact)
         .defaultSize(width: 1080, height: 650)
-        Settings {
-            SettingsView()
-                .environmentObject(theme)
-                .environmentObject(player)
-                .environmentObject(library)
-        }
-
         .commands {
-            CommandGroup(replacing: .newItem) {
-                Button("导入音乐…") {
-                    library.presentImportPanel()
+            CommandGroup(replacing: .appSettings) {
+                Button("设置…") {
+                    NotificationCenter.default.post(name: .openSettings, object: nil)
                 }
-                .keyboardShortcut("o", modifiers: .command)
+                .keyboardShortcut(",", modifiers: .command)
             }
 
             CommandMenu("播放") {
@@ -121,6 +114,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 height: targetHeight
             )
             window.setFrame(target, display: true, animate: false)
+        }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+            NSApp.windows.first(where: { $0.isVisible })?.makeFirstResponder(nil)
         }
     }
 

@@ -8,31 +8,45 @@ struct TrackListView: View {
     @EnvironmentObject private var library: LibraryStore
     @EnvironmentObject private var player: AudioPlayer
 
-    var body: some View {
-        VStack(spacing: 0) {
-            if showsHeader {
-                header
-                Divider().opacity(0.18)
-            }
+    private let headerHeight: CGFloat = 28
+    private let headerDividerHeight: CGFloat = 1
 
-            ScrollView {
-                LazyVStack(spacing: 2) {
-                    ForEach(tracks) { track in
-                        TrackRow(
-                            track: track,
-                            isCurrent: player.currentTrack?.id == track.id,
-                            isPlaying: player.isPlaying,
-                            isFavorite: library.isFavorite(track),
-                            play: { onPlay(track) },
-                            toggleFavorite: { library.toggleFavorite(track) },
-                            reveal: { library.reveal(track) },
-                            remove: { library.remove(track) }
-                        )
+    var body: some View {
+        GeometryReader { geometry in
+            VStack(spacing: 0) {
+                if showsHeader {
+                    header
+                        .frame(height: headerHeight)
+                    Divider().opacity(0.18)
+                }
+
+                ScrollView {
+                    LazyVStack(spacing: 0) {
+                        ForEach(tracks) { track in
+                            TrackRow(
+                                track: track,
+                                isCurrent: player.currentTrack?.id == track.id,
+                                isPlaying: player.isPlaying,
+                                isFavorite: library.isFavorite(track),
+                                play: { onPlay(track) },
+                                toggleFavorite: { library.toggleFavorite(track) },
+                                reveal: { library.reveal(track) },
+                                remove: { library.remove(track) }
+                            )
+                            .padding(.vertical, 1)
+                            .padding(.horizontal, 10)
+                        }
                     }
                 }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 8)
+                .frame(
+                    width: geometry.size.width,
+                    height: max(0, geometry.size.height - (showsHeader ? headerHeight + headerDividerHeight : 0))
+                )
+                .scrollContentBackground(.hidden)
+                .defaultScrollAnchor(.top)
+                .scrollBounceBehavior(.basedOnSize)
             }
+            .frame(width: geometry.size.width, height: geometry.size.height, alignment: .top)
         }
     }
 
@@ -588,7 +602,6 @@ struct ArtistDetailView: View {
 struct EmptyLibraryView: View {
     let isSearching: Bool
     let isDropTargeted: Bool
-    let importAction: () -> Void
 
     var body: some View {
         VStack(spacing: 18) {
@@ -611,8 +624,10 @@ struct EmptyLibraryView: View {
             }
 
             if !isSearching {
-                Button(action: importAction) {
-                    Label("选择音乐文件或文件夹", systemImage: "plus")
+                Button {
+                    NotificationCenter.default.post(name: .openSettings, object: nil)
+                } label: {
+                    Label("前往设置添加音乐", systemImage: "gearshape.fill")
                         .font(.system(size: 12, weight: .semibold))
                         .padding(.horizontal, 18)
                         .padding(.vertical, 10)
@@ -621,7 +636,7 @@ struct EmptyLibraryView: View {
                 }
                 .buttonStyle(.plain)
 
-                Text("也可以直接把音乐拖进窗口")
+                Text("也可以在设置中导入文件夹")
                     .font(.system(size: 10))
                     .foregroundStyle(Color.hpTextPrimary.opacity(0.32))
             }
