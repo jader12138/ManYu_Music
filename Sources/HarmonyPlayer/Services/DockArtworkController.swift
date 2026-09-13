@@ -66,14 +66,15 @@ final class DockArtworkController {
         NSGraphicsContext.current?.imageInterpolation = .high
 
         let canvas = NSRect(origin: .zero, size: size)
-        let plateRect = canvas.insetBy(dx: 30, dy: 30)
-        let artworkRect = plateRect.insetBy(dx: 15, dy: 15)
+        let plateRect = canvas.insetBy(dx: 16, dy: 16)
+        let artworkPadding: CGFloat = 30
+        let artworkRect = plateRect.insetBy(dx: artworkPadding, dy: artworkPadding)
 
         let palette = ArtworkPaletteExtractor.palette(from: artwork)
         let platePrimary = palette.primary.blended(withFraction: 0.38, of: .white) ?? palette.primary
         let plateSecondary = palette.secondary.blended(withFraction: 0.30, of: .white) ?? palette.secondary
 
-        let platePath = NSBezierPath(roundedRect: plateRect, xRadius: 104, yRadius: 104)
+        let platePath = NSBezierPath(roundedRect: plateRect, xRadius: 108, yRadius: 108)
         NSGraphicsContext.saveGraphicsState()
         let plateShadow = NSShadow()
         plateShadow.shadowColor = NSColor.black.withAlphaComponent(0.20)
@@ -99,7 +100,7 @@ final class DockArtworkController {
         NSColor.white.withAlphaComponent(0.28).setStroke()
         platePath.stroke()
 
-        let artworkPath = NSBezierPath(roundedRect: artworkRect, xRadius: 90, yRadius: 90)
+        let artworkPath = NSBezierPath(roundedRect: artworkRect, xRadius: 88, yRadius: 88)
         NSGraphicsContext.saveGraphicsState()
         artworkPath.addClip()
         let targetAspect = artworkRect.width / artworkRect.height
