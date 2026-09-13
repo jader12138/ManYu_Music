@@ -24,7 +24,16 @@ struct LyricTimelineView: View {
                 }
                 .mask(
                     LinearGradient(
-                        colors: [.clear, .black, .black, .black, .clear],
+                        stops: [
+                            .init(color: .clear, location: 0),
+                            .init(color: .black.opacity(0.20), location: 0.11),
+                            .init(color: .black.opacity(0.86), location: 0.30),
+                            .init(color: .black, location: 0.42),
+                            .init(color: .black, location: 0.58),
+                            .init(color: .black.opacity(0.86), location: 0.70),
+                            .init(color: .black.opacity(0.20), location: 0.89),
+                            .init(color: .clear, location: 1)
+                        ],
                         startPoint: .top,
                         endPoint: .bottom
                     )
@@ -57,7 +66,7 @@ struct LyricTimelineView: View {
     private func lyricLine(_ line: LyricLine, index: Int) -> some View {
         let isCurrent = index == currentIndex
         let distance = currentIndex >= 0 ? abs(index - currentIndex) : 0
-        let visibleOpacity = max(0.16, 0.56 - Double(distance) * 0.11)
+        let visibleOpacity = max(0.12, 0.56 - Double(distance) * 0.13)
 
         return Button {
             guard let time = line.time else { return }
@@ -65,27 +74,45 @@ struct LyricTimelineView: View {
         } label: {
             Text(line.text)
                 .font(.system(
-                    size: isCurrent ? baseFontSize * 1.28 : baseFontSize,
+                    size: isCurrent ? baseFontSize * 1.34 : baseFontSize,
                     weight: isCurrent ? .bold : .medium,
                     design: fontDesign
                 ))
-                .foregroundStyle(
-                    isCurrent
-                        ? textColor
-                        : textColor.opacity(visibleOpacity)
-                )
+                .foregroundStyle(lineForegroundStyle(isCurrent: isCurrent, opacity: visibleOpacity))
                 .multilineTextAlignment(.center)
                 .lineSpacing(max(3, baseFontSize * 0.22))
                 .padding(.horizontal, 14)
                 .padding(.vertical, 3)
-                .scaleEffect(isCurrent ? 1.015 : max(0.94, 1 - CGFloat(distance) * 0.01))
-                .blur(radius: distance > 3 ? 0.25 : 0)
+                .scaleEffect(isCurrent ? 1.025 : max(0.92, 1 - CGFloat(distance) * 0.012))
+                .blur(radius: distance > 2 ? 0.35 : 0)
+                .shadow(
+                    color: textColor.opacity(isCurrent ? 0.18 : 0),
+                    radius: isCurrent ? 4 : 0,
+                    y: isCurrent ? 1 : 0
+                )
                 .frame(maxWidth: .infinity)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .animation(.easeInOut(duration: 0.34), value: currentIndex)
         .help(line.time == nil ? "" : "点击跳到这一句")
+    }
+
+    private func lineForegroundStyle(isCurrent: Bool, opacity: Double) -> AnyShapeStyle {
+        if isCurrent {
+            return AnyShapeStyle(
+                LinearGradient(
+                    colors: [
+                        textColor.opacity(0.72),
+                        textColor,
+                        textColor.opacity(0.78)
+                    ],
+                    startPoint: .leading,
+                    endPoint: .trailing
+                )
+            )
+        }
+        return AnyShapeStyle(textColor.opacity(opacity))
     }
 
     private func scroll(to index: Int, proxy: ScrollViewProxy, animated: Bool) {

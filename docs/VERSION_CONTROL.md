@@ -10,13 +10,13 @@
 
 ## 日常开发
 
-开始任务前先刷新远端，并从 `main` 创建独立分支：
+开始任务前先刷新远端，并从 `main` 创建当前开发分支。一个小工作流可以连续包含一到两项相关功能或修复，不需要为每次微调重复创建分支：
 
 ```bash
 git fetch origin
 git switch main
 git pull --ff-only
-git switch -c codex/short-feature-name
+git switch -c codex/workstream-name
 ```
 
 完成代码和文档后：
@@ -26,10 +26,10 @@ git status
 git diff --check
 git add <changed-files>
 git commit -m "feat: concise description"
-git push -u origin codex/short-feature-name
+git push -u origin codex/workstream-name
 ```
 
-不要直接在 `main` 上开发，也不要在未获批时合并功能分支。
+不要直接在 `main` 上开发，也不要在未获批时合并功能分支。只有工作流独立、风险较高或需要单独发布时，才拆分新的 `codex/*` 分支。
 
 ## 文档更新要求
 
@@ -75,7 +75,7 @@ git push -u origin codex/short-feature-name
 ```bash
 git switch main
 git pull --ff-only
-git merge --no-ff codex/short-feature-name
+git merge --no-ff codex/workstream-name
 ```
 
 推送并验证：
@@ -83,6 +83,15 @@ git merge --no-ff codex/short-feature-name
 ```bash
 git push origin main
 git ls-remote origin refs/heads/main
+```
+
+如果用户明确要求发布，推送后继续创建 GitHub Release：
+
+```bash
+gh release create vX.Y.Z \
+  --title "漫域音乐 vX.Y.Z" \
+  --notes-file "docs/releases/vX.Y.Z.md" \
+  --verify-tag
 ```
 
 ## 正式发布

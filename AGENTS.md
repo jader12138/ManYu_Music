@@ -6,7 +6,8 @@ These instructions are mandatory for every coding task in this repository.
 
 - Never develop features directly on `main`.
 - Before making changes, fetch the latest `origin` and create a branch from `main` using the `codex/<short-feature-name>` naming pattern.
-- Keep each feature or fix isolated on its own branch.
+- Keep one active development branch for a small workstream. Continue related tweaks and up to one or two small features on that branch instead of creating a new branch for every adjustment.
+- Split into another branch only when the work is independent, risky, or needs a separate release.
 - Commit and push the feature branch to GitHub when a coherent milestone is complete.
 - Do not merge into `main` until the user explicitly approves the merge.
 - Do not create a release tag or publish a release until the user explicitly approves publication.
@@ -52,3 +53,4 @@ After explicit approval only:
 5. Create an annotated version tag.
 6. Push `main` and the tag to GitHub.
 7. Verify the remote branch and tag with `git ls-remote`.
+8. Create or update the GitHub Release for the approved version.

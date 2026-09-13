@@ -19,10 +19,10 @@ struct NowPlayingView: View {
 
             GeometryReader { geometry in
                 let artworkSize = min(
-                    310,
-                    max(160, min(geometry.size.height * 0.40, geometry.size.width * 0.205))
+                    360,
+                    max(190, min(geometry.size.height * 0.45, geometry.size.width * 0.25))
                 )
-                let lyricsHeight = min(430, max(200, geometry.size.height - 150))
+                let lyricsHeight = min(470, max(220, geometry.size.height - 130))
                 let horizontalPadding = max(24, min(52, geometry.size.width * 0.045))
 
                 VStack(spacing: 0) {
@@ -37,6 +37,7 @@ struct NowPlayingView: View {
                         lyricsPanel
                             .frame(maxWidth: .infinity)
                             .frame(height: lyricsHeight)
+                            .offset(y: -24)
                     }
                     .padding(.horizontal, horizontalPadding)
 
@@ -150,7 +151,7 @@ struct NowPlayingView: View {
             .frame(maxWidth: 380)
 
             compactPlaybackControls
-                .frame(maxWidth: min(360, artworkSize + 28))
+                .frame(maxWidth: min(400, artworkSize + 84))
         }
     }
 
@@ -158,9 +159,9 @@ struct NowPlayingView: View {
         VStack(spacing: 8) {
             HStack(spacing: 8) {
                 Text(Track.formatTime(scrubTime ?? player.currentTime))
-                    .font(.system(size: 8, weight: .medium, design: .monospaced))
+                    .font(.system(size: 9, weight: .semibold, design: .monospaced))
                     .foregroundStyle(Color.hpTextPrimary.opacity(0.38))
-                    .frame(width: 36, alignment: .trailing)
+                    .frame(width: 40, alignment: .trailing)
 
                 Slider(
                     value: playbackBinding,
@@ -171,29 +172,29 @@ struct NowPlayingView: View {
                         self.scrubTime = nil
                     }
                 )
-                .controlSize(.mini)
+                .controlSize(.small)
                 .tint(Color.hpAccent)
                 .disabled(player.currentTrack == nil)
 
                 Text(player.duration > 0 ? Track.formatTime(player.duration) : "--:--")
-                    .font(.system(size: 8, weight: .medium, design: .monospaced))
+                    .font(.system(size: 9, weight: .semibold, design: .monospaced))
                     .foregroundStyle(Color.hpTextPrimary.opacity(0.38))
-                    .frame(width: 36, alignment: .leading)
+                    .frame(width: 40, alignment: .leading)
             }
 
-            HStack(spacing: 14) {
+            HStack(spacing: 16) {
                 Button(action: close) {
                     Image(systemName: "chevron.down")
-                        .font(.system(size: 10, weight: .bold))
+                        .font(.system(size: 11, weight: .bold))
                         .foregroundStyle(Color.hpTextPrimary.opacity(0.44))
-                        .frame(width: 28, height: 28)
+                        .frame(width: 30, height: 30)
                 }
                 .buttonStyle(.plain)
                 .help("返回资料库")
 
                 Spacer(minLength: 0)
 
-                IconButton(systemName: "backward.fill", help: "上一首", size: 13) {
+                IconButton(systemName: "backward.fill", help: "上一首", size: 14) {
                     player.previous()
                 }
                 .disabled(player.queue.isEmpty)
@@ -202,27 +203,27 @@ struct NowPlayingView: View {
                     player.togglePlayback()
                 } label: {
                     Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
-                        .font(.system(size: 13, weight: .bold))
+                        .font(.system(size: 14, weight: .bold))
                         .foregroundStyle(.white)
-                        .frame(width: 34, height: 34)
+                        .frame(width: 38, height: 38)
                         .background(LinearGradient.hpAccentFill, in: Circle())
                         .shadow(color: Color.black.opacity(0.08), radius: 5, y: 2)
                 }
                 .buttonStyle(.plain)
                 .disabled(player.currentTrack == nil)
 
-                IconButton(systemName: "forward.fill", help: "下一首", size: 13) {
+                IconButton(systemName: "forward.fill", help: "下一首", size: 14) {
                     player.next()
                 }
                 .disabled(player.queue.isEmpty)
 
                 Spacer(minLength: 0)
 
-                Color.clear.frame(width: 28, height: 28)
+                Color.clear.frame(width: 30, height: 30)
             }
         }
-        .padding(.horizontal, 2)
-        .padding(.vertical, 4)
+        .padding(.horizontal, 4)
+        .padding(.vertical, 6)
     }
 
     private var lyricsFontDesign: Font.Design {
