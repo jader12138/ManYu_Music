@@ -11,6 +11,7 @@ struct HomeView: View {
     @EnvironmentObject private var player: AudioPlayer
     @EnvironmentObject private var library: LibraryStore
     @State private var loadedFeaturedLyrics: [String] = []
+    @State private var featuredPalette: ArtworkPalette?
 
     var body: some View {
         ScrollView {
@@ -96,6 +97,14 @@ struct HomeView: View {
 
             let rawLyrics = await AudioMetadataLoader.lyrics(for: track)
             loadedFeaturedLyrics = LyricsParser.parse(rawLyrics).map(\.text)
+
+            if player.currentTrack?.id == track.id, let artwork = player.artwork {
+                featuredPalette = ArtworkPaletteExtractor.palette(from: artwork)
+            } else if let artwork = await AudioMetadataLoader.artwork(for: track) {
+                featuredPalette = ArtworkPaletteExtractor.palette(from: artwork)
+            } else {
+                featuredPalette = nil
+            }
         }
     }
 
@@ -116,7 +125,7 @@ struct HomeView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
 
             if let track = featuredTrack {
-                ZStack(alignment: .bottomTrailing) {
+                ZStack {
                     RoundedRectangle(cornerRadius: 27, style: .continuous)
                         .fill(.ultraThinMaterial)
                         .overlay {
@@ -137,26 +146,29 @@ struct HomeView: View {
                         .frame(width: 206, height: 206)
                         .shadow(color: .black.opacity(0.18), radius: 18, y: 10)
 
-                    Button {
-                        openFeaturedPlayer(track)
-                    } label: {
-                        LazyArtworkView(track: track, size: 184, cornerRadius: 20)
-                    }
-                    .buttonStyle(.plain)
-                    .help("进入播放界面")
-                    .padding(11)
+                    ZStack(alignment: .bottomTrailing) {
+                        Button {
+                            openFeaturedPlayer(track)
+                        } label: {
+                            LazyArtworkView(track: track, size: 184, cornerRadius: 20)
+                        }
+                        .buttonStyle(.plain)
+                        .help("进入播放界面")
 
-                    Button {
-                        toggleFeaturedPlayback(track)
-                    } label: {
-                        PlaybackStateBadge(
-                            isPlaying: player.isPlaying && player.currentTrack?.id == track.id,
-                            size: 32
-                        )
-                        .padding(7)
+                        Button {
+                            toggleFeaturedPlayback(track)
+                        } label: {
+                            PlaybackStateBadge(
+                                isPlaying: player.isPlaying && player.currentTrack?.id == track.id,
+                                size: 32,
+                                palette: featuredPalette
+                            )
+                            .padding(8)
+                        }
+                        .buttonStyle(.plain)
+                        .help(player.isPlaying && player.currentTrack?.id == track.id ? "暂停" : "播放")
                     }
-                    .buttonStyle(.plain)
-                    .help(player.isPlaying && player.currentTrack?.id == track.id ? "暂停" : "播放")
+                    .frame(width: 184, height: 184)
                 }
             } else {
                 ZStack {
@@ -313,8 +325,7 @@ struct HomeView: View {
 
         guard !cleaned.isEmpty else { return [] }
 
-        let totalLength = cleaned.reduce(0) { $0 + $1.count }
-        let desiredCount = totalLength < 80 ? 4 : 3
+        let desiredCount = 4
         guard cleaned.count > desiredCount else { return Array(cleaned.prefix(4)) }
 
         let midpoint = cleaned.count / 2

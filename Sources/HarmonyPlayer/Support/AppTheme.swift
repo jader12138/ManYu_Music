@@ -185,6 +185,7 @@ struct ArtworkView: View {
 struct PlaybackStateBadge: View {
     let isPlaying: Bool
     var size: CGFloat = 28
+    var palette: ArtworkPalette?
 
     @Environment(\.colorScheme) private var colorScheme
 
@@ -212,6 +213,18 @@ struct PlaybackStateBadge: View {
     }
 
     private var badgeGradient: LinearGradient {
+        if let palette {
+            return LinearGradient(
+                colors: [
+                    Color(nsColor: palette.secondary).opacity(colorScheme == .dark ? 0.72 : 0.88),
+                    Color(nsColor: palette.primary).opacity(colorScheme == .dark ? 0.64 : 0.80),
+                    Color.white.opacity(colorScheme == .dark ? 0.20 : 0.34)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        }
+
         if colorScheme == .dark {
             return LinearGradient(
                 colors: [
