@@ -229,3 +229,32 @@ enum TrackSortOrder: String, CaseIterable, Identifiable {
         }
     }
 }
+
+
+enum RecommendationFrequency: String, CaseIterable, Identifiable {
+    case daily
+    case everyLaunch
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .daily: "每天一次"
+        case .everyLaunch: "每次打开"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .daily: "calendar"
+        case .everyLaunch: "arrow.clockwise"
+        }
+    }
+}
+
+enum RecommendationSettings {
+    static let frequencyKey = "ManyuMusic.recommendationFrequency"
+    static let independentKey = "ManyuMusic.recommendationIndependent"
+    static let trackIDKey = "ManyuMusic.recommendationTrackID"
+    static let dayKey = "ManyuMusic.recommendationDay"
+}

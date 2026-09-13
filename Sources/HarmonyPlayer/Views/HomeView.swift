@@ -12,6 +12,15 @@ struct HomeView: View {
     @EnvironmentObject private var library: LibraryStore
     @State private var loadedFeaturedLyrics: [String] = []
     @State private var featuredPalette: ArtworkPalette?
+    @State private var launchRecommendationID: UUID?
+    @AppStorage(RecommendationSettings.frequencyKey)
+    private var recommendationFrequencyRaw = RecommendationFrequency.daily.rawValue
+    @AppStorage(RecommendationSettings.independentKey)
+    private var recommendationIsIndependent = true
+    @AppStorage(RecommendationSettings.trackIDKey)
+    private var recommendationTrackID = ""
+    @AppStorage(RecommendationSettings.dayKey)
+    private var recommendationDay = ""
 
     var body: some View {
         ScrollView {
@@ -82,6 +91,17 @@ struct HomeView: View {
             .padding(.horizontal, 26)
             .padding(.top, 14)
             .padding(.bottom, 20)
+        }
+        .task(id: recommendationTaskKey) {
+            ensureRecommendation()
+        }
+        .onChange(of: recommendationFrequencyRaw) { _, _ in
+            launchRecommendationID = nil
+            recommendationDay = ""
+            ensureRecommendation()
+        }
+        .onChange(of: recommendationIsIndependent) { _, _ in
+            ensureRecommendation()
         }
         .task(id: featuredTrack?.id) {
             guard let track = featuredTrack else {
@@ -271,6 +291,62 @@ struct HomeView: View {
         }
     }
 
+    private func ensureRecommendation() {
+        guard recommendationIsIndependent, !tracks.isEmpty else { return }
+
+        let frequency = RecommendationFrequency(rawValue: recommendationFrequencyRaw) ?? .daily
+        let today = Self.dayString(for: .now)
+        let candidates: [Track]
+        if tracks.count > 1, let currentID = player.currentTrack?.id {
+            candidates = tracks.filter { $0.id != currentID }
+        } else {
+            candidates = tracks
+        }
+
+        switch frequency {
+        case .daily:
+            if !recommendationTrackID.isEmpty,
+               recommendationDay == today,
+               let id = UUID(uuidString: recommendationTrackID),
+               tracks.contains(where: { $0.id == id }) {
+                return
+            }
+            selectRecommendation(from: candidates, frequency: frequency, day: today)
+
+        case .everyLaunch:
+            if let launchRecommendationID,
+               tracks.contains(where: { $0.id == launchRecommendationID }) {
+                return
+            }
+            selectRecommendation(from: candidates, frequency: frequency, day: today)
+        }
+    }
+
+    private func selectRecommendation(
+        from candidates: [Track],
+        frequency: RecommendationFrequency,
+        day: String
+    ) {
+        guard let selected = candidates.randomElement() else { return }
+
+        switch frequency {
+        case .daily:
+            recommendationTrackID = selected.id.uuidString
+            recommendationDay = day
+            launchRecommendationID = nil
+        case .everyLaunch:
+            launchRecommendationID = selected.id
+        }
+    }
+
+    private static func dayString(for date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter.string(from: date)
+    }
+
     private func toggleFeaturedPlayback(_ track: Track) {
         if player.currentTrack?.id == track.id {
             player.togglePlayback()
@@ -295,7 +371,33 @@ struct HomeView: View {
     }
 
     private var featuredTrack: Track? {
-        player.currentTrack ?? recentTracks.first ?? favoriteTracks.first ?? tracks.first
+        if !recommendationIsIndependent, let current = player.currentTrack {
+            return current
+        }
+
+        if let launchRecommendationID,
+           let track = tracks.first(where: { $0.id == launchRecommendationID }) {
+            return track
+        }
+
+        if let id = UUID(uuidString: recommendationTrackID),
+           let track = tracks.first(where: { $0.id == id }) {
+            return track
+        }
+
+        return tracks.first
+    }
+
+    private var recommendationTaskKey: String {
+        let firstID = tracks.first?.id.uuidString ?? "none"
+        let lastID = tracks.last?.id.uuidString ?? "none"
+        return [
+            recommendationFrequencyRaw,
+            recommendationIsIndependent ? "independent" : "synced",
+            "\(tracks.count)",
+            firstID,
+            lastID
+        ].joined(separator: "-")
     }
 
     private var lyricPassage: [String] {

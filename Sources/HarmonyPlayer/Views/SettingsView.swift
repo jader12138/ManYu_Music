@@ -2,6 +2,7 @@ import SwiftUI
 
 private enum SettingsTab: String, CaseIterable, Identifiable {
     case appearance
+    case home
     case playback
     case library
 
@@ -10,6 +11,7 @@ private enum SettingsTab: String, CaseIterable, Identifiable {
     var title: String {
         switch self {
         case .appearance: "外观"
+        case .home: "首页"
         case .playback: "播放"
         case .library: "资料库"
         }
@@ -18,6 +20,7 @@ private enum SettingsTab: String, CaseIterable, Identifiable {
     var systemImage: String {
         switch self {
         case .appearance: "paintpalette.fill"
+        case .home: "house.fill"
         case .playback: "play.circle.fill"
         case .library: "music.note.list"
         }
@@ -31,6 +34,10 @@ struct SettingsView: View {
 
     @AppStorage(AppIconStyle.storageKey) private var appIconStyleRaw = AppIconStyle.automatic.rawValue
     @AppStorage(DockArtworkController.showsArtworkKey) private var showDockArtwork = true
+    @AppStorage(RecommendationSettings.frequencyKey)
+    private var recommendationFrequencyRaw = RecommendationFrequency.daily.rawValue
+    @AppStorage(RecommendationSettings.independentKey)
+    private var recommendationIsIndependent = true
     @Environment(\.colorScheme) private var colorScheme
     @State private var selectedTab: SettingsTab = .appearance
 
@@ -43,6 +50,8 @@ struct SettingsView: View {
                     switch selectedTab {
                     case .appearance:
                         appearanceSettings
+                    case .home:
+                        homeSettings
                     case .playback:
                         playbackSettings
                     case .library:
@@ -150,6 +159,39 @@ struct SettingsView: View {
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .center)
+            }
+        }
+    }
+
+    private var homeSettings: some View {
+        VStack(spacing: 16) {
+            settingsCard(
+                title: "推荐切换频率",
+                subtitle: "控制首页推荐歌曲什么时候更换"
+            ) {
+                HStack(spacing: 8) {
+                    ForEach(RecommendationFrequency.allCases) { frequency in
+                        choiceButton(
+                            title: frequency.title,
+                            systemImage: frequency.systemImage,
+                            selected: recommendationFrequencyRaw == frequency.rawValue
+                        ) {
+                            recommendationFrequencyRaw = frequency.rawValue
+                        }
+                    }
+                }
+            }
+
+            settingsCard(
+                title: "播放同步",
+                subtitle: "控制推荐歌曲与当前播放队列的关系"
+            ) {
+                Toggle("推荐歌曲独立于上一首、下一首", isOn: $recommendationIsIndependent)
+                    .toggleStyle(.switch)
+
+                Text("开启后，切歌、上一首和下一首都不会改变首页推荐歌曲。")
+                    .font(.caption)
+                    .foregroundStyle(Color.hpTextPrimary.opacity(0.42))
             }
         }
     }
