@@ -79,12 +79,17 @@ struct SidebarView: View {
                                 .padding(.vertical, 8)
                         }
                     }
-                    .padding(.bottom, 14)
+                    .padding(.bottom, 10)
+
+                    Divider()
+                        .opacity(0.10)
+                        .padding(.horizontal, 18)
+                        .padding(.vertical, 10)
+
+                    settingsButton
+                        .padding(.bottom, 14)
                 }
             }
-
-            settingsCard
-                .padding(14)
         }
         .frame(width: 238)
         .background {
@@ -252,63 +257,19 @@ struct SidebarView: View {
         .contentShape(Rectangle())
     }
 
-    private var settingsCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .firstTextBaseline) {
-                Text("\(library.tracks.count)")
-                    .font(.system(size: 25, weight: .bold, design: .rounded))
-                    .foregroundStyle(Color.hpTextPrimary)
-                Text("首音乐")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(Color.hpTextPrimary.opacity(0.46))
-                Spacer()
-                Button {
-                    library.rescanLibrary()
-                } label: {
-                    if library.isImporting {
-                        ProgressView()
-                            .controlSize(.small)
-                    } else {
-                        Image(systemName: "arrow.clockwise")
-                            .font(.system(size: 12, weight: .semibold))
-                            .foregroundStyle(Color.hpAccent)
-                    }
-                }
-                .buttonStyle(.plain)
-                .frame(width: 26, height: 26)
-                .background(Color.hpAccent.opacity(0.10), in: Circle())
-                .help("重新扫描资料库")
-                .disabled(library.isImporting)
-            }
-
-            SettingsLink {
-                HStack(spacing: 8) {
-                    Image(systemName: "gearshape.fill")
-                        .font(.system(size: 11, weight: .semibold))
-                    Text("设置")
-                        .font(.system(size: 12, weight: .semibold))
-                    Spacer()
-                    Text("添加音乐、外观与播放")
-                        .font(.system(size: 9, weight: .medium))
-                        .foregroundStyle(Color.hpTextPrimary.opacity(0.38))
-                }
-                .frame(maxWidth: .infinity)
-                .frame(height: 36)
-                .foregroundStyle(Color.hpTextPrimary.opacity(0.76))
-                .background(Color.hpTextPrimary.opacity(0.06), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                .overlay {
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .stroke(Color.hpTextPrimary.opacity(0.07), lineWidth: 1)
-                }
-            }
-            .buttonStyle(.plain)
+    private var settingsButton: some View {
+        SettingsLink {
+            sidebarLabel(
+                title: "设置",
+                systemImage: "gearshape.fill",
+                iconColor: Color.hpTextPrimary.opacity(0.52),
+                count: nil,
+                selected: false
+            )
         }
-        .padding(14)
-        .background(Color.hpTextPrimary.opacity(0.045), in: RoundedRectangle(cornerRadius: 15, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 15, style: .continuous)
-                .stroke(Color.hpTextPrimary.opacity(0.075), lineWidth: 1)
-        }
+        .buttonStyle(.plain)
+        .padding(.horizontal, 10)
+        .help("设置")
     }
 
     private func iconColor(for section: LibrarySection) -> Color {

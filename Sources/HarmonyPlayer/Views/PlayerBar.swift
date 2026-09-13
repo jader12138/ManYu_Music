@@ -77,17 +77,21 @@ struct PlayerBar: View {
                         .matchedGeometryEffect(id: "nowPlayingArtwork", in: transitionNamespace)
 
                     if let track = player.currentTrack {
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text(track.displayTitle)
-                                .font(.system(size: 12, weight: .semibold))
-                                .foregroundStyle(Color.hpTextPrimary)
-                                .lineLimit(1)
-                            Text(track.displayArtist)
-                                .font(.system(size: 10))
-                                .foregroundStyle(Color.hpTextPrimary.opacity(0.44))
-                                .lineLimit(1)
+                        HStack(spacing: 8) {
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(track.displayTitle)
+                                    .font(.system(size: 11, weight: .semibold))
+                                    .foregroundStyle(Color.hpTextPrimary)
+                                    .lineLimit(1)
+                                Text(track.displayArtist)
+                                    .font(.system(size: 10))
+                                    .foregroundStyle(Color.hpTextPrimary.opacity(0.44))
+                                    .lineLimit(1)
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+
+                            formatBadge(for: track)
                         }
-                        .frame(maxWidth: .infinity, alignment: .leading)
                     } else {
                         VStack(alignment: .leading, spacing: 4) {
                             Text("还没有播放歌曲")
@@ -195,6 +199,15 @@ struct PlayerBar: View {
         }
     }
 
+    private func formatBadge(for track: Track) -> some View {
+        Text(track.url.pathExtension.uppercased())
+            .font(.system(size: 8, weight: .bold))
+            .foregroundStyle(Color.hpAccent)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 3)
+            .background(Color.hpAccent.opacity(0.12), in: RoundedRectangle(cornerRadius: 4))
+    }
+
     private var sleepTimerMenu: some View {
         Menu {
             Button("关闭定时") {
@@ -261,15 +274,6 @@ struct PlayerBar: View {
 
     private var utilities: some View {
         HStack(spacing: 8) {
-            if let track = player.currentTrack {
-                Text(track.url.pathExtension.uppercased())
-                    .font(.system(size: 8, weight: .bold))
-                    .foregroundStyle(Color.hpAccent)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 3)
-                    .background(Color.hpAccent.opacity(0.12), in: RoundedRectangle(cornerRadius: 4))
-            }
-
             sleepTimerMenu
 
             Image(systemName: player.volume == 0 ? "speaker.slash.fill" : "speaker.wave.2.fill")

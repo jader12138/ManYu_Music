@@ -27,13 +27,6 @@ struct HarmonyPlayerApp: App {
         }
 
         .commands {
-            CommandGroup(replacing: .newItem) {
-                Button("导入音乐…") {
-                    library.presentImportPanel()
-                }
-                .keyboardShortcut("o", modifiers: .command)
-            }
-
             CommandMenu("播放") {
                 Button(player.isPlaying ? "暂停" : "播放") {
                     player.togglePlayback()

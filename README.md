@@ -1,85 +1,133 @@
-# 漫域音乐 MANYU MUSIC
+import AppKit
+import SwiftUI
 
-一个原生 macOS 本地音乐播放器，使用 SwiftUI、AVFoundation 和 MediaPlayer 构建。深海军蓝资料库、蓝白 M 域标志，以及可展开的沉浸式歌词播放页。
+@main
+struct HarmonyPlayerApp: App {
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
+    @StateObject private var library = LibraryStore()
+    @StateObject private var player = AudioPlayer()
+    @StateObject private var theme = ThemeStore()
 
-## 功能
+    var body: some Scene {
+        WindowGroup {
+            MainView()
+                .environmentObject(library)
+                .environmentObject(player)
+                .environmentObject(theme)
+                .preferredColorScheme(theme.appearance.colorScheme)
+        }
+        .windowStyle(.hiddenTitleBar)
+        .windowToolbarStyle(.unifiedCompact)
+        .defaultSize(width: 1080, height: 650)
+        Settings {
+            SettingsView()
+                .environmentObject(theme)
+                .environmentObject(player)
+                .environmentObject(library)
+        }
 
-- 原生 SwiftUI 深海军蓝界面和沉浸式歌词播放页
-- 窗口自适应布局，小屏幕自动收敛侧栏、标题栏和底部控制器
-- 歌词页隐藏全局底栏，左侧专辑控制播放，右侧显示动态歌词
-- 歌词页从当前专辑封面提取主色，背景和控制器随封面变化
-- 首页英雄区显示当前专辑封面与实时歌词片段
-- 歌词支持字号、字体和颜色自定义，并自动保存
-- 新增设置窗口，可从侧边栏齿轮或应用菜单进入
-- 播放设置中可独立开启 Dock 专辑封面，并显示播放/暂停角标
-- 首页专辑封面可点击进入播放页，右下角按钮可直接播放或暂停
-- 首页专辑封面使用玻璃衬托层，播放按钮采用玻璃亚克力样式
-- 首页歌词固定显示 4 行，播放按钮位于封面右下角并跟随封面取色
-- 首页歌词竖线和文本严格对齐，不显示制作人员信息
-- 首页歌词摘要自动跳过制作人员信息并展示中段歌词
-- 支持自动、深色、浅色三档 App 图标选择
-- Dock 图标使用透明安全边距，避免底部被裁切
-- 歌曲列表和首页专辑图右下角使用自适应播放状态图标
-- 首页推荐歌词显示连续 3～4 行
-- 播放页关闭按钮与控制条融合，移除突兀容器与蓝色光晕
-- 从主界面进入播放页时，底部专辑封面平滑放大过渡
-- 播放页颜色会明显受专辑封面主色影响
-- Apple Music 风格首页：继续播放、最近播放、最近添加、我喜欢
-- 歌曲、专辑、艺术家、文件夹四类资料库视图
-- 艺术家详情页和专辑详情页
-- 按文件夹展开浏览本地音乐
-- 手动重新扫描资料库，刷新标签、封面、歌词与时长
-- 歌曲信息面板：格式、文件大小、位置、播放次数
-- 网易云风格用户歌单：新建、重命名、删除、添加和移除歌曲
-- 播放历史与播放次数统计
-- 支持按标题、艺人、专辑、时长、添加时间排序
-- 播放队列支持下一首播放、追加、移除和清空
-- 大资料库采用限流并发导入，封面缓存带内存上限
-- 睡眠定时：15、30、45、60、90 分钟
-- 原生解析 FLAC / Vorbis Comment / PICTURE 内嵌元数据
-- 支持音频内嵌歌词、同名 LRC 歌词和时间轴逐句高亮
-- 支持白天、夜间两种主题并可随时切换
-- 播放 MP3、M4A、AAC、FLAC、WAV、AIFF、CAF 等系统可解码格式
-- 导入单个文件或整个文件夹，支持拖拽到窗口
-- 异步读取标题、艺人、专辑、时长与封面，不阻塞列表滚动
-- 播放队列、随机播放、列表循环、单曲循环
-- 搜索、收藏、最近添加、在访达中显示
-- 接入 macOS 媒体键和系统“正在播放”面板
-- 使用单个 `AVPlayer` 按需解码，适合较大的本地资料库
-- 自动保存资料库和音量
-- 音乐导入和资料库扫描集中在设置界面
-- 底部播放栏使用紧凑布局
+        .commands {
+            CommandMenu("播放") {
+                Button(player.isPlaying ? "暂停" : "播放") {
+                    player.togglePlayback()
+                }
+                .keyboardShortcut("p", modifiers: .command)
+                .disabled(player.currentTrack == nil)
 
-## 运行
+                Divider()
 
-需要 macOS 14 或更高版本。
+                Button("下一首") {
+                    player.next()
+                }
+                .keyboardShortcut(.rightArrow, modifiers: .command)
+                .disabled(player.queue.isEmpty)
 
-```bash
-swift run
-```
+                Button("上一首") {
+                    player.previous()
+                }
+                .keyboardShortcut(.leftArrow, modifiers: .command)
+                .disabled(player.queue.isEmpty)
 
-## 打包为 App
+                Button("快进 10 秒") {
+                    player.seek(to: player.currentTime + 10)
+                }
+                .keyboardShortcut(.rightArrow, modifiers: [.command, .option])
+                .disabled(player.currentTrack == nil)
 
-```bash
-./scripts/build-app.sh
-```
+                Button("后退 10 秒") {
+                    player.seek(to: player.currentTime - 10)
+                }
+                .keyboardShortcut(.leftArrow, modifiers: [.command, .option])
+                .disabled(player.currentTrack == nil)
 
-生成的应用位于 `dist/漫域音乐.app`，可双击运行，也可以拖入“应用程序”目录。
+                Divider()
 
-## 快捷键
+                Menu("循环模式") {
+                    ForEach(RepeatMode.allCases, id: \.rawValue) { mode in
+                        Button {
+                            player.repeatMode = mode
+                        } label: {
+                            if player.repeatMode == mode {
+                                Label(mode.title, systemImage: "checkmark")
+                            } else {
+                                Text(mode.title)
+                            }
+                        }
+                    }
+                }
 
-- `⌘O`：导入音乐
-- `⌘P`：播放 / 暂停
-- `⌘→`：下一首
-- `⌘←`：上一首
-- `⌘⌥→`：快进 10 秒
-- `⌘⌥←`：后退 10 秒
+                Toggle("随机播放", isOn: $player.isShuffle)
+            }
+        }
+    }
+}
 
-## 格式说明
+final class AppDelegate: NSObject, NSApplicationDelegate {
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        NSApp.setActivationPolicy(.regular)
+        NSApp.activate(ignoringOtherApps: true)
+        AppIconStyleManager.apply()
 
-播放能力跟随 macOS AVFoundation。OGG、WMA 等系统不原生支持的格式需要额外解码器，当前版本不会伪装支持；遇到无法解码的文件会给出提示。
+        DispatchQueue.main.async {
+            Self.fitWindowsToVisibleScreen()
+        }
+    }
 
+    private static func fitWindowsToVisibleScreen() {
+        guard let screen = NSScreen.main else { return }
+        let visible = screen.visibleFrame
+        let maxWidth = max(840, visible.width - 32)
+        let maxHeight = max(520, visible.height - 32)
 
-## 版本管理
+        for window in NSApp.windows where window.isVisible {
+            window.minSize = NSSize(width: 840, height: 520)
 
-当前稳定版本记录在 `VERSION`，历史更新见 `CHANGELOG.md`，Git 操作和回退方式见 `docs/VERSION_CONTROL.md`。
+            let current = window.frame
+            let targetWidth = min(current.width, maxWidth)
+            let targetHeight = min(current.height, maxHeight)
+            guard targetWidth != current.width || targetHeight != current.height else { continue }
+
+            let target = NSRect(
+                x: visible.minX + (visible.width - targetWidth) / 2,
+                y: visible.minY + (visible.height - targetHeight) / 2,
+                width: targetWidth,
+                height: targetHeight
+            )
+            window.setFrame(target, display: true, animate: false)
+        }
+    }
+
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+        true
+    }
+}
+
+private extension RepeatMode {
+    var title: String {
+        switch self {
+        case .off: "关闭循环"
+        case .all: "列表循环"
+        case .one: "单曲循环"
+        }
+    }
+}
