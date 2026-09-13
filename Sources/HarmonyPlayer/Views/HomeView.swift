@@ -117,6 +117,26 @@ struct HomeView: View {
 
             if let track = featuredTrack {
                 ZStack(alignment: .bottomTrailing) {
+                    RoundedRectangle(cornerRadius: 27, style: .continuous)
+                        .fill(.ultraThinMaterial)
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 27, style: .continuous)
+                                .fill(Color.white.opacity(0.08))
+                        }
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 27, style: .continuous)
+                                .stroke(
+                                    LinearGradient(
+                                        colors: [.white.opacity(0.45), .white.opacity(0.08)],
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    ),
+                                    lineWidth: 1
+                                )
+                        }
+                        .frame(width: 206, height: 206)
+                        .shadow(color: .black.opacity(0.18), radius: 18, y: 10)
+
                     Button {
                         openFeaturedPlayer(track)
                     } label: {
@@ -124,6 +144,7 @@ struct HomeView: View {
                     }
                     .buttonStyle(.plain)
                     .help("进入播放界面")
+                    .padding(11)
 
                     Button {
                         toggleFeaturedPlayback(track)
@@ -132,13 +153,18 @@ struct HomeView: View {
                             isPlaying: player.isPlaying && player.currentTrack?.id == track.id,
                             size: 32
                         )
-                        .padding(10)
+                        .padding(7)
                     }
                     .buttonStyle(.plain)
                     .help(player.isPlaying && player.currentTrack?.id == track.id ? "暂停" : "播放")
                 }
             } else {
-                ArtworkView(image: nil, size: 184, cornerRadius: 20)
+                ZStack {
+                    RoundedRectangle(cornerRadius: 27, style: .continuous)
+                        .fill(.ultraThinMaterial)
+                        .frame(width: 206, height: 206)
+                    ArtworkView(image: nil, size: 184, cornerRadius: 20)
+                }
             }
         }
         .padding(24)
@@ -157,21 +183,20 @@ struct HomeView: View {
     }
 
     private var lyricExcerpt: some View {
-        HStack(alignment: .top, spacing: 12) {
-            Capsule()
-                .fill(LinearGradient.hpAccentFill)
-                .frame(width: 3)
-                .frame(minHeight: 58, maxHeight: 120)
-
-            Text(lyricPassageText)
-                .font(.system(size: 15, weight: .semibold, design: .rounded))
-                .foregroundStyle(Color.hpTextPrimary.opacity(0.78))
-                .lineSpacing(6)
-                .lineLimit(3...4)
-                .fixedSize(horizontal: false, vertical: true)
-                .frame(maxWidth: 430, alignment: .leading)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        Text(lyricPassageText)
+            .font(.system(size: 15, weight: .semibold, design: .rounded))
+            .foregroundStyle(Color.hpTextPrimary.opacity(0.78))
+            .lineSpacing(6)
+            .lineLimit(3...4)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.leading, 15)
+            .overlay(alignment: .leading) {
+                Capsule()
+                    .fill(LinearGradient.hpAccentFill)
+                    .frame(width: 3)
+                    .frame(maxHeight: .infinity)
+            }
+            .frame(maxWidth: 430, alignment: .leading)
     }
 
     private var quickActions: some View {
@@ -354,7 +379,7 @@ struct HomeView: View {
         if tracks.isEmpty {
             return "先导入一些音乐，开始打造属于你的漫域"
         }
-        return "你的音乐宇宙里有 \(tracks.count) 首歌曲、\(Set(tracks.map(\.displayAlbum)).count) 张专辑"
+        return "你的音乐宇宙里有 \(tracks.count) 首歌曲"
     }
 }
 
