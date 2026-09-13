@@ -134,20 +134,29 @@ struct SidebarView: View {
     }
 
     private var brand: some View {
-        HStack(spacing: 12) {
-            BrandMark()
-                .frame(width: 40, height: 40)
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text("漫域音乐")
-                    .font(.system(size: 17, weight: .bold, design: .rounded))
-                    .foregroundStyle(Color.hpTextPrimary)
-                Text("MANYU MUSIC")
-                    .font(.system(size: 8, weight: .bold))
-                    .foregroundStyle(Color.hpTextPrimary.opacity(0.42))
-                    .tracking(1.25)
+        Button {
+            withAnimation(.easeOut(duration: 0.16)) {
+                destination = .section(.home)
             }
+        } label: {
+            HStack(spacing: 12) {
+                BrandMark()
+                    .frame(width: 40, height: 40)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("漫域音乐")
+                        .font(.system(size: 17, weight: .bold, design: .rounded))
+                        .foregroundStyle(Color.hpTextPrimary)
+                    Text("MANYU MUSIC")
+                        .font(.system(size: 8, weight: .bold))
+                        .foregroundStyle(Color.hpTextPrimary.opacity(0.42))
+                        .tracking(1.25)
+                }
+            }
+            .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
+        .help("返回首页")
     }
 
     private func sectionTitle(_ title: String) -> some View {

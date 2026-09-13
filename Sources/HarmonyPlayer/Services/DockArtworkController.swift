@@ -66,29 +66,61 @@ final class DockArtworkController {
         NSGraphicsContext.current?.imageInterpolation = .high
 
         let canvas = NSRect(origin: .zero, size: size)
-        let contentRect = canvas.insetBy(dx: 30, dy: 30)
-        let clip = NSBezierPath(roundedRect: contentRect, xRadius: 102, yRadius: 102)
-        clip.addClip()
+        let plateRect = canvas.insetBy(dx: 30, dy: 30)
+        let artworkRect = plateRect.insetBy(dx: 15, dy: 15)
 
-        let targetAspect = contentRect.width / contentRect.height
+        let palette = ArtworkPaletteExtractor.palette(from: artwork)
+        let platePrimary = palette.primary.blended(withFraction: 0.38, of: .white) ?? palette.primary
+        let plateSecondary = palette.secondary.blended(withFraction: 0.30, of: .white) ?? palette.secondary
+
+        let platePath = NSBezierPath(roundedRect: plateRect, xRadius: 104, yRadius: 104)
+        NSGraphicsContext.saveGraphicsState()
+        let plateShadow = NSShadow()
+        plateShadow.shadowColor = NSColor.black.withAlphaComponent(0.20)
+        plateShadow.shadowBlurRadius = 18
+        plateShadow.shadowOffset = NSSize(width: 0, height: -5)
+        plateShadow.set()
+        NSColor.white.withAlphaComponent(0.24).setFill()
+        platePath.fill()
+        NSGraphicsContext.restoreGraphicsState()
+
+        NSGraphicsContext.saveGraphicsState()
+        platePath.addClip()
+        NSGradient(
+            colors: [
+                platePrimary.withAlphaComponent(0.30),
+                plateSecondary.withAlphaComponent(0.20),
+                NSColor.white.withAlphaComponent(0.16)
+            ]
+        )?.draw(in: plateRect, angle: -35)
+        NSGraphicsContext.restoreGraphicsState()
+
+        platePath.lineWidth = 1.5
+        NSColor.white.withAlphaComponent(0.28).setStroke()
+        platePath.stroke()
+
+        let artworkPath = NSBezierPath(roundedRect: artworkRect, xRadius: 90, yRadius: 90)
+        NSGraphicsContext.saveGraphicsState()
+        artworkPath.addClip()
+        let targetAspect = artworkRect.width / artworkRect.height
         let sourceRect = aspectFillRect(for: artwork.size, targetAspect: targetAspect)
         artwork.draw(
-            in: contentRect,
+            in: artworkRect,
             from: sourceRect,
             operation: .sourceOver,
             fraction: 1
         )
+        NSGraphicsContext.restoreGraphicsState()
 
         let badgeSize: CGFloat = 94
         let badgeRect = NSRect(
-            x: contentRect.maxX - badgeSize - 14,
-            y: contentRect.minY + 14,
+            x: plateRect.maxX - badgeSize - 14,
+            y: plateRect.minY + 14,
             width: badgeSize,
             height: badgeSize
         )
         let badgePath = NSBezierPath(ovalIn: badgeRect)
 
-        let palette = ArtworkPaletteExtractor.palette(from: artwork)
         let primary = palette.primary.blended(withFraction: 0.26, of: .white) ?? palette.primary
         let secondary = palette.secondary.blended(withFraction: 0.18, of: .white) ?? palette.secondary
         let accent = palette.accent.blended(withFraction: 0.12, of: .white) ?? palette.accent

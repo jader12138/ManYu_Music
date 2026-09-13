@@ -11,6 +11,8 @@ struct HomeView: View {
     @EnvironmentObject private var player: AudioPlayer
     @EnvironmentObject private var library: LibraryStore
     @State private var loadedFeaturedLyrics: [String] = []
+    @State private var displayedRecentTracks: [Track] = []
+    @State private var refreshRecentTracksOnAppear = true
     @State private var featuredPalette: ArtworkPalette?
     @State private var launchRecommendationID: UUID?
     @AppStorage(RecommendationSettings.frequencyKey)
@@ -28,13 +30,13 @@ struct HomeView: View {
                 hero
                 quickActions
 
-                if !recentTracks.isEmpty {
+                if !displayedRecentTracks.isEmpty {
                     mediaSection(title: "最近播放", subtitle: "继续上次的音乐旅程") {
                         ScrollView(.horizontal, showsIndicators: false) {
                             LazyHStack(spacing: 16) {
-                                ForEach(recentTracks.prefix(10)) { track in
+                                ForEach(displayedRecentTracks.prefix(10)) { track in
                                     HomeTrackCard(track: track) {
-                                        play(track, in: recentTracks)
+                                        play(track, in: displayedRecentTracks)
                                     }
                                 }
                             }
@@ -91,6 +93,24 @@ struct HomeView: View {
             .padding(.horizontal, 26)
             .padding(.top, 14)
             .padding(.bottom, 20)
+        }
+        .onAppear {
+            if refreshRecentTracksOnAppear {
+                displayedRecentTracks = recentTracks
+                refreshRecentTracksOnAppear = false
+            } else if displayedRecentTracks.isEmpty {
+                displayedRecentTracks = recentTracks
+            }
+        }
+        .onDisappear {
+            refreshRecentTracksOnAppear = true
+        }
+        .onChange(of: recentTracks.map(\.id)) { _, newIDs in
+            if displayedRecentTracks.isEmpty {
+                displayedRecentTracks = newIDs.compactMap { id in
+                    recentTracks.first(where: { $0.id == id })
+                }
+            }
         }
         .task(id: recommendationTaskKey) {
             ensureRecommendation()
