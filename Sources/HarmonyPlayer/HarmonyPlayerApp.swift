@@ -17,6 +17,7 @@ struct HarmonyPlayerApp: App {
                 .preferredColorScheme(theme.appearance.colorScheme)
         }
         .windowStyle(.hiddenTitleBar)
+        .windowToolbarStyle(.unifiedCompact)
         .defaultSize(width: 1080, height: 650)
         .commands {
             CommandGroup(replacing: .appSettings) {
@@ -99,7 +100,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let maxHeight = max(520, visible.height - 32)
 
         for window in NSApp.windows where window.isVisible {
-            window.toolbar = nil
             window.minSize = NSSize(width: 840, height: 520)
 
             let current = window.frame

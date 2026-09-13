@@ -20,23 +20,14 @@ struct MainView: View {
     var body: some View {
         GeometryReader { geometry in
             if showNowPlaying {
-                NowPlayingView(transitionNamespace: nowPlayingTransition)
+                NowPlayingView(transitionNamespace: nowPlayingTransition) {
+                    withAnimation(.easeInOut(duration: 0.24)) {
+                        showNowPlaying = false
+                    }
+                }
                 .transition(.opacity.combined(with: .scale(scale: 0.985)))
                 .frame(width: geometry.size.width, height: geometry.size.height)
                 .clipped()
-                .background {
-                    NowPlayingBackdrop()
-                        .ignoresSafeArea(.container, edges: .top)
-                }
-                .overlay(alignment: .topLeading) {
-                    NowPlayingHeaderControls {
-                        withAnimation(.easeInOut(duration: 0.24)) {
-                            showNowPlaying = false
-                        }
-                    }
-                    .padding(.leading, 24)
-                    .padding(.top, 16)
-                }
             } else {
                 VStack(spacing: 0) {
                     HStack(spacing: 0) {
