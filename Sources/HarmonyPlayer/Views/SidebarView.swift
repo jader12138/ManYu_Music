@@ -258,13 +258,17 @@ struct SidebarView: View {
     }
 
     private var settingsButton: some View {
-        SettingsLink {
+        Button {
+            withAnimation(.easeOut(duration: 0.16)) {
+                destination = .settings
+            }
+        } label: {
             sidebarLabel(
                 title: "设置",
                 systemImage: "gearshape.fill",
                 iconColor: Color.hpTextPrimary.opacity(0.52),
                 count: nil,
-                selected: false
+                selected: destination == .settings
             )
         }
         .buttonStyle(.plain)

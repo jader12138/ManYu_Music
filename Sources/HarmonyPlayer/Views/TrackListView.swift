@@ -610,7 +610,9 @@ struct EmptyLibraryView: View {
             }
 
             if !isSearching {
-                SettingsLink {
+                Button {
+                    NotificationCenter.default.post(name: .openSettings, object: nil)
+                } label: {
                     Label("前往设置添加音乐", systemImage: "gearshape.fill")
                         .font(.system(size: 12, weight: .semibold))
                         .padding(.horizontal, 18)

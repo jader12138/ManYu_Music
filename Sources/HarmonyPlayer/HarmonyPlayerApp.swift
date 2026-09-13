@@ -19,14 +19,14 @@ struct HarmonyPlayerApp: App {
         .windowStyle(.hiddenTitleBar)
         .windowToolbarStyle(.unifiedCompact)
         .defaultSize(width: 1080, height: 650)
-        Settings {
-            SettingsView()
-                .environmentObject(theme)
-                .environmentObject(player)
-                .environmentObject(library)
-        }
-
         .commands {
+            CommandGroup(replacing: .appSettings) {
+                Button("设置…") {
+                    NotificationCenter.default.post(name: .openSettings, object: nil)
+                }
+                .keyboardShortcut(",", modifiers: .command)
+            }
+
             CommandMenu("播放") {
                 Button(player.isPlaying ? "暂停" : "播放") {
                     player.togglePlayback()

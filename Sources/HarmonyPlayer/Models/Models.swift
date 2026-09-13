@@ -126,6 +126,7 @@ enum RepeatMode: String, Codable, CaseIterable, Sendable {
 
 extension Notification.Name {
     static let focusLibrarySearch = Notification.Name("HarmonyPlayer.focusLibrarySearch")
+    static let openSettings = Notification.Name("HarmonyPlayer.openSettings")
 }
 
 
@@ -158,6 +159,7 @@ struct ArtistGroup: Identifiable, Hashable {
 enum LibraryDestination: Hashable, Identifiable {
     case section(LibrarySection)
     case playlist(UUID)
+    case settings
 
     var id: String {
         switch self {
@@ -165,6 +167,8 @@ enum LibraryDestination: Hashable, Identifiable {
             return "section-\(section.rawValue)"
         case .playlist(let id):
             return "playlist-\(id.uuidString)"
+        case .settings:
+            return "settings"
         }
     }
 }

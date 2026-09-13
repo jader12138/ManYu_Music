@@ -79,44 +79,73 @@ final class DockArtworkController {
             fraction: 1
         )
 
-        let badgeSize: CGFloat = 78
+        let badgeSize: CGFloat = 94
         let badgeRect = NSRect(
-            x: contentRect.maxX - badgeSize - 18,
-            y: contentRect.minY + 18,
+            x: contentRect.maxX - badgeSize - 14,
+            y: contentRect.minY + 14,
             width: badgeSize,
             height: badgeSize
         )
         let badgePath = NSBezierPath(ovalIn: badgeRect)
-        NSColor.black.withAlphaComponent(0.82).setFill()
-        badgePath.fill()
 
-        NSColor.white.withAlphaComponent(0.78).setStroke()
-        badgePath.lineWidth = 3
-        badgePath.stroke()
+        let palette = ArtworkPaletteExtractor.palette(from: artwork)
+        let primary = palette.primary.blended(withFraction: 0.26, of: .white) ?? palette.primary
+        let secondary = palette.secondary.blended(withFraction: 0.18, of: .white) ?? palette.secondary
+        let accent = palette.accent.blended(withFraction: 0.12, of: .white) ?? palette.accent
+
+        NSGraphicsContext.saveGraphicsState()
+        let shadow = NSShadow()
+        shadow.shadowColor = NSColor.black.withAlphaComponent(0.28)
+        shadow.shadowBlurRadius = 16
+        shadow.shadowOffset = NSSize(width: 0, height: -4)
+        shadow.set()
+        NSGradient(colors: [primary, secondary, accent])?.draw(in: badgePath, angle: -38)
+        NSGraphicsContext.restoreGraphicsState()
+
+        NSGraphicsContext.saveGraphicsState()
+        badgePath.addClip()
+        let glassHighlight = NSBezierPath(
+            ovalIn: badgeRect.insetBy(dx: 7, dy: 7)
+        )
+        NSColor.white.withAlphaComponent(0.10).setFill()
+        glassHighlight.fill()
+        NSGraphicsContext.restoreGraphicsState()
+
+        let highlight = NSBezierPath()
+        highlight.appendArc(
+            withCenter: NSPoint(x: badgeRect.midX, y: badgeRect.midY),
+            radius: badgeSize * 0.33,
+            startAngle: 102,
+            endAngle: 192
+        )
+        NSColor.white.withAlphaComponent(0.48).setStroke()
+        highlight.lineWidth = 3
+        highlight.lineCapStyle = .round
+        highlight.stroke()
 
         NSColor.white.setFill()
         if isPlaying {
-            let barWidth: CGFloat = 9
-            let barHeight: CGFloat = 30
-            let spacing: CGFloat = 11
+            let barWidth: CGFloat = 11
+            let barHeight: CGFloat = 36
+            let spacing: CGFloat = 13
             let totalWidth = barWidth * 2 + spacing
             let leftX = badgeRect.midX - totalWidth / 2
             let barY = badgeRect.midY - barHeight / 2
             NSBezierPath(
                 roundedRect: NSRect(x: leftX, y: barY, width: barWidth, height: barHeight),
-                xRadius: 4,
-                yRadius: 4
+                xRadius: 5,
+                yRadius: 5
             ).fill()
             NSBezierPath(
                 roundedRect: NSRect(x: leftX + barWidth + spacing, y: barY, width: barWidth, height: barHeight),
-                xRadius: 4,
-                yRadius: 4
+                xRadius: 5,
+                yRadius: 5
             ).fill()
         } else {
             let path = NSBezierPath()
-            path.move(to: NSPoint(x: badgeRect.midX - 9, y: badgeRect.midY - 16))
-            path.line(to: NSPoint(x: badgeRect.midX + 18, y: badgeRect.midY))
-            path.line(to: NSPoint(x: badgeRect.midX - 9, y: badgeRect.midY + 16))
+            path.move(to: NSPoint(x: badgeRect.midX - 12, y: badgeRect.midY - 19))
+            path.line(to: NSPoint(x: badgeRect.midX + 21, y: badgeRect.midY))
+            path.line(to: NSPoint(x: badgeRect.midX - 12, y: badgeRect.midY + 19))
             path.close()
             path.fill()
         }

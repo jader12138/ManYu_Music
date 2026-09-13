@@ -87,6 +87,13 @@ struct MainView: View {
         .onReceive(NotificationCenter.default.publisher(for: .focusLibrarySearch)) { _ in
             searchIsFocused = true
         }
+        .onReceive(NotificationCenter.default.publisher(for: .openSettings)) { _ in
+            withAnimation(.easeOut(duration: 0.16)) {
+                destination = .settings
+                selectedAlbum = nil
+                selectedArtist = nil
+            }
+        }
         .onChange(of: destination) { _, _ in
             selectedAlbum = nil
             selectedArtist = nil
@@ -128,7 +135,9 @@ struct MainView: View {
             header
             Divider().opacity(0.16)
 
-            if let playlist = activePlaylist {
+            if destination == .settings {
+                SettingsView()
+            } else if let playlist = activePlaylist {
                 PlaylistDetailView(playlist: playlist) {
                     destination = .section(.home)
                 } onPlay: { track, tracks in
@@ -276,6 +285,7 @@ struct MainView: View {
                 .help("排序")
             }
 
+            if destination != .settings {
             HStack(spacing: 7) {
                 Image(systemName: "magnifyingglass")
                     .font(.system(size: 11, weight: .medium))
@@ -303,6 +313,7 @@ struct MainView: View {
             .overlay {
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
                     .stroke(searchIsFocused ? Color.hpAccent.opacity(0.62) : Color.hpTextPrimary.opacity(0.07), lineWidth: 1)
+            }
             }
 
             IconButton(
@@ -480,6 +491,9 @@ struct MainView: View {
     }
 
     private var headerTitle: String {
+        if destination == .settings {
+            return "设置"
+        }
         if let playlist = activePlaylist {
             return playlist.name
         }
@@ -493,6 +507,9 @@ struct MainView: View {
     }
 
     private var headerSubtitle: String {
+        if destination == .settings {
+            return "外观、图标、播放与资料库"
+        }
         if !normalizedSearch.isEmpty {
             return "找到 \(filteredTracks.count) 首歌曲"
         }
@@ -521,6 +538,7 @@ struct MainView: View {
     }
 
     private var showsSortMenu: Bool {
+        guard destination != .settings else { return false }
         guard selectedAlbum == nil, selectedArtist == nil else { return false }
         if activePlaylist != nil { return true }
         return section != .home && section != .albums && section != .artists && section != .folders

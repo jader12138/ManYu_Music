@@ -26,8 +26,8 @@ struct SettingsView: View {
                     Label("资料库", systemImage: "music.note.list")
                 }
         }
-        .padding(22)
-        .frame(width: 540, height: 360)
+        .padding(24)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     }
 
     private var appearanceSettings: some View {
