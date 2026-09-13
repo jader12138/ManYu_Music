@@ -24,7 +24,6 @@ struct MainView: View {
                 NowPlayingView(transitionNamespace: nowPlayingTransition)
                 .transition(.opacity.combined(with: .scale(scale: 0.985)))
                 .frame(width: geometry.size.width, height: geometry.size.height)
-                .clipped()
                 .background {
                     NowPlayingBackdrop()
                         .ignoresSafeArea(.container, edges: .top)
