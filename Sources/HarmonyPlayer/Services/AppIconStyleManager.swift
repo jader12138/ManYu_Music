@@ -5,6 +5,7 @@ enum AppIconStyle: String, CaseIterable, Identifiable {
     case automatic
     case dark
     case light
+    case albumArtwork
 
     static let storageKey = "ManyuMusic.appIconStyle"
 
@@ -15,12 +16,13 @@ enum AppIconStyle: String, CaseIterable, Identifiable {
         case .automatic: "自动"
         case .dark: "深色"
         case .light: "浅色"
+        case .albumArtwork: "专辑图"
         }
     }
 
     var resourceName: String {
         switch self {
-        case .automatic: "AppIconDark"
+        case .automatic, .albumArtwork: "AppIconDark"
         case .dark: "AppIconDark"
         case .light: "AppIconLight"
         }
@@ -30,8 +32,17 @@ enum AppIconStyle: String, CaseIterable, Identifiable {
 @MainActor
 enum AppIconStyleManager {
     static func selectedStyle() -> AppIconStyle {
-        let rawValue = UserDefaults.standard.string(forKey: AppIconStyle.storageKey)
-        return AppIconStyle(rawValue: rawValue ?? "") ?? .automatic
+        if let rawValue = UserDefaults.standard.string(forKey: AppIconStyle.storageKey),
+           let style = AppIconStyle(rawValue: rawValue) {
+            return style
+        }
+
+        // Migrate the previous Dock artwork toggle when no new preference exists.
+        if UserDefaults.standard.object(forKey: DockArtworkController.showsArtworkKey) != nil,
+           !UserDefaults.standard.bool(forKey: DockArtworkController.showsArtworkKey) {
+            return .automatic
+        }
+        return .albumArtwork
     }
 
     static func apply() {
@@ -42,7 +53,7 @@ enum AppIconStyleManager {
             isDark = true
         case .light:
             isDark = false
-        case .automatic:
+        case .automatic, .albumArtwork:
             let appearanceRaw = UserDefaults.standard.string(forKey: ThemeStore.appearanceKey)
             let appearance = AppAppearance(rawValue: appearanceRaw ?? "") ?? .dark
             if appearance == .system {
@@ -65,7 +76,7 @@ enum AppIconStyleManager {
             isDark = true
         case .light:
             isDark = false
-        case .automatic:
+        case .automatic, .albumArtwork:
             if let colorScheme {
                 isDark = colorScheme == .dark
             } else if let appearanceRaw = UserDefaults.standard.string(forKey: ThemeStore.appearanceKey),

@@ -13,14 +13,7 @@ final class DockArtworkController {
     private init() {}
 
     func update(artwork: NSImage?, isPlaying: Bool) {
-        let enabled: Bool
-        if UserDefaults.standard.object(forKey: Self.showsArtworkKey) == nil {
-            enabled = true
-        } else {
-            enabled = UserDefaults.standard.bool(forKey: Self.showsArtworkKey)
-        }
-
-        guard enabled else {
+        guard AppIconStyleManager.selectedStyle() == .albumArtwork else {
             restoreDefaultIcon()
             return
         }
@@ -46,21 +39,16 @@ final class DockArtworkController {
     }
 
     func refreshSetting() {
-        if !UserDefaults.standard.bool(forKey: Self.showsArtworkKey) {
-            restoreDefaultIcon()
-            return
-        }
-
         renderedForSetting = false
         renderedArtwork = nil
         renderedPlayingState = nil
+        if AppIconStyleManager.selectedStyle() != .albumArtwork {
+            restoreDefaultIcon()
+        }
     }
 
     private func restoreDefaultIcon() {
-        guard renderedForSetting || renderedArtwork != nil else { return }
-
         AppIconStyleManager.apply()
-
         renderedArtwork = nil
         renderedPlayingState = nil
         renderedForSetting = false
