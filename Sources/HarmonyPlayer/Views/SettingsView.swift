@@ -5,7 +5,8 @@ struct SettingsView: View {
     @EnvironmentObject private var player: AudioPlayer
     @EnvironmentObject private var library: LibraryStore
 
-    @AppStorage(AppIconStyle.storageKey) private var appIconStyleRaw = AppIconStyle.albumArtwork.rawValue
+    @AppStorage(AppIconStyle.storageKey) private var appIconStyleRaw = AppIconStyle.automatic.rawValue
+    @AppStorage(DockArtworkController.showsArtworkKey) private var showDockArtwork = true
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
@@ -55,14 +56,7 @@ struct SettingsView: View {
                             AppIconStyleManager.apply()
                         } label: {
                             VStack(spacing: 7) {
-                                if style == .albumArtwork, let artwork = player.artwork {
-                                    Image(nsImage: artwork)
-                                        .resizable()
-                                        .interpolation(.high)
-                                        .aspectRatio(contentMode: .fill)
-                                        .frame(width: 58, height: 58)
-                                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                                } else if let image = AppIconStyleManager.image(
+                                if let image = AppIconStyleManager.image(
                                     for: style,
                                     colorScheme: colorScheme
                                 ) {
@@ -95,7 +89,7 @@ struct SettingsView: View {
                 .frame(maxWidth: .infinity, alignment: .center)
                 .padding(.vertical, 4)
 
-                Text("自动模式跟随白天/夜间主题；专辑图模式会在播放时使用当前封面，没有封面时回退到自动图标。")
+                Text("自动模式跟随白天/夜间主题，也可以强制使用深色或浅色图标。")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -105,6 +99,17 @@ struct SettingsView: View {
 
     private var playbackSettings: some View {
         Form {
+            Section("Dock") {
+                Toggle("播放时在 Dock 显示专辑封面", isOn: $showDockArtwork)
+                    .onChange(of: showDockArtwork) { _, _ in
+                        player.refreshDockIcon()
+                    }
+
+                Text("播放时 Dock 会显示当前专辑封面，右下角会显示播放或暂停状态。")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
             Section("播放器") {
                 LabeledContent("当前输出") {
                     Text(player.isPlaying ? "正在播放" : "已暂停")
