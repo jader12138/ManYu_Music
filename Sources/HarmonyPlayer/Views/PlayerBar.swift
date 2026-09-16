@@ -31,11 +31,10 @@ struct PlayerBar: View {
             focusPlaybackControl()
         }
         .background {
-            VisualEffectView(material: .headerView, blendingMode: .withinWindow)
-                .overlay(Color.hpNavyDeep.opacity(0.76))
+            Color.hpSurface
                 .overlay(alignment: .top) {
                     Rectangle()
-                        .fill(Color.hpTextPrimary.opacity(0.08))
+                        .fill(Color.hpHairline)
                         .frame(height: 1)
                 }
         }

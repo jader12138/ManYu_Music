@@ -68,6 +68,20 @@ extension Color {
         dark: NSColor.white.withAlphaComponent(0.58),
         light: NSColor(srgbRed: 0.18, green: 0.30, blue: 0.42, alpha: 0.72)
     )
+    static let hpHairline = adaptiveColor(
+        dark: NSColor.white.withAlphaComponent(0.08),
+        light: NSColor.black.withAlphaComponent(0.07)
+    )
+}
+
+/// 统一布局度量（椒盐风格：扁平、克制的圆角层次，不再使用椭圆造型）。
+enum HPMetrics {
+    /// 列表行 / 小型交互件的圆角
+    static let radiusRow: CGFloat = 10
+    /// 卡片容器圆角
+    static let radiusCard: CGFloat = 16
+    /// 封面瓦片 / 大图块圆角
+    static let radiusTile: CGFloat = 20
 }
 
 extension LinearGradient {
