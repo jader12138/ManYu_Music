@@ -2,7 +2,7 @@ import SwiftUI
 
 struct LyricTimelineView: View {
     let lines: [LyricLine]
-    let currentTime: Double
+    @ObservedObject var clock: PlaybackClock
     let seek: (Double) -> Void
     var baseFontSize: CGFloat = 18
     var fontDesign: Font.Design = .rounded
@@ -10,14 +10,19 @@ struct LyricTimelineView: View {
     var lineSpacingScale: CGFloat = 0.9
     var visibleLineCount: Int = 9
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     var body: some View {
         GeometryReader { geometry in
             let stackSpacing = max(8, baseFontSize * 0.72 * lineSpacingScale)
+            // Resolved once per pass and handed to the rows, which previously
+            // recomputed the same scan for every line.
+            let activeIndex = currentLineIndex
             ScrollViewReader { proxy in
                 ScrollView(.vertical, showsIndicators: false) {
                     LazyVStack(spacing: stackSpacing) {
                         ForEach(Array(lines.enumerated()), id: \.element.id) { index, line in
-                            lyricLine(line, index: index)
+                            lyricLine(line, index: index, activeIndex: activeIndex)
                                 .id(index)
                         }
                     }
@@ -42,22 +47,24 @@ struct LyricTimelineView: View {
                     )
                 )
                 .onAppear {
-                    scroll(to: currentIndex, proxy: proxy, animated: false)
+                    scroll(to: activeIndex, proxy: proxy, animated: false)
                 }
-                .onChange(of: currentIndex) { _, index in
-                    scroll(to: index, proxy: proxy, animated: true)
+                .onChange(of: activeIndex) { _, index in
+                    scroll(to: index, proxy: proxy, animated: !reduceMotion)
                 }
             }
         }
     }
 
-    private var currentIndex: Int {
-        guard lines.contains(where: { $0.time != nil }) else { return -1 }
-
+    /// Index of the line matching the current playback position, or -1 when
+    /// none has been reached yet. Lines without a timestamp are skipped, so
+    /// the result stays -1 when nothing in the list is timed.
+    private var currentLineIndex: Int {
+        let threshold = clock.currentTime + 0.12
         var result = -1
         for (index, line) in lines.enumerated() {
             guard let time = line.time else { continue }
-            if time <= currentTime + 0.12 {
+            if time <= threshold {
                 result = index
             } else {
                 break
@@ -66,9 +73,9 @@ struct LyricTimelineView: View {
         return result
     }
 
-    private func lyricLine(_ line: LyricLine, index: Int) -> some View {
-        let isCurrent = index == currentIndex
-        let distance = currentIndex >= 0 ? abs(index - currentIndex) : 0
+    private func lyricLine(_ line: LyricLine, index: Int, activeIndex: Int) -> some View {
+        let isCurrent = index == activeIndex
+        let distance = activeIndex >= 0 ? abs(index - activeIndex) : 0
         let visibleRadius = max(2, visibleLineCount / 2)
         let fadeStep = 0.46 / Double(visibleRadius)
         let visibleOpacity = max(0.10, 0.58 - Double(distance) * fadeStep)
@@ -99,7 +106,7 @@ struct LyricTimelineView: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .animation(.easeInOut(duration: 0.34), value: currentIndex)
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.34), value: activeIndex)
         .help(line.time == nil ? "" : "点击跳到这一句")
     }
 
@@ -122,7 +129,7 @@ struct LyricTimelineView: View {
 
     private func scroll(to index: Int, proxy: ScrollViewProxy, animated: Bool) {
         guard index >= 0, lines.indices.contains(index) else { return }
-        if animated {
+        if animated, !reduceMotion {
             withAnimation(.spring(response: 0.52, dampingFraction: 0.86)) {
                 proxy.scrollTo(index, anchor: .center)
             }

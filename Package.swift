@@ -17,6 +17,10 @@ let package = Package(
                 .linkedFramework("AVFoundation"),
                 .linkedFramework("MediaPlayer")
             ]
+        ),
+        .testTarget(
+            name: "HarmonyPlayerTests",
+            dependencies: ["HarmonyPlayer"]
         )
     ]
 )

@@ -1,6 +1,6 @@
 import SwiftUI
 
-struct FolderGroup: Identifiable, Hashable {
+struct FolderGroup: Identifiable, Hashable, Sendable {
     let path: String
     let name: String
     let tracks: [Track]
@@ -10,29 +10,8 @@ struct FolderGroup: Identifiable, Hashable {
 }
 
 struct FolderBrowserView: View {
-    let tracks: [Track]
+    let groups: [FolderGroup]
     let onPlay: (Track) -> Void
-
-    private var groups: [FolderGroup] {
-        Dictionary(grouping: tracks) {
-            $0.url.deletingLastPathComponent().standardizedFileURL.path
-        }
-        .compactMap { path, tracks in
-            guard let name = tracks.first?.url.deletingLastPathComponent().lastPathComponent else {
-                return nil
-            }
-            return FolderGroup(
-                path: path,
-                name: name,
-                tracks: tracks.sorted {
-                    $0.displayTitle.localizedStandardCompare($1.displayTitle) == .orderedAscending
-                }
-            )
-        }
-        .sorted {
-            $0.name.localizedStandardCompare($1.name) == .orderedAscending
-        }
-    }
 
     var body: some View {
         ScrollView {

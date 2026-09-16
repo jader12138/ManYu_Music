@@ -62,7 +62,7 @@ struct Track: Identifiable, Codable, Hashable, Sendable {
     }
 }
 
-enum LibrarySection: String, CaseIterable, Identifiable {
+enum LibrarySection: String, CaseIterable, Identifiable, Sendable {
     case home
     case all
     case albums
@@ -146,7 +146,7 @@ struct AlbumGroup: Identifiable, Hashable {
     var duration: Double { tracks.reduce(0) { $0 + $1.duration } }
 }
 
-struct ArtistGroup: Identifiable, Hashable {
+struct ArtistGroup: Identifiable, Hashable, Sendable {
     let name: String
     let tracks: [Track]
 

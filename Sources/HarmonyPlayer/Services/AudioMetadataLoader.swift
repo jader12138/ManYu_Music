@@ -80,11 +80,20 @@ enum AudioMetadataLoader {
         return nil
     }
 
-    static func artwork(for track: Track) async -> NSImage? {
+    /// Cached, coalesced entry point. Defaults to the 768px tier, so the player and
+    /// the home palette never decode a multi-thousand-pixel original.
+    static func artwork(for track: Track, pixelSize: Int = ArtworkPixelTier.large.pixels) async -> NSImage? {
+        await ArtworkPipeline.shared.artwork(for: track, pixelSize: pixelSize)
+    }
+
+    /// Raw read + decode. Runs off the main thread and decodes straight to
+    /// `pixelSize` pixels instead of the original resolution.
+    static func decodeArtwork(for track: Track, pixelSize: Int) async -> NSImage? {
         let embedded = await Task.detached(priority: .utility) {
             EmbeddedMetadataReader.read(from: track.url)
         }.value
-        if let data = embedded?.artworkData, let image = NSImage(data: data) {
+        if let data = embedded?.artworkData,
+           let image = ArtworkImageDecoder.makeImage(from: data, maxPixelSize: pixelSize) {
             return image
         }
 
@@ -100,17 +109,20 @@ enum AudioMetadataLoader {
 
         for identifier in artworkIdentifiers {
             for item in AVMetadataItem.metadataItems(from: metadata, filteredByIdentifier: identifier) {
-                if let data = try? await item.load(.dataValue), let image = NSImage(data: data) {
+                guard let data = try? await item.load(.dataValue) else { continue }
+                if let image = ArtworkImageDecoder.makeImage(from: data, maxPixelSize: pixelSize) {
                     return image
                 }
             }
         }
 
         // Some containers expose artwork under a format-specific key instead of commonKey.
+        // Probe the header for dimensions first so non-image payloads are never decoded.
         for item in metadata {
             guard let data = try? await item.load(.dataValue),
-                  let image = NSImage(data: data) else { continue }
-            if image.size.width >= 80, image.size.height >= 80 {
+                  let size = ArtworkImageDecoder.pixelSize(of: data),
+                  size.width >= 80, size.height >= 80 else { continue }
+            if let image = ArtworkImageDecoder.makeImage(from: data, maxPixelSize: pixelSize) {
                 return image
             }
         }

@@ -278,11 +278,7 @@ struct SettingsView: View {
 
                     Divider().opacity(0.08)
 
-                    settingsRow(
-                        title: "睡眠定时",
-                        value: player.sleepTimerRemaining.map { "剩余 \(Int(ceil($0 / 60))) 分钟" } ?? "未开启",
-                        valueColor: Color.hpTextPrimary.opacity(0.46)
-                    )
+                    SleepTimerRow(clock: player.clock)
                 }
             }
         }
@@ -324,7 +320,7 @@ struct SettingsView: View {
                     .background(Color.hpAccent.opacity(0.08), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                 }
                 .buttonStyle(.plain)
-                .disabled(library.isImporting)
+                .disabled(!library.canEdit || library.isImporting)
             }
 
             settingsCard(
@@ -351,7 +347,7 @@ struct SettingsView: View {
                     .background(Color.hpAccent.opacity(0.09), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
                 }
                 .buttonStyle(.plain)
-                .disabled(library.isImporting)
+                .disabled(!library.canEdit || library.isImporting)
             }
         }
     }
@@ -421,15 +417,7 @@ struct SettingsView: View {
         value: String,
         valueColor: Color
     ) -> some View {
-        HStack {
-            Text(title)
-                .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(Color.hpTextPrimary.opacity(0.58))
-            Spacer()
-            Text(value)
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(valueColor)
-        }
+        SettingsRowLabel(title: title, value: value, valueColor: valueColor)
     }
 
     private func statistic(value: String, title: String) -> some View {
@@ -444,5 +432,37 @@ struct SettingsView: View {
         .frame(maxWidth: .infinity)
         .frame(height: 58)
         .background(Color.hpTextPrimary.opacity(0.045), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+}
+
+/// Countdown kept in its own clock-observing view: the once-per-second tick then
+/// invalidates this row only, not the whole settings screen.
+private struct SleepTimerRow: View {
+    @ObservedObject var clock: PlaybackClock
+
+    var body: some View {
+        SettingsRowLabel(
+            title: "睡眠定时",
+            value: clock.sleepTimerRemaining.map { "剩余 \(Int(ceil($0 / 60))) 分钟" } ?? "未开启",
+            valueColor: Color.hpTextPrimary.opacity(0.46)
+        )
+    }
+}
+
+private struct SettingsRowLabel: View {
+    let title: String
+    let value: String
+    let valueColor: Color
+
+    var body: some View {
+        HStack {
+            Text(title)
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(Color.hpTextPrimary.opacity(0.58))
+            Spacer()
+            Text(value)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(valueColor)
+        }
     }
 }
