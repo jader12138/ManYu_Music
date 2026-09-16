@@ -152,7 +152,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private static func offsetTrafficLights(of window: NSWindow) {
         _ = trafficLightResizeObserver
         let dx: CGFloat = 6
-        let dy: CGFloat = -2
+        let dy: CGFloat = -6
         let marker = NSUserInterfaceItemIdentifier("ManyuMusic.trafficLightOffset")
         for type in [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton] {
             guard let button = window.standardWindowButton(type) else { continue }
