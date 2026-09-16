@@ -23,7 +23,9 @@ struct LyricTimelineView: View {
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var activeIndex: Int = -1
-    @State private var linePositions: [Int: CGFloat] = [:]
+    // 行高在布局后测量一次（proxy.size 不受滚动平移影响，天然稳定），
+    // 行位置由解析计算得出——绝不在滚动中的视图上做几何转换读取。
+    @State private var rowHeights: [Int: CGFloat] = [:]
     @State private var currentOffset: CGFloat = 0
     @State private var dragBase: CGFloat?
 
@@ -39,15 +41,12 @@ struct LyricTimelineView: View {
                             GeometryReader { proxy in
                                 Color.clear.preference(
                                     key: LyricLinePositionsKey.self,
-                                    value: [line.id: proxy.frame(in: .named("LyricContent")).midY]
+                                    value: [line.id: proxy.size.height]
                                 )
                             }
                         )
                 }
             }
-            // 内容坐标系：行位置在内容空间内测量，外层平移不影响读数，
-            // 因此拖动/滑行过程中不会触发偏好值重算。
-            .coordinateSpace(name: "LyricContent")
             .padding(.top, topPad)
             .padding(.bottom, bottomPad)
             .padding(.horizontal, 14)
@@ -73,9 +72,9 @@ struct LyricTimelineView: View {
             )
             .contentShape(Rectangle())
             .gesture(dragGesture(in: geometry.size))
-            .onPreferenceChange(LyricLinePositionsKey.self) { positions in
-                guard positions != linePositions else { return }
-                linePositions = positions
+            .onPreferenceChange(LyricLinePositionsKey.self) { heights in
+                guard heights != rowHeights else { return }
+                rowHeights = heights
                 centerActive(in: geometry.size.height, animated: false)
             }
             .onAppear {
@@ -91,7 +90,7 @@ struct LyricTimelineView: View {
                 centerActive(in: geometry.size.height, animated: !reduceMotion)
             }
             .onChange(of: lines.first?.id) { _, _ in
-                linePositions = [:]
+                rowHeights = [:]
                 currentOffset = 0
                 dragBase = nil
                 activeIndex = lineIndex(at: clock.currentTime)
@@ -104,8 +103,9 @@ struct LyricTimelineView: View {
     /// 把当前行滑到视口中心。长距离跳转与逐行推进都用同一条原生缓动，
     /// 区别只在时长：跳转 1.5 秒从容滑到，逐行 0.7 秒缓冲跟进。
     private func centerActive(in height: CGFloat, animated: Bool) {
-        guard lines.indices.contains(activeIndex),
-              let centerY = linePositions[lines[activeIndex].id] else { return }
+        guard lines.indices.contains(activeIndex) else { return }
+        guard let centers = lineCenters(viewportH: height) else { return }
+        let centerY = centers[activeIndex]
         let maxOffset = max(0, contentHeight(in: height) - height)
         let target = min(max(centerY - height / 2, 0), maxOffset)
         guard animated, !reduceMotion else {
@@ -119,11 +119,31 @@ struct LyricTimelineView: View {
         }
     }
 
+    /// 每行歌词在内容坐标系里的纵向中心：原点 = 内容顶部，随内容一起平移。
+    /// 由测量到的行高解析累加得出，与滚动状态完全无关。
+    private func lineCenters(viewportH: CGFloat) -> [CGFloat]? {
+        guard !lines.isEmpty, rowHeights.count == lines.count else { return nil }
+        let spacing = max(8, baseFontSize * 0.72 * lineSpacingScale)
+        var centers: [CGFloat] = []
+        var y = max(60, viewportH * 0.34)
+        centers.reserveCapacity(lines.count)
+        for line in lines {
+            guard let h = rowHeights[line.id] else { return nil }
+            centers.append(y + h / 2)
+            y += h + spacing
+        }
+        return centers
+    }
+
     private func contentHeight(in height: CGFloat) -> CGFloat {
         let topPad = max(60, height * 0.34)
         let bottomPad = topPad + 56
-        guard let lastID = lines.last?.id, let lastY = linePositions[lastID] else { return height }
-        return lastY + bottomPad + baseFontSize * 1.6
+        let spacing = max(8, baseFontSize * 0.72 * lineSpacingScale)
+        var rows: CGFloat = 0
+        for line in lines {
+            rows += rowHeights[line.id] ?? baseFontSize * 1.6
+        }
+        return topPad + rows + CGFloat(max(0, lines.count - 1)) * spacing + bottomPad
     }
 
     /// 拖动浏览：直接改 currentOffset（不带动画、实时跟手），
@@ -178,6 +198,8 @@ struct LyricTimelineView: View {
                 .padding(.horizontal, 14)
                 .padding(.vertical, max(1.5, baseFontSize * 0.12 * lineSpacingScale))
                 .scaleEffect(isCurrent ? 1.30 : max(0.92, 1 - CGFloat(distance) * 0.012))
+                // 放大/缩小用渐变过渡：动画紧贴 scaleEffect，确保生效。
+                .animation(reduceMotion ? nil : .easeInOut(duration: 0.45), value: isCurrent)
                 .frame(maxWidth: .infinity)
                 .contentShape(Rectangle())
         }
@@ -204,7 +226,7 @@ struct LyricTimelineView: View {
     }
 }
 
-/// 汇总每行歌词在内容坐标系里的纵向中心，用于计算目标偏移。
+/// 汇总每行歌词的实测高度（尺寸不受滚动平移影响），用于解析计算行中心。
 private struct LyricLinePositionsKey: PreferenceKey {
     static var defaultValue: [Int: CGFloat] { [:] }
     static func reduce(value: inout [Int: CGFloat], nextValue: () -> [Int: CGFloat]) {

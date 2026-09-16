@@ -314,17 +314,19 @@ struct PlaybackProgressRow: View {
     var controlSize: ControlSize = .mini
     var fontWeight: Font.Weight = .medium
 
-    /// 最近一次时钟 tick 的墙钟锚点。
+    /// 航位推算锚点：媒体时间 anchorTime 对应的"应到墙钟时刻" anchorWall。
     ///
-    /// 时钟回调经 `Task { @MainActor }` 投递，到达时刻天然抖动；任何基于
-    /// "tick → 播动画"的方案都会被抖动打断而一跳一跳。这里改为记录锚点后
-    /// 由 TimelineView 按帧插值：显示进度 = 锚点时间 + 距锚点的真实流逝，
-    /// 与 tick 何时到达完全无关，天然连续。
-    @State private var anchorDate = Date()
+    /// 时钟回调经 `Task { @MainActor }` 投递，到达时刻天然抖动；若每次
+    /// tick 都用"当前墙钟"重设锚点，投递延迟的波动会直接变成显示时间的
+    /// 回跳（锯齿）。这里改为按媒体时间推进锚点墙钟（anchorWall +=
+    /// clockDelta），投递早晚完全不影响显示；seek/切歌/暂停恢复时
+    /// （媒体推进与墙钟推进脱钩）才整体重同步。
+    @State private var anchorTime: Double = 0
+    @State private var anchorWall = Date()
 
     var body: some View {
         TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { context in
-            let raw = clock.currentTime + (isPlaying ? context.date.timeIntervalSince(anchorDate) : 0)
+            let raw = isPlaying ? anchorTime + context.date.timeIntervalSince(anchorWall) : anchorTime
             let displayed = clock.duration > 0 ? min(max(raw, 0), clock.duration) : max(raw, 0)
             HStack(spacing: 8) {
                 Text(Track.formatTime(displayed))
@@ -346,9 +348,23 @@ struct PlaybackProgressRow: View {
                     .frame(width: 40, alignment: .leading)
             }
         }
-        .onAppear { anchorDate = Date() }
-        .onChange(of: clock.currentTime) { _, _ in
-            anchorDate = Date()
+        .onAppear {
+            anchorTime = clock.currentTime
+            anchorWall = Date()
+        }
+        .onChange(of: clock.currentTime) { old, new in
+            let wallDelta = Date().timeIntervalSince(anchorWall)
+            let clockDelta = new - old
+            let desynced = abs(clockDelta - wallDelta) > 1.0 || clockDelta < -0.5 || !isPlaying
+            if desynced {
+                // seek、切歌、暂停恢复：媒体时间与墙钟脱钩，整体重同步。
+                anchorTime = new
+                anchorWall = Date()
+            } else {
+                // 正常推进：锚点墙钟按媒体时间走，投递延迟不进显示。
+                anchorTime = new
+                anchorWall = anchorWall.addingTimeInterval(clockDelta)
+            }
         }
     }
 }
@@ -415,8 +431,8 @@ private struct SmoothScrubber: View {
             }
             .onEnded { _ in
                 guard let target = dragTime else { return }
-                seek(target)
                 dragTime = nil
+                seek(target)
             }
     }
 }
