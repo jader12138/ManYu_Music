@@ -49,7 +49,8 @@ struct LyricTimelineView: View {
             }
             .padding(.top, topPad)
             .padding(.bottom, bottomPad)
-            .padding(.horizontal, 14)
+            // 左右各多留约一个字的宽度：长行歌词不再被视口裁掉半个字。
+            .padding(.horizontal, 14 + baseFontSize)
             .frame(maxWidth: .infinity, alignment: .top)
             .offset(y: -currentOffset)
             .frame(width: geometry.size.width, height: geometry.size.height, alignment: .top)
