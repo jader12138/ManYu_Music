@@ -3,20 +3,27 @@ import AVFoundation
 import Combine
 import MediaPlayer
 
+/// High-frequency playback progress, kept apart from `AudioPlayer` so the
+/// 0.25s tick and the 1s sleep-timer countdown only invalidate the small
+/// views that actually render them, instead of the whole view hierarchy.
+@MainActor
+final class PlaybackClock: ObservableObject {
+    @Published var currentTime: Double = 0
+    @Published var duration: Double = 0
+    @Published var sleepTimerRemaining: TimeInterval?
+}
+
 @MainActor
 final class AudioPlayer: ObservableObject {
     static let rememberPlaybackKey = "ManyuMusic.rememberPlaybackState"
     @Published private(set) var currentTrack: Track?
     @Published private(set) var isPlaying = false
-    @Published private(set) var currentTime: Double = 0
-    @Published private(set) var duration: Double = 0
     @Published private(set) var artwork: NSImage?
     @Published private(set) var artworkPalette: ArtworkPalette?
     @Published private(set) var lyricLines: [LyricLine] = []
     @Published private(set) var queue: [Track] = []
     @Published private(set) var currentIndex: Int?
     @Published private(set) var sleepTimerEnd: Date?
-    @Published private(set) var sleepTimerRemaining: TimeInterval?
     @Published var volume: Double = 0.78 {
         didSet {
             player.volume = Float(volume)
@@ -26,6 +33,29 @@ final class AudioPlayer: ObservableObject {
     @Published var isShuffle = false
     @Published var repeatMode: RepeatMode = .off
     @Published var playbackError: String?
+
+    /// Progress state shared with the minimal views that need it. Views must
+    /// receive `player.clock` explicitly; `clock.objectWillChange` is never
+    /// forwarded into `AudioPlayer`, so ticking the clock does not invalidate
+    /// every observer of the player.
+    let clock = PlaybackClock()
+
+    /// Read/write proxies onto `clock`, so every seek, restore and duration
+    /// update keeps the player, the lyrics and the progress UI in sync.
+    private(set) var currentTime: Double {
+        get { clock.currentTime }
+        set { clock.currentTime = newValue }
+    }
+
+    private(set) var duration: Double {
+        get { clock.duration }
+        set { clock.duration = newValue }
+    }
+
+    /// Convenience read for existing call sites. The countdown value lives on
+    /// `clock`; views that must update every second should observe
+    /// `player.clock` instead of the player.
+    var sleepTimerRemaining: TimeInterval? { clock.sleepTimerRemaining }
 
     private let player = AVPlayer()
     private var timeObserver: Any?
@@ -252,13 +282,13 @@ final class AudioPlayer: ObservableObject {
 
         guard let minutes else {
             sleepTimerEnd = nil
-            sleepTimerRemaining = nil
+            clock.sleepTimerRemaining = nil
             return
         }
 
         let endDate = Date().addingTimeInterval(TimeInterval(minutes * 60))
         sleepTimerEnd = endDate
-        sleepTimerRemaining = endDate.timeIntervalSinceNow
+        clock.sleepTimerRemaining = endDate.timeIntervalSinceNow
 
         sleepTimerTask = Task { @MainActor [weak self] in
             while !Task.isCancelled {
@@ -268,12 +298,14 @@ final class AudioPlayer: ObservableObject {
                 if remaining <= 0 {
                     self.pause()
                     self.sleepTimerEnd = nil
-                    self.sleepTimerRemaining = nil
+                    self.clock.sleepTimerRemaining = nil
                     self.sleepTimerTask = nil
                     return
                 }
 
-                self.sleepTimerRemaining = remaining
+                // Only the clock republishes once per second here; the player
+                // itself stays quiet.
+                self.clock.sleepTimerRemaining = remaining
                 try? await Task.sleep(for: .seconds(1))
             }
         }
@@ -400,20 +432,27 @@ final class AudioPlayer: ObservableObject {
         return defaults.bool(forKey: Self.rememberPlaybackKey)
     }
 
+    /// `force` writes the full record (track, queue IDs, index, time) and is
+    /// reserved for real state changes: track load, seek, pause, queue edits.
+    /// The periodic 5s tick only refreshes the elapsed time, so it never walks
+    /// the queue to rebuild the ID list.
     private func persistPlaybackState(force: Bool) {
         guard rememberPlaybackState, let currentTrack else { return }
 
         let wholeSecond = Int(currentTime)
-        if !force, wholeSecond < 5 || wholeSecond % 5 != 0 || wholeSecond == lastPersistedSecond {
-            return
+        if !force {
+            guard wholeSecond >= 5, wholeSecond - lastPersistedSecond >= 5 else { return }
         }
 
         lastPersistedSecond = wholeSecond
         let defaults = UserDefaults.standard
+        defaults.set(currentTime, forKey: PlaybackStateKeys.currentTime)
+
+        guard force else { return }
+
         defaults.set(currentTrack.id.uuidString, forKey: PlaybackStateKeys.trackID)
         defaults.set(queue.map { $0.id.uuidString }, forKey: PlaybackStateKeys.queueIDs)
         defaults.set(currentIndex ?? 0, forKey: PlaybackStateKeys.currentIndex)
-        defaults.set(currentTime, forKey: PlaybackStateKeys.currentTime)
     }
 
     var currentLyricText: String? {

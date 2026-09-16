@@ -82,6 +82,7 @@ struct TrackRow: View {
 
     @EnvironmentObject private var libraryStore: LibraryStore
     @EnvironmentObject private var playerStore: AudioPlayer
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var isHovering = false
     @State private var showingInfo = false
 
@@ -137,6 +138,8 @@ struct TrackRow: View {
                         .font(.system(size: 12, weight: .medium))
                         .foregroundStyle(isFavorite ? Color.hpPink : Color.hpTextPrimary.opacity(0.38))
                         .frame(width: 28, height: 28)
+                        .contentTransition(reduceMotion ? .identity : .symbolEffect(.replace))
+                        .animation(reduceMotion ? nil : .easeInOut(duration: 0.18), value: isFavorite)
                 }
                 .buttonStyle(.plain)
 
@@ -186,6 +189,8 @@ struct TrackRow: View {
         .background {
             RoundedRectangle(cornerRadius: 9, style: .continuous)
                 .fill(rowBackground)
+                // Only the fill fades: no row-level layout or frame animation.
+                .animation(reduceMotion ? nil : .easeOut(duration: 0.14), value: isHovering)
         }
         .overlay(alignment: .leading) {
             if isCurrent {
@@ -277,6 +282,7 @@ private struct AlbumCard: View {
     let play: () -> Void
 
     @EnvironmentObject private var player: AudioPlayer
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var isHovering = false
 
     var body: some View {
@@ -320,8 +326,8 @@ private struct AlbumCard: View {
                 }
             }
             .frame(width: 156, height: 156)
-            .scaleEffect(isHovering ? 1.018 : 1)
-            .animation(.easeOut(duration: 0.16), value: isHovering)
+            .scaleEffect(isHovering && !reduceMotion ? 1.018 : 1)
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.16), value: isHovering)
             .onTapGesture(perform: open)
 
             Text(album.title)

@@ -126,6 +126,7 @@ struct HomeView: View {
         .task(id: featuredTrack?.id) {
             guard let track = featuredTrack else {
                 loadedFeaturedLyrics = []
+                featuredPalette = nil
                 return
             }
 
@@ -135,15 +136,24 @@ struct HomeView: View {
             }
 
             let rawLyrics = await AudioMetadataLoader.lyrics(for: track)
+            guard !Task.isCancelled else { return }
             loadedFeaturedLyrics = LyricsParser.parse(rawLyrics).map(\.text)
 
-            if player.currentTrack?.id == track.id, let artwork = player.artwork {
-                featuredPalette = ArtworkPaletteExtractor.palette(from: artwork)
-            } else if let artwork = await AudioMetadataLoader.artwork(for: track) {
-                featuredPalette = ArtworkPaletteExtractor.palette(from: artwork)
-            } else {
-                featuredPalette = nil
+            // The player already averaged the cover for the current track: reuse its
+            // palette instead of decoding and extracting the same artwork again.
+            if player.currentTrack?.id == track.id, let palette = player.artworkPalette {
+                featuredPalette = palette
+                return
             }
+
+            let palette = await Task.detached(priority: .utility) { () -> ArtworkPalette? in
+                guard let artwork = await AudioMetadataLoader.artwork(for: track) else { return nil }
+                return ArtworkPaletteExtractor.palette(from: artwork)
+            }.value
+
+            // A superseded task must never publish a palette for an old track.
+            guard !Task.isCancelled else { return }
+            featuredPalette = palette
         }
     }
 
@@ -519,7 +529,7 @@ private struct HomeTrackCard: View {
     let track: Track
     let play: () -> Void
 
-    @EnvironmentObject private var player: AudioPlayer
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var isHovering = false
 
     var body: some View {
@@ -527,15 +537,15 @@ private struct HomeTrackCard: View {
             VStack(alignment: .leading, spacing: 9) {
                 ZStack {
                     LazyArtworkView(track: track, size: 136, cornerRadius: 14)
-                    if isHovering {
-                        RoundedRectangle(cornerRadius: 14, style: .continuous)
-                            .fill(.black.opacity(0.28))
-                        Image(systemName: "play.fill")
-                            .font(.system(size: 16, weight: .bold))
-                            .foregroundStyle(.white)
-                            .frame(width: 42, height: 42)
-                            .background(LinearGradient.hpAccentFill, in: Circle())
-                    }
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .fill(.black.opacity(0.28))
+                        .opacity(isHovering ? 1 : 0)
+                    Image(systemName: "play.fill")
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundStyle(.white)
+                        .frame(width: 42, height: 42)
+                        .background(LinearGradient.hpAccentFill, in: Circle())
+                        .opacity(isHovering ? 1 : 0)
                 }
 
                 Text(track.displayTitle)
@@ -548,9 +558,12 @@ private struct HomeTrackCard: View {
                     .lineLimit(1)
             }
             .frame(width: 136, alignment: .leading)
+            .offset(y: isHovering && !reduceMotion ? -2 : 0)
         }
         .buttonStyle(.plain)
         .onHover { isHovering = $0 }
+        // Card-local only: no other card or the surrounding list is re-laid out.
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.16), value: isHovering)
     }
 }
 
@@ -559,6 +572,7 @@ private struct HomeAlbumCard: View {
     let open: () -> Void
     let play: () -> Void
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var isHovering = false
 
     var body: some View {
@@ -570,18 +584,20 @@ private struct HomeAlbumCard: View {
                     ArtworkView(image: nil, size: 146, cornerRadius: 14)
                 }
 
-                if isHovering {
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .fill(.black.opacity(0.27))
-                    Button(action: play) {
-                        Image(systemName: "play.fill")
-                            .font(.system(size: 16, weight: .bold))
-                            .foregroundStyle(.white)
-                            .frame(width: 44, height: 44)
-                            .background(LinearGradient.hpAccentFill, in: Circle())
-                    }
-                    .buttonStyle(.plain)
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(.black.opacity(0.27))
+                    .opacity(isHovering ? 1 : 0)
+
+                Button(action: play) {
+                    Image(systemName: "play.fill")
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundStyle(.white)
+                        .frame(width: 44, height: 44)
+                        .background(LinearGradient.hpAccentFill, in: Circle())
                 }
+                .buttonStyle(.plain)
+                .opacity(isHovering ? 1 : 0)
+                .allowsHitTesting(isHovering)
             }
             .frame(width: 146, height: 146)
             .onTapGesture(perform: open)
@@ -596,6 +612,8 @@ private struct HomeAlbumCard: View {
                 .lineLimit(1)
         }
         .frame(width: 146, alignment: .leading)
+        .offset(y: isHovering && !reduceMotion ? -2 : 0)
         .onHover { isHovering = $0 }
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.16), value: isHovering)
     }
 }

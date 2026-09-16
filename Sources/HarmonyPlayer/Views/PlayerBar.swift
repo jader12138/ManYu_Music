@@ -8,7 +8,7 @@ struct PlayerBar: View {
 
     @EnvironmentObject private var player: AudioPlayer
     @EnvironmentObject private var library: LibraryStore
-    @State private var scrubTime: Double?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @FocusState private var isPlaybackControlFocused: Bool
 
     var body: some View {
@@ -155,13 +155,10 @@ struct PlayerBar: View {
                             .fill(LinearGradient.hpAccentFill)
                             .frame(width: 32, height: 32)
                             .shadow(color: Color.hpAccent.opacity(0.24), radius: 7, y: 3)
-                        Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
-                            .font(.system(size: 12, weight: .bold))
-                            .foregroundStyle(.white)
-                            .offset(x: player.isPlaying ? 0 : 1)
+                        PlaybackToggleSymbol(isPlaying: player.isPlaying, size: 12, offsetWhenPaused: 1)
                     }
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(PlaybackPressButtonStyle(reduceMotion: reduceMotion))
                 .focusable()
                 .focused($isPlaybackControlFocused)
                 .focusEffectDisabled()
@@ -182,30 +179,11 @@ struct PlayerBar: View {
                 }
             }
 
-            HStack(spacing: 8) {
-                Text(Track.formatTime(scrubTime ?? player.currentTime))
-                    .font(.system(size: 9, weight: .medium, design: .monospaced))
-                    .foregroundStyle(Color.hpTextPrimary.opacity(0.38))
-                    .frame(width: 40, alignment: .trailing)
-
-                Slider(
-                    value: playbackBinding,
-                    in: 0...max(player.duration, 1),
-                    onEditingChanged: { isEditing in
-                        guard !isEditing, let scrubTime else { return }
-                        player.seek(to: scrubTime)
-                        self.scrubTime = nil
-                    }
-                )
-                .controlSize(.mini)
-                .tint(.hpAccent)
-                .disabled(player.currentTrack == nil)
-
-                Text(player.duration > 0 ? Track.formatTime(player.duration) : "--:--")
-                    .font(.system(size: 9, weight: .medium, design: .monospaced))
-                    .foregroundStyle(Color.hpTextPrimary.opacity(0.38))
-                    .frame(width: 40, alignment: .leading)
-            }
+            PlaybackProgressRow(
+                clock: player.clock,
+                isEnabled: player.currentTrack != nil,
+                seek: player.seek
+            )
         }
     }
 
@@ -233,16 +211,7 @@ struct PlayerBar: View {
                 }
             }
         } label: {
-            VStack(spacing: 1) {
-                Image(systemName: player.sleepTimerEnd == nil ? "moon.zzz" : "moon.zzz.fill")
-                    .font(.system(size: 10, weight: .semibold))
-                if let remaining = player.sleepTimerRemaining {
-                    Text(shortRemaining(remaining))
-                        .font(.system(size: 7, weight: .medium, design: .monospaced))
-                }
-            }
-            .foregroundStyle(player.sleepTimerEnd == nil ? Color.hpTextPrimary.opacity(0.44) : Color.hpAccent)
-            .frame(width: 34, height: 28)
+            SleepTimerLabel(clock: player.clock, isActive: player.sleepTimerEnd != nil)
         }
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
@@ -309,21 +278,6 @@ struct PlayerBar: View {
         }
     }
 
-    private var playbackBinding: Binding<Double> {
-        Binding(
-            get: {
-                let time = scrubTime ?? player.currentTime
-                return min(time, max(player.duration, time))
-            },
-            set: { scrubTime = $0 }
-        )
-    }
-
-    private func shortRemaining(_ seconds: TimeInterval) -> String {
-        let minutes = max(0, Int(ceil(seconds / 60)))
-        return "\(minutes)m"
-    }
-
     private func focusPlaybackControl() {
         for delay in [0.12, 0.45, 0.9, 1.4] {
             DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
@@ -340,5 +294,121 @@ struct PlayerBar: View {
         case .all: "切换为单曲循环"
         case .one: "关闭循环"
         }
+    }
+}
+
+// MARK: - Clock-scoped playback widgets
+
+/// Elapsed/total time plus the scrubber, shared by the player bar and the
+/// now-playing panel.
+///
+/// This is deliberately the only progress-aware view: it observes
+/// `PlaybackClock` so the 0.25s tick invalidates just this row rather than the
+/// whole player bar or now-playing hierarchy. The scrub position stays local
+/// here, so dragging is unaffected by clock updates.
+struct PlaybackProgressRow: View {
+    @ObservedObject var clock: PlaybackClock
+    let isEnabled: Bool
+    let seek: (Double) -> Void
+    var controlSize: ControlSize = .mini
+    var fontWeight: Font.Weight = .medium
+
+    @State private var scrubTime: Double?
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Text(Track.formatTime(scrubTime ?? clock.currentTime))
+                .font(.system(size: 9, weight: fontWeight, design: .monospaced))
+                .foregroundStyle(Color.hpTextPrimary.opacity(0.38))
+                .frame(width: 40, alignment: .trailing)
+
+            Slider(
+                value: playbackBinding,
+                in: 0...max(clock.duration, 1),
+                onEditingChanged: { isEditing in
+                    guard !isEditing, let scrubTime else { return }
+                    seek(scrubTime)
+                    self.scrubTime = nil
+                }
+            )
+            .controlSize(controlSize)
+            .tint(.hpAccent)
+            .disabled(!isEnabled)
+
+            Text(clock.duration > 0 ? Track.formatTime(clock.duration) : "--:--")
+                .font(.system(size: 9, weight: fontWeight, design: .monospaced))
+                .foregroundStyle(Color.hpTextPrimary.opacity(0.38))
+                .frame(width: 40, alignment: .leading)
+        }
+    }
+
+    private var playbackBinding: Binding<Double> {
+        Binding(
+            get: {
+                let time = scrubTime ?? clock.currentTime
+                return min(time, max(clock.duration, time))
+            },
+            set: { scrubTime = $0 }
+        )
+    }
+}
+
+/// Sleep-timer countdown. Observing `PlaybackClock` here keeps the once-per-
+/// second countdown from invalidating the rest of the player bar.
+struct SleepTimerLabel: View {
+    @ObservedObject var clock: PlaybackClock
+    let isActive: Bool
+
+    var body: some View {
+        VStack(spacing: 1) {
+            Image(systemName: isActive ? "moon.zzz.fill" : "moon.zzz")
+                .font(.system(size: 10, weight: .semibold))
+            if let remaining = clock.sleepTimerRemaining {
+                Text(Self.shortRemaining(remaining))
+                    .font(.system(size: 7, weight: .medium, design: .monospaced))
+            }
+        }
+        .foregroundStyle(isActive ? Color.hpAccent : Color.hpTextPrimary.opacity(0.44))
+        .frame(width: 34, height: 28)
+    }
+
+    private static func shortRemaining(_ seconds: TimeInterval) -> String {
+        let minutes = max(0, Int(ceil(seconds / 60)))
+        return "\(minutes)m"
+    }
+}
+
+/// Play/pause glyph with a light symbol swap. Falls back to an instant swap
+/// when the user asks for reduced motion.
+struct PlaybackToggleSymbol: View {
+    let isPlaying: Bool
+    let size: CGFloat
+    var offsetWhenPaused: CGFloat = 0
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        Image(systemName: isPlaying ? "pause.fill" : "play.fill")
+            .font(.system(size: size, weight: .bold))
+            .foregroundStyle(.white)
+            .offset(x: isPlaying ? 0 : offsetWhenPaused)
+            .contentTransition(reduceMotion ? .identity : .symbolEffect(.replace))
+            .animation(reduceMotion ? nil : .easeInOut(duration: 0.18), value: isPlaying)
+    }
+}
+
+/// Subtle press feedback for the round transport buttons. `reduceMotion` is
+/// passed in by the owning view, because a `ButtonStyle` is not a dynamic
+/// property container.
+struct PlaybackPressButtonStyle: ButtonStyle {
+    let reduceMotion: Bool
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed && !reduceMotion ? 0.93 : 1)
+            .animation(
+                reduceMotion ? nil : .spring(response: 0.24, dampingFraction: 0.72),
+                value: configuration.isPressed
+            )
     }
 }

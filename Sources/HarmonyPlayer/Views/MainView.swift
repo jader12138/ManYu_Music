@@ -5,6 +5,7 @@ struct MainView: View {
     @EnvironmentObject private var library: LibraryStore
     @EnvironmentObject private var player: AudioPlayer
     @EnvironmentObject private var theme: ThemeStore
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @State private var destination: LibraryDestination = .section(.home)
     @State private var selectedAlbum: AlbumGroup?
@@ -15,6 +16,7 @@ struct MainView: View {
     @State private var isDropTargeted = false
     @State private var sortOrder: TrackSortOrder = .dateAdded
     @State private var sortAscending = false
+    @State private var browse = LibraryBrowseSnapshot(request: nil)
     @Namespace private var nowPlayingTransition
     @FocusState private var searchIsFocused: Bool
 
@@ -108,11 +110,14 @@ struct MainView: View {
         .animation(.easeInOut(duration: 0.2), value: library.importNotice)
         .onAppear {
             searchIsFocused = false
-            player.restorePlaybackState(from: library.tracks)
+            if !library.isLoading { player.restorePlaybackState(from: library.tracks) }
             updateWindowBackground()
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
                 searchIsFocused = false
             }
+        }
+        .task(id: browseRequest) {
+            await refreshBrowseSnapshot()
         }
         .onChange(of: showNowPlaying) { _, _ in
             updateWindowBackground()
@@ -166,6 +171,11 @@ struct MainView: View {
         }
     }
 
+    /// Detail panes fade in place; slides are reserved for side panels like the queue.
+    private var detailTransition: AnyTransition {
+        reduceMotion ? .opacity : .opacity.combined(with: .scale(scale: 0.985))
+    }
+
     private var detail: some View {
         VStack(spacing: 0) {
             header
@@ -179,18 +189,25 @@ struct MainView: View {
                 } onPlay: { track, tracks in
                     play(track, in: tracks)
                 }
+                .transition(detailTransition)
             } else if let album = selectedAlbum {
                 AlbumDetailView(album: album) {
                     selectedAlbum = nil
                 } onPlay: { track, tracks in
                     play(track, in: tracks)
                 }
+                .transition(detailTransition)
             } else if let artist = selectedArtist {
                 ArtistDetailView(artist: artist) {
                     selectedArtist = nil
                 } onPlay: { track, tracks in
                     play(track, in: tracks)
                 }
+                .transition(detailTransition)
+            } else if let loadError = library.loadErrorMessage {
+                // A failed load leaves the library empty; showing the empty-state
+                // home here would read as "you have no music" instead of an error.
+                LibraryLoadErrorView(message: loadError)
             } else if section == .home, normalizedSearch.isEmpty {
                 HomeView(
                     tracks: library.tracks,
@@ -215,9 +232,23 @@ struct MainView: View {
                 )
             } else {
                 sectionContent
+                    .disabled(browse.request != browseRequest)
             }
         }
         .background(Color.hpNavy.opacity(0.32))
+        .overlay(alignment: .topTrailing) {
+            if browse.request != browseRequest && !library.isLoading && destination != .settings {
+                ProgressView().controlSize(.mini).padding(.top, 26).padding(.trailing, 12)
+                    .allowsHitTesting(false)
+            }
+        }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            if let message = library.loadErrorMessage ?? library.saveErrorMessage {
+                Text(message).font(.system(size: 11)).foregroundStyle(Color.hpTextPrimary)
+                    .padding(10).frame(maxWidth: .infinity)
+                    .background(Color.hpGold.opacity(0.18))
+            }
+        }
     }
 
     @ViewBuilder
@@ -237,7 +268,7 @@ struct MainView: View {
                 play(first, in: album.tracks)
             }
         case .folders:
-            FolderBrowserView(tracks: filteredTracks) { track in
+            FolderBrowserView(groups: folderGroups) { track in
                 play(track, in: filteredTracks)
             }
         case .artists:
@@ -282,6 +313,8 @@ struct MainView: View {
                     .font(.system(size: 26, weight: .bold, design: .rounded))
                     .foregroundStyle(Color.hpTextPrimary)
                     .lineLimit(1)
+                    .contentTransition(reduceMotion ? .identity : .opacity)
+                    .animation(reduceMotion ? nil : .easeInOut(duration: 0.18), value: headerTitle)
                 Text(headerSubtitle)
                     .font(.system(size: 10, weight: .medium))
                     .foregroundStyle(Color.hpTextPrimary.opacity(0.40))
@@ -433,112 +466,53 @@ struct MainView: View {
         return library.playlists.first(where: { $0.id == id })
     }
 
-    private var filteredTracks: [Track] {
-        let source: [Track]
+    private var filteredTracks: [Track] { browse.tracks }
+    private var albumGroups: [AlbumGroup] { browse.albums }
+    private var homeAlbums: [AlbumGroup] { browse.homeAlbums }
+    private var folderGroups: [FolderGroup] { browse.folders }
+    private var artistGroups: [ArtistGroup] { browse.artists }
 
-        if let playlist = activePlaylist {
-            source = library.tracks(in: playlist)
-        } else {
-            switch section {
-            case .home, .all, .albums, .artists, .folders:
-                source = library.tracks
-            case .recent:
-                source = library.tracks.sorted { $0.dateAdded > $1.dateAdded }
-            case .history:
-                source = library.recentlyPlayedTracks(limit: 200)
-            case .favorites:
-                source = library.tracks.filter { library.favoriteIDs.contains($0.id) }
-            }
-        }
-
-        let searched: [Track]
-        if normalizedSearch.isEmpty {
-            searched = source
-        } else {
-            searched = source.filter { track in
-                track.displayTitle.localizedStandardContains(normalizedSearch)
-                    || track.displayArtist.localizedStandardContains(normalizedSearch)
-                    || track.displayAlbum.localizedStandardContains(normalizedSearch)
-            }
-        }
-
-        if activePlaylist != nil, normalizedSearch.isEmpty {
-            return searched
-        }
-        return sorted(searched, by: sortOrder, ascending: sortAscending)
+    private var browseRequest: LibraryBrowseRequest {
+        LibraryBrowseRequest(revision: library.revision, isLoading: library.isLoading,
+                             section: section, search: normalizedSearch,
+                             sortOrder: sortOrder, ascending: sortAscending)
     }
 
-    private var albumGroups: [AlbumGroup] {
-        let grouped = Dictionary(grouping: filteredTracks) {
-            "\($0.displayAlbum)\u{1f}\($0.displayArtist)"
+    private func refreshBrowseSnapshot() async {
+        guard !library.isLoading else { return }
+        let request = browseRequest
+        // Coalesce keystrokes without delaying navigation or clearing the search field.
+        if !request.search.isEmpty {
+            do { try await Task.sleep(for: .milliseconds(180)) } catch { return }
         }
-
-        return grouped.values.map { tracks in
-            AlbumGroup(
-                title: tracks[0].displayAlbum,
-                artist: tracks[0].displayArtist,
-                tracks: tracks.sorted {
-                    $0.displayTitle.localizedStandardCompare($1.displayTitle) == .orderedAscending
-                }
-            )
+        guard !Task.isCancelled else { return }
+        let tracks = library.tracks
+        let favorites = library.favoriteIDs
+        let recent = library.recentlyPlayedTracks(limit: 200)
+        let work = Task.detached(priority: .userInitiated) {
+            LibraryBrowseSnapshot.build(request: request, tracks: tracks,
+                                        favoriteIDs: favorites, recentTracks: recent)
         }
-        .sorted {
-            $0.title.localizedStandardCompare($1.title) == .orderedAscending
+        let result = await withTaskCancellationHandler {
+            await work.value
+        } onCancel: {
+            work.cancel()
         }
+        guard !Task.isCancelled, request == browseRequest else { return }
+        // Never animate a many-thousand-row insertion/reorder.
+        var transaction = Transaction(animation: nil)
+        transaction.disablesAnimations = true
+        withTransaction(transaction) { browse = result }
     }
 
-    private var homeAlbums: [AlbumGroup] {
-        let grouped = Dictionary(grouping: library.tracks) {
-            "\($0.displayAlbum)\u{1f}\($0.displayArtist)"
+    private var loadingContent: some View {
+        VStack(spacing: 12) {
+            ProgressView().controlSize(.small)
+            Text(library.isLoading ? "正在载入资料库…" : "正在整理音乐…")
+                .font(.system(size: 12))
+                .foregroundStyle(Color.hpTextSecondary)
         }
-
-        return grouped.values.map { tracks in
-            AlbumGroup(
-                title: tracks[0].displayAlbum,
-                artist: tracks[0].displayArtist,
-                tracks: tracks.sorted { $0.dateAdded > $1.dateAdded }
-            )
-        }
-        .sorted {
-            ($0.tracks.first?.dateAdded ?? .distantPast) > ($1.tracks.first?.dateAdded ?? .distantPast)
-        }
-    }
-
-    private var folderGroups: [FolderGroup] {
-        let grouped = Dictionary(grouping: filteredTracks) {
-            $0.url.deletingLastPathComponent().standardizedFileURL.path
-        }
-
-        return grouped.compactMap { path, tracks in
-            guard let name = tracks.first?.url.deletingLastPathComponent().lastPathComponent else {
-                return nil
-            }
-            return FolderGroup(
-                path: path,
-                name: name,
-                tracks: tracks.sorted {
-                    $0.displayTitle.localizedStandardCompare($1.displayTitle) == .orderedAscending
-                }
-            )
-        }
-        .sorted {
-            $0.name.localizedStandardCompare($1.name) == .orderedAscending
-        }
-    }
-
-    private var artistGroups: [ArtistGroup] {
-        Dictionary(grouping: filteredTracks, by: \.displayArtist)
-            .map { name, tracks in
-                ArtistGroup(
-                    name: name,
-                    tracks: tracks.sorted {
-                        $0.displayTitle.localizedStandardCompare($1.displayTitle) == .orderedAscending
-                    }
-                )
-            }
-            .sorted {
-                $0.name.localizedStandardCompare($1.name) == .orderedAscending
-            }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private var headerTitle: String {
@@ -594,36 +568,51 @@ struct MainView: View {
         if activePlaylist != nil { return true }
         return section != .home && section != .albums && section != .artists && section != .folders
     }
+}
 
-    private func sorted(
-        _ tracks: [Track],
-        by order: TrackSortOrder,
-        ascending: Bool
-    ) -> [Track] {
-        tracks.sorted { lhs, rhs in
-            let result: ComparisonResult
-            switch order {
-            case .title:
-                result = lhs.displayTitle.localizedStandardCompare(rhs.displayTitle)
-            case .artist:
-                result = lhs.displayArtist.localizedStandardCompare(rhs.displayArtist)
-            case .album:
-                result = lhs.displayAlbum.localizedStandardCompare(rhs.displayAlbum)
-            case .duration:
-                result = lhs.duration == rhs.duration
-                    ? .orderedSame
-                    : (lhs.duration < rhs.duration ? .orderedAscending : .orderedDescending)
-            case .dateAdded:
-                result = lhs.dateAdded == rhs.dateAdded
-                    ? .orderedSame
-                    : (lhs.dateAdded < rhs.dateAdded ? .orderedAscending : .orderedDescending)
+private struct LibraryLoadErrorView: View {
+    let message: String
+
+    var body: some View {
+        VStack(spacing: 18) {
+            ZStack {
+                Circle()
+                    .fill(Color.hpGold.opacity(0.14))
+                    .frame(width: 100, height: 100)
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: 34, weight: .medium))
+                    .foregroundStyle(Color.hpGold)
             }
 
-            if result == .orderedSame {
-                return lhs.displayTitle.localizedStandardCompare(rhs.displayTitle) == .orderedAscending
+            VStack(spacing: 7) {
+                Text("资料库无法载入")
+                    .font(.system(size: 21, weight: .bold, design: .rounded))
+                    .foregroundStyle(Color.hpTextPrimary)
+                Text(message)
+                    .font(.system(size: 12))
+                    .foregroundStyle(Color.hpTextPrimary.opacity(0.52))
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: 420)
+                Text("为避免覆盖原文件，修改已暂停。")
+                    .font(.system(size: 10))
+                    .foregroundStyle(Color.hpTextPrimary.opacity(0.34))
             }
-            return ascending ? result == .orderedAscending : result == .orderedDescending
+
+            Button {
+                NotificationCenter.default.post(name: .openSettings, object: nil)
+            } label: {
+                Label("前往设置", systemImage: "gearshape.fill")
+                    .font(.system(size: 12, weight: .semibold))
+                    .padding(.horizontal, 18)
+                    .padding(.vertical, 10)
+                    .foregroundStyle(.white)
+                    .background(LinearGradient.hpAccentFill, in: Capsule())
+            }
+            .buttonStyle(.plain)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(40)
     }
 }
 

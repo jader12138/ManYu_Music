@@ -4,11 +4,13 @@ struct SidebarView: View {
     @Binding var destination: LibraryDestination
 
     @EnvironmentObject private var library: LibraryStore
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @State private var showingCreatePlaylist = false
     @State private var newPlaylistName = ""
     @State private var playlistToRename: Playlist?
     @State private var renameText = ""
+    @Namespace private var selectionNamespace
 
     private let discoverySections: [LibrarySection] = [.home]
     private let librarySections: [LibrarySection] = [.all, .albums, .artists, .folders]
@@ -60,12 +62,13 @@ struct SidebarView: View {
                                 .background(Color.hpTextPrimary.opacity(0.06), in: Circle())
                         }
                         .buttonStyle(.plain)
+                        .disabled(!library.canEdit)
                         .help("新建歌单")
                         .padding(.trailing, 12)
                     }
                     .padding(.top, 20)
 
-                    VStack(spacing: 3) {
+                    LazyVStack(spacing: 3) {
                         ForEach(library.playlists) { playlist in
                             playlistButton(playlist)
                         }
@@ -135,9 +138,7 @@ struct SidebarView: View {
 
     private var brand: some View {
         Button {
-            withAnimation(.easeOut(duration: 0.16)) {
-                destination = .section(.home)
-            }
+            select(.section(.home))
         } label: {
             HStack(spacing: 12) {
                 BrandMark()
@@ -171,9 +172,7 @@ struct SidebarView: View {
     private func sidebarButton(for section: LibrarySection) -> some View {
         let selected = destination == .section(section)
         return Button {
-            withAnimation(.easeOut(duration: 0.16)) {
-                destination = .section(section)
-            }
+            select(.section(section))
         } label: {
             sidebarLabel(
                 title: section.title,
@@ -190,9 +189,7 @@ struct SidebarView: View {
     private func playlistButton(_ playlist: Playlist) -> some View {
         let selected = destination == .playlist(playlist.id)
         return Button {
-            withAnimation(.easeOut(duration: 0.16)) {
-                destination = .playlist(playlist.id)
-            }
+            select(.playlist(playlist.id))
         } label: {
             sidebarLabel(
                 title: playlist.name,
@@ -252,8 +249,11 @@ struct SidebarView: View {
         .padding(.horizontal, 12)
         .frame(height: 39)
         .background {
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(selected ? LinearGradient.hpSelectedRow : LinearGradient(colors: [.clear], startPoint: .top, endPoint: .bottom))
+            if selected {
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(LinearGradient.hpSelectedRow)
+                    .matchedGeometryEffect(id: "sidebarSelection", in: selectionNamespace)
+            }
         }
         .overlay(alignment: .leading) {
             if selected {
@@ -268,9 +268,7 @@ struct SidebarView: View {
 
     private var settingsButton: some View {
         Button {
-            withAnimation(.easeOut(duration: 0.16)) {
-                destination = .settings
-            }
+            select(.settings)
         } label: {
             sidebarLabel(
                 title: "设置",
@@ -283,6 +281,12 @@ struct SidebarView: View {
         .buttonStyle(.plain)
         .padding(.horizontal, 10)
         .help("设置")
+    }
+
+    private func select(_ newDestination: LibraryDestination) {
+        withAnimation(reduceMotion ? nil : .spring(response: 0.30, dampingFraction: 0.86)) {
+            destination = newDestination
+        }
     }
 
     private func iconColor(for section: LibrarySection) -> Color {
@@ -305,11 +309,11 @@ struct SidebarView: View {
         case .all:
             return library.tracks.count
         case .albums:
-            return Set(library.tracks.map(\.displayAlbum)).count
+            return library.albumCount
         case .artists:
-            return Set(library.tracks.map(\.displayArtist)).count
+            return library.artistCount
         case .folders:
-            return Set(library.tracks.map { $0.url.deletingLastPathComponent().path }).count
+            return library.folderCount
         case .recent:
             return nil
         case .history:

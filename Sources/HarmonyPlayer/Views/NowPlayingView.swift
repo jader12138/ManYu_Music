@@ -5,7 +5,7 @@ struct NowPlayingView: View {
     let transitionNamespace: Namespace.ID
 
     @EnvironmentObject private var player: AudioPlayer
-    @State private var scrubTime: Double?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var showingLyricsStyle = false
     @AppStorage("ManyuMusic.lyricsFontSize") private var lyricsFontSize = 18.0
     @AppStorage("ManyuMusic.lyricsFontDesign") private var lyricsFontDesignRaw = "rounded"
@@ -89,30 +89,13 @@ struct NowPlayingView: View {
 
     private var compactPlaybackControls: some View {
         VStack(spacing: 8) {
-            HStack(spacing: 8) {
-                Text(Track.formatTime(scrubTime ?? player.currentTime))
-                    .font(.system(size: 9, weight: .semibold, design: .monospaced))
-                    .foregroundStyle(Color.hpTextPrimary.opacity(0.38))
-                    .frame(width: 40, alignment: .trailing)
-
-                Slider(
-                    value: playbackBinding,
-                    in: 0...max(player.duration, 1),
-                    onEditingChanged: { isEditing in
-                        guard !isEditing, let scrubTime else { return }
-                        player.seek(to: scrubTime)
-                        self.scrubTime = nil
-                    }
-                )
-                .controlSize(.small)
-                .tint(Color.hpAccent)
-                .disabled(player.currentTrack == nil)
-
-                Text(player.duration > 0 ? Track.formatTime(player.duration) : "--:--")
-                    .font(.system(size: 9, weight: .semibold, design: .monospaced))
-                    .foregroundStyle(Color.hpTextPrimary.opacity(0.38))
-                    .frame(width: 40, alignment: .leading)
-            }
+            PlaybackProgressRow(
+                clock: player.clock,
+                isEnabled: player.currentTrack != nil,
+                seek: player.seek,
+                controlSize: .small,
+                fontWeight: .semibold
+            )
 
             HStack(spacing: 16) {
                 IconButton(
@@ -132,14 +115,12 @@ struct NowPlayingView: View {
                 Button {
                     player.togglePlayback()
                 } label: {
-                    Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
-                        .font(.system(size: 14, weight: .bold))
-                        .foregroundStyle(.white)
+                    PlaybackToggleSymbol(isPlaying: player.isPlaying, size: 14)
                         .frame(width: 38, height: 38)
                         .background(LinearGradient.hpAccentFill, in: Circle())
                         .shadow(color: Color.black.opacity(0.08), radius: 5, y: 2)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(PlaybackPressButtonStyle(reduceMotion: reduceMotion))
                 .disabled(player.currentTrack == nil)
 
                 IconButton(systemName: "forward.fill", help: "下一首", size: 14) {
@@ -339,16 +320,6 @@ struct NowPlayingView: View {
         ]
     }
 
-    private var playbackBinding: Binding<Double> {
-        Binding(
-            get: {
-                let time = scrubTime ?? player.currentTime
-                return min(time, max(player.duration, time))
-            },
-            set: { scrubTime = $0 }
-        )
-    }
-
     private var lyricsPanel: some View {
         VStack(spacing: 8) {
             if player.lyricLines.isEmpty {
@@ -365,7 +336,7 @@ struct NowPlayingView: View {
             } else {
                 LyricTimelineView(
                     lines: player.lyricLines,
-                    currentTime: player.currentTime,
+                    clock: player.clock,
                     seek: player.seek,
                     baseFontSize: CGFloat(lyricsFontSize),
                     fontDesign: lyricsFontDesign,

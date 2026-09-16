@@ -146,7 +146,19 @@ struct ArtworkView: View {
     var size: CGFloat
     var cornerRadius: CGFloat = 12
 
+    /// Thumbnails skip the drop shadow: a blurred shadow per cover is a real cost
+    /// when a list renders hundreds of 44pt rows.
+    private var showsShadow: Bool { size > 64 }
+
     var body: some View {
+        if showsShadow {
+            artwork.shadow(color: .black.opacity(0.26), radius: 10, y: 6)
+        } else {
+            artwork
+        }
+    }
+
+    private var artwork: some View {
         Group {
             if let image {
                 Image(nsImage: image)
@@ -178,7 +190,6 @@ struct ArtworkView: View {
             RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                 .stroke(.white.opacity(0.13), lineWidth: 1)
         }
-        .shadow(color: .black.opacity(0.26), radius: 10, y: 6)
     }
 }
 
@@ -188,6 +199,7 @@ struct PlaybackStateBadge: View {
     var palette: ArtworkPalette?
 
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         ZStack {
@@ -207,6 +219,8 @@ struct PlaybackStateBadge: View {
                 .font(.system(size: size * 0.37, weight: .bold))
                 .foregroundStyle(.white)
                 .offset(x: isPlaying ? 0 : size * 0.035)
+                .contentTransition(reduceMotion ? .identity : .symbolEffect(.replace))
+                .animation(reduceMotion ? nil : .easeInOut(duration: 0.18), value: isPlaying)
         }
         .frame(width: size, height: size)
         .shadow(color: .black.opacity(0.15), radius: 7, y: 4)
@@ -256,6 +270,7 @@ struct IconButton: View {
     var size: CGFloat = 15
     let action: () -> Void
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var isHovering = false
 
     var body: some View {
@@ -264,6 +279,8 @@ struct IconButton: View {
                 .font(.system(size: size, weight: .semibold))
                 .frame(width: 32, height: 32)
                 .foregroundStyle(isActive ? Color.hpAccent : Color.hpTextPrimary.opacity(0.78))
+                .contentTransition(reduceMotion ? .identity : .symbolEffect(.replace))
+                .animation(reduceMotion ? nil : .easeInOut(duration: 0.18), value: systemName)
                 .background {
                     RoundedRectangle(cornerRadius: 9, style: .continuous)
                         .fill(
@@ -271,10 +288,11 @@ struct IconButton: View {
                                 ? Color.hpAccent.opacity(0.15)
                                 : Color.hpTextPrimary.opacity(isHovering ? 0.08 : 0)
                         )
+                        .animation(reduceMotion ? nil : .easeOut(duration: 0.14), value: isHovering)
                 }
                 .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(PlaybackPressButtonStyle(reduceMotion: reduceMotion))
         .onHover { isHovering = $0 }
         .help(help)
     }
@@ -286,18 +304,39 @@ final class ArtworkCache {
     private let cache = NSCache<NSString, NSImage>()
 
     private init() {
-        cache.countLimit = 140
-        cache.totalCostLimit = 160 * 1024 * 1024
+        cache.countLimit = 320
+        cache.totalCostLimit = 128 * 1024 * 1024
     }
 
+    /// Cache key: file URL + pixel tier, so tiers never evict each other and the
+    /// key space stays bounded (three tiers per file).
+    static func key(for url: URL, tier: ArtworkPixelTier) -> String {
+        "\(url.path)|\(tier.pixels)"
+    }
+
+    func image(for url: URL, tier: ArtworkPixelTier) -> NSImage? {
+        cache.object(forKey: Self.key(for: url, tier: tier) as NSString)
+    }
+
+    func insert(_ image: NSImage, for url: URL, tier: ArtworkPixelTier) {
+        let pixels = max(1, image.size.width * image.size.height)
+        cache.setObject(image, forKey: Self.key(for: url, tier: tier) as NSString, cost: Int(pixels * 4))
+    }
+
+    // Kept for callers that only know a URL: equivalent to the default 768px tier.
     func image(for url: URL) -> NSImage? {
-        cache.object(forKey: url.path as NSString)
+        image(for: url, tier: .large)
     }
 
     func insert(_ image: NSImage, for url: URL) {
-        let pixels = max(1, image.size.width * image.size.height)
-        cache.setObject(image, forKey: url.path as NSString, cost: Int(pixels * 4))
+        insert(image, for: url, tier: .large)
     }
+}
+
+private struct ArtworkRequestID: Hashable {
+    let url: URL
+    let size: CGFloat
+    let tier: ArtworkPixelTier
 }
 
 struct LazyArtworkView: View {
@@ -305,20 +344,38 @@ struct LazyArtworkView: View {
     var size: CGFloat
     var cornerRadius: CGFloat = 10
 
+    @Environment(\.displayScale) private var displayScale
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var image: NSImage?
+
+    private var tier: ArtworkPixelTier {
+        ArtworkPixelTier.tier(for: size, displayScale: displayScale)
+    }
+
+    private var requestID: ArtworkRequestID {
+        ArtworkRequestID(url: track.url, size: size, tier: tier)
+    }
 
     var body: some View {
         ArtworkView(image: image, size: size, cornerRadius: cornerRadius)
-            .task(id: track.id) {
-                if let cached = ArtworkCache.shared.image(for: track.url) {
+            .task(id: requestID) {
+                if let cached = ArtworkCache.shared.image(for: track.url, tier: tier) {
                     image = cached
                     return
                 }
-                let loaded = await AudioMetadataLoader.artwork(for: track)
-                guard !Task.isCancelled else { return }
-                image = loaded
-                if let loaded {
-                    ArtworkCache.shared.insert(loaded, for: track.url)
+
+                // A new request on a reused view must not keep the previous cover.
+                image = nil
+
+                let loaded = await AudioMetadataLoader.artwork(for: track, pixelSize: tier.pixels)
+                guard !Task.isCancelled, let loaded else { return }
+
+                if reduceMotion {
+                    image = loaded
+                } else {
+                    withAnimation(.easeOut(duration: 0.18)) {
+                        image = loaded
+                    }
                 }
             }
     }
