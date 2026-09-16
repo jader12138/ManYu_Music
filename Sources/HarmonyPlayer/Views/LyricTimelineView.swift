@@ -20,7 +20,9 @@ struct LyricTimelineView: View {
             let activeIndex = currentLineIndex
             ScrollViewReader { proxy in
                 ScrollView(.vertical, showsIndicators: false) {
-                    LazyVStack(spacing: stackSpacing) {
+                    // 普通 VStack：行数有限（歌词通常几百行以内），
+                    // 避免 Lazy 版本在滚动过程中逐行实例化造成的顿挫。
+                    VStack(spacing: stackSpacing) {
                         ForEach(Array(lines.enumerated()), id: \.element.id) { index, line in
                             lyricLine(line, index: index, activeIndex: activeIndex)
                                 .id(index)
@@ -84,18 +86,16 @@ struct LyricTimelineView: View {
             guard let time = line.time else { return }
             seek(time)
         } label: {
+            // 字号与字重保持恒定：只靠 scaleEffect 做强调，避免行高变化
+            // 在滚动动画进行时改变布局、造成"卡一下"的观感。
             Text(line.text)
-                .font(.system(
-                    size: isCurrent ? baseFontSize * 1.34 : baseFontSize,
-                    weight: isCurrent ? .bold : .medium,
-                    design: fontDesign
-                ))
+                .font(.system(size: baseFontSize, weight: .semibold, design: fontDesign))
                 .foregroundStyle(lineForegroundStyle(isCurrent: isCurrent, opacity: visibleOpacity))
                 .multilineTextAlignment(.center)
                 .lineSpacing(max(3, baseFontSize * 0.22))
                 .padding(.horizontal, 14)
                 .padding(.vertical, max(1.5, baseFontSize * 0.12 * lineSpacingScale))
-                .scaleEffect(isCurrent ? 1.025 : max(0.92, 1 - CGFloat(distance) * 0.012))
+                .scaleEffect(isCurrent ? 1.30 : max(0.92, 1 - CGFloat(distance) * 0.012))
                 .blur(radius: distance > 2 ? 0.35 : 0)
                 .shadow(
                     color: textColor.opacity(isCurrent ? 0.18 : 0),
@@ -106,7 +106,7 @@ struct LyricTimelineView: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .animation(reduceMotion ? nil : .easeInOut(duration: 0.34), value: activeIndex)
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.30), value: activeIndex)
         .help(line.time == nil ? "" : "点击跳到这一句")
     }
 
@@ -130,7 +130,8 @@ struct LyricTimelineView: View {
     private func scroll(to index: Int, proxy: ScrollViewProxy, animated: Bool) {
         guard index >= 0, lines.indices.contains(index) else { return }
         if animated, !reduceMotion {
-            withAnimation(.spring(response: 0.52, dampingFraction: 0.86)) {
+            // 临界阻尼弹簧：平滑滑到位、不回弹，连续换行时观感连贯。
+            withAnimation(.spring(response: 0.45, dampingFraction: 1.0)) {
                 proxy.scrollTo(index, anchor: .center)
             }
         } else {
