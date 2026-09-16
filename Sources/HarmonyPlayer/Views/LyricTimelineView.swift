@@ -20,6 +20,8 @@ struct LyricTimelineView: View {
     var textColor: Color = .hpTextPrimary
     var lineSpacingScale: CGFloat = 0.9
     var visibleLineCount: Int = 9
+    /// 歌词时间轴偏移（秒）：正 = 歌词延后显示，负 = 提前显示。
+    var lyricOffset: Double = 0
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var activeIndex: Int = -1
@@ -89,6 +91,13 @@ struct LyricTimelineView: View {
             }
             .onChange(of: activeIndex) { _, _ in
                 centerActive(in: geometry.size.height, animated: !reduceMotion)
+            }
+            .onChange(of: lyricOffset) { _, _ in
+                // 偏移调整后立即按新时间轴重算当前行。
+                let index = lineIndex(at: clock.currentTime)
+                if index != activeIndex {
+                    activeIndex = index
+                }
             }
             .onChange(of: lines.first?.id) { _, _ in
                 rowHeights = [:]
@@ -163,7 +172,8 @@ struct LyricTimelineView: View {
 
     /// 与播放位置匹配的行下标；无可匹配行时为 -1。
     private func lineIndex(at time: Double) -> Int {
-        let threshold = time + 0.12
+        // 歌词偏移：把歌词时间轴整体平移（正 = 延后显示）。
+        let threshold = time - lyricOffset + 0.12
         var result = -1
         for (index, line) in lines.enumerated() {
             guard let lineTime = line.time else { continue }

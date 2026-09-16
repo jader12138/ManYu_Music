@@ -33,6 +33,8 @@ final class AudioPlayer: ObservableObject {
     @Published var isShuffle = false
     @Published var repeatMode: RepeatMode = .off
     @Published var playbackError: String?
+    /// 当前歌曲的歌词时间轴偏移（秒）。正 = 歌词延后显示，负 = 提前显示。
+    @Published private(set) var lyricOffset: Double = 0
 
     /// Progress state shared with the minimal views that need it. Views must
     /// receive `player.clock` explicitly; `clock.objectWillChange` is never
@@ -498,11 +500,55 @@ final class AudioPlayer: ObservableObject {
     }
 
     private func loadLyrics(for track: Track) {
+        restoreLyricOffset(for: track)
         Task {
             let lyrics = await AudioMetadataLoader.lyrics(for: track)
             guard self.currentTrack?.id == track.id else { return }
             self.lyricLines = LyricsParser.parse(lyrics)
         }
+    }
+
+    // MARK: - 歌词进度偏移
+
+    /// 歌词偏移按歌曲存放在 UserDefaults，键为 track UUID；不改动 library.json 格式。
+    private static let lyricOffsetsKey = "HarmonyPlayer.lyricOffsets"
+    /// 偏移上下限：±10 秒足够覆盖常见的歌词整体错位。
+    private static let lyricOffsetLimit: Double = 10
+
+    private var lyricOffsetsStore: [String: Double] {
+        get {
+            UserDefaults.standard.dictionary(forKey: Self.lyricOffsetsKey) as? [String: Double] ?? [:]
+        }
+        set {
+            UserDefaults.standard.set(newValue, forKey: Self.lyricOffsetsKey)
+        }
+    }
+
+    /// 以 0.5 秒步进微调歌词时间轴：正数把歌词往后挪（延后显示）。
+    func adjustLyricOffset(_ delta: Double) {
+        setLyricOffset(lyricOffset + delta)
+    }
+
+    /// 清除当前歌曲的歌词偏移。
+    func resetLyricOffset() {
+        setLyricOffset(0)
+    }
+
+    private func setLyricOffset(_ value: Double) {
+        let clamped = min(max(value, -Self.lyricOffsetLimit), Self.lyricOffsetLimit)
+        lyricOffset = clamped
+        guard let id = currentTrack?.id else { return }
+        var store = lyricOffsetsStore
+        if abs(clamped) < 0.001 {
+            store.removeValue(forKey: id.uuidString)
+        } else {
+            store[id.uuidString] = clamped
+        }
+        lyricOffsetsStore = store
+    }
+
+    private func restoreLyricOffset(for track: Track) {
+        lyricOffset = lyricOffsetsStore[track.id.uuidString] ?? 0
     }
 
     private func move(by offset: Int, manual: Bool) {
