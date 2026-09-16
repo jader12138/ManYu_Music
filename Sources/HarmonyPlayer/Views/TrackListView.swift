@@ -80,8 +80,8 @@ struct TrackListView: View {
         alignment: Alignment = .leading
     ) -> some View {
         let isActive = sortColumn == column
-        // 固定 8pt 指示位：三角显隐不挤动列头文字。
-        let label = HStack(spacing: 2) {
+        // 固定 8pt 指示位 + 一个字宽的间距：尖角显隐不挤动列头文字。
+        let label = HStack(spacing: 10) {
             Text(title)
             ZStack {
                 Image(systemName: sortAscending ? "chevron.up" : "chevron.down")
