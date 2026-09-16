@@ -181,7 +181,8 @@ struct PlayerBar: View {
             PlaybackProgressRow(
                 clock: player.clock,
                 isEnabled: player.currentTrack != nil,
-                seek: player.seek
+                seek: player.seek,
+                isPlaying: player.isPlaying
             )
         }
     }
@@ -309,46 +310,130 @@ struct PlaybackProgressRow: View {
     @ObservedObject var clock: PlaybackClock
     let isEnabled: Bool
     let seek: (Double) -> Void
+    var isPlaying: Bool = false
     var controlSize: ControlSize = .mini
     var fontWeight: Font.Weight = .medium
 
-    @State private var scrubTime: Double?
+    /// 航位推算锚点：媒体时间 anchorTime 对应的"应到墙钟时刻" anchorWall。
+    ///
+    /// 时钟回调经 `Task { @MainActor }` 投递，到达时刻天然抖动；若每次
+    /// tick 都用"当前墙钟"重设锚点，投递延迟的波动会直接变成显示时间的
+    /// 回跳（锯齿）。这里改为按媒体时间推进锚点墙钟（anchorWall +=
+    /// clockDelta），投递早晚完全不影响显示；seek/切歌/暂停恢复时
+    /// （媒体推进与墙钟推进脱钩）才整体重同步。
+    @State private var anchorTime: Double = 0
+    @State private var anchorWall = Date()
 
     var body: some View {
-        HStack(spacing: 8) {
-            Text(Track.formatTime(scrubTime ?? clock.currentTime))
-                .font(.system(size: 9, weight: fontWeight, design: .monospaced))
-                .foregroundStyle(Color.hpTextPrimary.opacity(0.38))
-                .frame(width: 40, alignment: .trailing)
+        TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { context in
+            let raw = isPlaying ? anchorTime + context.date.timeIntervalSince(anchorWall) : anchorTime
+            let displayed = clock.duration > 0 ? min(max(raw, 0), clock.duration) : max(raw, 0)
+            HStack(spacing: 8) {
+                Text(Track.formatTime(displayed))
+                    .font(.system(size: 9, weight: fontWeight, design: .monospaced))
+                    .foregroundStyle(Color.hpTextPrimary.opacity(0.38))
+                    .frame(width: 40, alignment: .trailing)
 
-            Slider(
-                value: playbackBinding,
-                in: 0...max(clock.duration, 1),
-                onEditingChanged: { isEditing in
-                    guard !isEditing, let scrubTime else { return }
-                    seek(scrubTime)
-                    self.scrubTime = nil
-                }
-            )
-            .controlSize(controlSize)
-            .tint(.hpAccent)
-            .disabled(!isEnabled)
+                SmoothScrubber(
+                    progress: clock.duration > 0 ? min(max(displayed / clock.duration, 0), 1) : 0,
+                    duration: clock.duration,
+                    isEnabled: isEnabled,
+                    seek: seek
+                )
+                .disabled(!isEnabled)
 
-            Text(clock.duration > 0 ? Track.formatTime(clock.duration) : "--:--")
-                .font(.system(size: 9, weight: fontWeight, design: .monospaced))
-                .foregroundStyle(Color.hpTextPrimary.opacity(0.38))
-                .frame(width: 40, alignment: .leading)
+                Text(clock.duration > 0 ? Track.formatTime(clock.duration) : "--:--")
+                    .font(.system(size: 9, weight: fontWeight, design: .monospaced))
+                    .foregroundStyle(Color.hpTextPrimary.opacity(0.38))
+                    .frame(width: 40, alignment: .leading)
+            }
+        }
+        .onAppear {
+            anchorTime = clock.currentTime
+            anchorWall = Date()
+        }
+        .onChange(of: clock.currentTime) { old, new in
+            let wallDelta = Date().timeIntervalSince(anchorWall)
+            let clockDelta = new - old
+            let desynced = abs(clockDelta - wallDelta) > 1.0 || clockDelta < -0.5 || !isPlaying
+            if desynced {
+                // seek、切歌、暂停恢复：媒体时间与墙钟脱钩，整体重同步。
+                anchorTime = new
+                anchorWall = Date()
+            } else {
+                // 正常推进：锚点墙钟按媒体时间走，投递延迟不进显示。
+                anchorTime = new
+                anchorWall = anchorWall.addingTimeInterval(clockDelta)
+            }
         }
     }
+}
 
-    private var playbackBinding: Binding<Double> {
-        Binding(
-            get: {
-                let time = scrubTime ?? clock.currentTime
-                return min(time, max(clock.duration, time))
-            },
-            set: { scrubTime = $0 }
-        )
+/// Apple Music 风格的平滑进度条。
+///
+/// 进度由 TimelineView 按帧插值后传入，这里不做任何进度动画，绘制即所见；
+/// 拖动时本地覆盖显示值并实时跟手，松手才 seek。
+private struct SmoothScrubber: View {
+    let progress: Double
+    let duration: Double
+    let isEnabled: Bool
+    let seek: (Double) -> Void
+
+    @State private var dragTime: Double?
+    @State private var isHovering = false
+
+    private var displayProgress: Double {
+        if let dragTime {
+            return duration > 0 ? min(max(dragTime / duration, 0), 1) : 0
+        }
+        return progress
+    }
+    private var isDragging: Bool { dragTime != nil }
+    private var showKnob: Bool { isHovering || isDragging }
+
+    var body: some View {
+        GeometryReader { geo in
+            let width = geo.size.width
+            let knobX = min(max(width * displayProgress - 5.5, -1), width - 10)
+            ZStack(alignment: .leading) {
+                Capsule()
+                    .fill(Color.hpTextPrimary.opacity(0.15))
+                    .frame(height: 3.5)
+                Capsule()
+                    .fill(Color.hpAccent)
+                    .frame(width: max(3.5, width * displayProgress), height: 3.5)
+                Circle()
+                    .fill(Color.hpAccent)
+                    .frame(width: 11, height: 11)
+                    .shadow(color: .black.opacity(0.22), radius: 1.6, y: 0.5)
+                    .scaleEffect(showKnob ? 1 : 0.5)
+                    .opacity(showKnob ? 1 : 0)
+                    // 出现/消失动画只作用在缩放与透明度上；位置不参与这次
+                    // 动画，因此小球出现时直接就在当前播放位置，不会从
+                    // 上次消失的地方滑过来。
+                    .animation(.easeInOut(duration: 0.16), value: showKnob)
+                    .offset(x: knobX)
+            }
+            .frame(width: width, height: geo.size.height, alignment: .leading)
+            .contentShape(Rectangle())
+            .onHover { isHovering = $0 }
+            .gesture(dragGesture(width))
+        }
+        .frame(height: 13)
+    }
+
+    private func dragGesture(_ width: CGFloat) -> some Gesture {
+        DragGesture(minimumDistance: 0)
+            .onChanged { value in
+                guard isEnabled else { return }
+                let ratio = min(max(value.location.x / max(width, 1), 0), 1)
+                dragTime = ratio * duration
+            }
+            .onEnded { _ in
+                guard let target = dragTime else { return }
+                dragTime = nil
+                seek(target)
+            }
     }
 }
 

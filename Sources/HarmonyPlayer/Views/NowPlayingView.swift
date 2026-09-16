@@ -5,6 +5,7 @@ struct NowPlayingView: View {
     let transitionNamespace: Namespace.ID
 
     @EnvironmentObject private var player: AudioPlayer
+    @EnvironmentObject private var library: LibraryStore
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var showingLyricsStyle = false
     @AppStorage("ManyuMusic.lyricsFontSize") private var lyricsFontSize = 18.0
@@ -93,6 +94,7 @@ struct NowPlayingView: View {
                 clock: player.clock,
                 isEnabled: player.currentTrack != nil,
                 seek: player.seek,
+                isPlaying: player.isPlaying,
                 controlSize: .small,
                 fontWeight: .semibold
             )
@@ -136,10 +138,26 @@ struct NowPlayingView: View {
                 ) {
                     player.repeatMode.advance()
                 }
+
+                IconButton(
+                    systemName: isCurrentFavorite ? "heart.fill" : "heart",
+                    isActive: isCurrentFavorite,
+                    help: isCurrentFavorite ? "取消收藏" : "收藏",
+                    size: 14
+                ) {
+                    if let track = player.currentTrack {
+                        library.toggleFavorite(track)
+                    }
+                }
+                .disabled(player.currentTrack == nil)
             }
         }
         .padding(.horizontal, 4)
         .padding(.vertical, 6)
+    }
+
+    private var isCurrentFavorite: Bool {
+        player.currentTrack.map { library.isFavorite($0) } ?? false
     }
 
     private var lyricsFontDesign: Font.Design {

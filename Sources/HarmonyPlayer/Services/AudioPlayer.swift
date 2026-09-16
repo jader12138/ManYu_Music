@@ -207,15 +207,31 @@ final class AudioPlayer: ObservableObject {
         move(by: -1, manual: true)
     }
 
+    /// 进行中的 seek。AVPlayer 落位前，0.25s 观察器仍会回调旧位置；
+    /// 若放行，时钟会在目标值与旧位置之间乒乓（歌词行来回跳、进度条
+    /// 锚点反复重同步）。seek 期间屏蔽观察器写钟，落位后由完成回调
+    /// 写入一次真实位置。
+    private var seekInFlight = false
+
     func seek(to seconds: Double) {
         guard seconds.isFinite else { return }
         let upperBound = duration > 0 ? duration : max(0, seconds)
         let target = min(max(0, seconds), upperBound)
+        seekInFlight = true
         player.seek(
             to: CMTime(seconds: target, preferredTimescale: 600),
             toleranceBefore: .zero,
             toleranceAfter: .zero
-        )
+        ) { [weak self] _ in
+            Task { @MainActor in
+                guard let self else { return }
+                let landed = self.player.currentTime().seconds
+                self.currentTime = landed.isFinite && landed > 0 ? landed : target
+                self.seekInFlight = false
+                self.persistPlaybackState(force: true)
+                self.updateNowPlaying()
+            }
+        }
         currentTime = target
         persistPlaybackState(force: true)
         updateNowPlaying()
@@ -362,6 +378,8 @@ final class AudioPlayer: ObservableObject {
                 guard let self else { return }
                 let seconds = time.seconds
                 guard seconds.isFinite else { return }
+                // seek 落位前观察器回报的仍是旧位置，直接丢弃。
+                if self.seekInFlight { return }
                 self.currentTime = seconds
                 self.persistPlaybackState(force: false)
 
