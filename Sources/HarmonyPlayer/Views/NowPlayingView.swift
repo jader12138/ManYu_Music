@@ -6,8 +6,19 @@ struct NowPlayingView: View {
 
     @EnvironmentObject private var player: AudioPlayer
     @EnvironmentObject private var library: LibraryStore
+    @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var showingLyricsStyle = false
+    @State private var showsVolumeSlider = false
+    /// 音量滑块共享状态（引用类型）：NSEvent 监视器闭包从 @State 读到的是旧快照，
+    /// 必须经由 class 引用才能保证监视器始终读到最新的展开状态与热区位置。
+    private final class VolumeDismissState {
+        var isExpanded = false
+        var hotFrame: CGRect?
+    }
+    @State private var volumeState = VolumeDismissState()
+    /// 全局鼠标按下监视器：滑块展开时点击热区之外即收起。
+    @State private var volumeDismissMonitor: Any?
     @AppStorage("ManyuMusic.lyricsFontSize") private var lyricsFontSize = 18.0
     @AppStorage("ManyuMusic.lyricsFontDesign") private var lyricsFontDesignRaw = "rounded"
     @AppStorage("ManyuMusic.lyricsColor") private var lyricsColorRaw = "auto"
@@ -44,6 +55,37 @@ struct NowPlayingView: View {
                 .frame(width: geometry.size.width, height: geometry.size.height)
             }
         }
+        .onAppear {
+            installVolumeDismissMonitor()
+        }
+        .onDisappear {
+            if let monitor = volumeDismissMonitor {
+                NSEvent.removeMonitor(monitor)
+                volumeDismissMonitor = nil
+            }
+        }
+    }
+
+    /// 滑块展开时监听全局鼠标按下：点击喇叭+滑块热区之外（歌词、播放键、任意位置）
+    /// 即自动收起滑块；事件原样放行，点击本身的功能照常执行。
+    private func installVolumeDismissMonitor() {
+        guard volumeDismissMonitor == nil else { return }
+        volumeDismissMonitor = NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown) { event in
+            if volumeState.isExpanded {
+                // 热区 = 喇叭按钮 frame 向右扩展（滑块浮层所在区域）。
+                let hot = volumeState.hotFrame.map {
+                    CGRect(x: $0.minX, y: $0.minY, width: $0.width + 70, height: $0.height)
+                }
+                let insideHotZone = hot?.contains(event.locationInWindow) ?? false
+                if !insideHotZone {
+                    volumeState.isExpanded = false
+                    withAnimation(.easeInOut(duration: 0.24)) {
+                        showsVolumeSlider = false
+                    }
+                }
+            }
+            return event
+        }
     }
 
     private func albumPanel(artworkSize: CGFloat) -> some View {
@@ -54,16 +96,8 @@ struct NowPlayingView: View {
             VStack(spacing: 8) {
                 Text(player.currentTrack?.displayTitle ?? "还未播放")
                     .font(.system(size: 30, weight: .semibold, design: .rounded))
-                    .foregroundStyle(
-                        LinearGradient(
-                            colors: [
-                                Color.hpTextPrimary.opacity(0.92),
-                                Color.hpAccentSecondary.opacity(0.88)
-                            ],
-                            startPoint: .leading,
-                            endPoint: .trailing
-                        )
-                    )
+                    .foregroundStyle(titleGradient)
+                    .animation(.easeInOut(duration: 0.65), value: player.currentTrack?.id)
                     .lineLimit(1)
                     .minimumScaleFactor(0.72)
                     .multilineTextAlignment(.center)
@@ -88,6 +122,24 @@ struct NowPlayingView: View {
         }
     }
 
+    /// 歌曲标题渐变：封面主色与白色混合（浅色模式下文字端换成深色保证可读）。
+    private var titleGradient: LinearGradient {
+        let palette = player.artworkPalette ?? .fallback
+        return LinearGradient(
+            colors: [
+                titleLightColor.opacity(0.95),
+                Color(nsColor: palette.primary).opacity(0.92),
+                Color(nsColor: palette.secondary).opacity(0.94)
+            ],
+            startPoint: .leading,
+            endPoint: .trailing
+        )
+    }
+
+    private var titleLightColor: Color {
+        colorScheme == .dark ? .white : Color.hpTextPrimary
+    }
+
     private var compactPlaybackControls: some View {
         VStack(spacing: 8) {
             PlaybackProgressRow(
@@ -100,13 +152,28 @@ struct NowPlayingView: View {
             )
 
             HStack(spacing: 16) {
-                IconButton(
+                modeButton(
                     systemName: "shuffle",
                     isActive: player.isShuffle,
-                    help: player.isShuffle ? "关闭随机播放" : "随机播放",
-                    size: 14
+                    help: player.isShuffle ? "关闭随机播放" : "随机播放"
                 ) {
                     player.isShuffle.toggle()
+                    // 随机与循环互斥：开启随机时退出循环模式。
+                    if player.isShuffle, player.repeatMode.isActive {
+                        player.repeatMode = .off
+                    }
+                }
+
+                modeButton(
+                    systemName: player.repeatMode.systemImage,
+                    isActive: player.repeatMode.isActive,
+                    help: repeatHelp
+                ) {
+                    player.repeatMode.advance()
+                    // 随机与循环互斥：进入循环时关闭随机播放。
+                    if player.repeatMode.isActive, player.isShuffle {
+                        player.isShuffle = false
+                    }
                 }
 
                 IconButton(systemName: "backward.fill", help: "上一首", size: 14) {
@@ -131,15 +198,6 @@ struct NowPlayingView: View {
                 .disabled(player.queue.isEmpty)
 
                 IconButton(
-                    systemName: player.repeatMode.systemImage,
-                    isActive: player.repeatMode.isActive,
-                    help: repeatHelp,
-                    size: 14
-                ) {
-                    player.repeatMode.advance()
-                }
-
-                IconButton(
                     systemName: isCurrentFavorite ? "heart.fill" : "heart",
                     isActive: isCurrentFavorite,
                     help: isCurrentFavorite ? "取消收藏" : "收藏",
@@ -150,10 +208,99 @@ struct NowPlayingView: View {
                     }
                 }
                 .disabled(player.currentTrack == nil)
+
+                volumeButton
             }
         }
         .padding(.horizontal, 4)
         .padding(.vertical, 6)
+    }
+
+    /// 播放模式按钮：选中时按钮本身不亮，改为在图标下方显示一个主题色小点。
+    private func modeButton(
+        systemName: String,
+        isActive: Bool,
+        help: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Image(systemName: systemName)
+            .font(.system(size: 14, weight: .medium))
+            .foregroundStyle(Color.hpTextPrimary.opacity(isActive ? 0.85 : 0.55))
+            .frame(width: 26, height: 26)
+            .overlay(alignment: .bottom) {
+                Circle()
+                    .fill(Color.hpAccent)
+                    .frame(width: 3.5, height: 3.5)
+                    .offset(y: 6)
+                    .opacity(isActive ? 1 : 0)
+            }
+            .contentShape(Rectangle())
+            .onTapGesture(perform: action)
+            .help(help)
+    }
+
+    /// 音量小喇叭 + 浮出式横向滑块：滑块悬浮在喇叭右侧、不占按钮行布局，
+    /// 展开/收起时其他控件纹丝不动；展开期间关闭悬停滚轮调节。
+    private var volumeButton: some View {
+        Image(systemName: volumeIconName)
+            .font(.system(size: 13, weight: .medium))
+            .foregroundStyle(Color.hpTextPrimary.opacity(0.55))
+            .frame(width: 32, height: 32)
+            .contentShape(Rectangle())
+            .background(VolumeFrameReporter { volumeState.hotFrame = $0 })
+            .overlay(alignment: .bottom) {
+                Text("\(Int((player.volume * 100).rounded()))")
+                    .font(.system(size: 7, weight: .medium))
+                    .foregroundStyle(Color.hpTextPrimary.opacity(0.42))
+                    .offset(y: 5)
+                    .opacity(showsVolumeSlider ? 0 : 1)
+            }
+            .overlay(alignment: .leading) {
+                HorizontalVolumeSlider(value: Binding(
+                    get: { player.volume },
+                    set: { player.volume = $0 }
+                ))
+                .scaleEffect(x: showsVolumeSlider ? 1 : 0.4, anchor: .leading)
+                .opacity(showsVolumeSlider ? 1 : 0)
+                .offset(x: showsVolumeSlider ? 32 : 40)
+                .allowsHitTesting(showsVolumeSlider)
+            }
+            .onTapGesture {
+                // 展开状态再点喇叭 = 收起（"返回"）；收起状态的展开由捕获层处理。
+                guard showsVolumeSlider else { return }
+                volumeState.isExpanded = false
+                withAnimation(.easeInOut(duration: 0.24)) {
+                    showsVolumeSlider = false
+                }
+            }
+            .help("点击展开/收起音量滑块；收起时悬停滚动可调音量")
+            // 收起时才挂滚轮捕获层：滚轮调音量、点击展开滑块；展开后移除，
+            // 滑块的点击与拖动手势不再被 NSView 拦截。
+            .overlay {
+                if !showsVolumeSlider {
+                    VolumeScrollCatcher(
+                        onScroll: { delta in
+                            let clamped = min(0.15, max(-0.15, delta))
+                            player.volume = min(1, max(0, player.volume + clamped))
+                        },
+                        onClick: {
+                            volumeState.isExpanded = true
+                            withAnimation(.easeInOut(duration: 0.24)) {
+                                showsVolumeSlider = true
+                            }
+                        }
+                    )
+                }
+            }
+    }
+
+    private var volumeIconName: String {
+        switch player.volume {
+        case 0: "speaker.slash.fill"
+        case ..<0.34: "speaker.fill"
+        case ..<0.67: "speaker.wave.2.fill"
+        default: "speaker.wave.3.fill"
+        }
     }
 
     private var isCurrentFavorite: Bool {
@@ -457,9 +604,128 @@ struct NowPlayingView: View {
     }
 }
 
+/// 横向音量滑块：点击轨道跳转、按住拖动均可调整（右侧为最大音量）。
+private struct HorizontalVolumeSlider: View {
+    @Binding var value: Double
+
+    var body: some View {
+        GeometryReader { proxy in
+            let trackWidth = proxy.size.width
+            let thumbSize: CGFloat = 8
+
+            ZStack {
+                Capsule()
+                    .fill(Color.hpTextPrimary.opacity(0.16))
+                    .frame(height: 3.5)
+
+                Capsule()
+                    .fill(Color.hpAccent)
+                    .frame(width: max(4, trackWidth * value), height: 3.5)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                Circle()
+                    .fill(Color.gray)
+                    .frame(width: thumbSize, height: thumbSize)
+                    .shadow(color: Color.black.opacity(0.2), radius: 2, y: 1)
+                    .offset(x: (trackWidth - thumbSize) * (value - 0.5))
+            }
+            .frame(height: 14)
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { gesture in
+                        value = min(1, max(0, gesture.location.x / trackWidth))
+                    }
+            )
+        }
+        .frame(width: 65, height: 14)
+        .contentShape(Rectangle())
+    }
+}
+
+/// 上报所在位置的窗口坐标（AppKit 坐标系），供"点击热区外收起滑块"的判断使用。
+private struct VolumeFrameReporter: NSViewRepresentable {
+    let onFrame: (CGRect?) -> Void
+
+    func makeNSView(context: Context) -> FrameReporterView {
+        let view = FrameReporterView()
+        view.onFrameHandler = onFrame
+        return view
+    }
+
+    func updateNSView(_ nsView: FrameReporterView, context: Context) {
+        nsView.onFrameHandler = onFrame
+        nsView.reportFrame()
+    }
+
+    final class FrameReporterView: NSView {
+        var onFrameHandler: ((CGRect?) -> Void)?
+
+        override func viewDidMoveToWindow() {
+            reportFrame()
+        }
+
+        override func layout() {
+            super.layout()
+            reportFrame()
+        }
+
+        func reportFrame() {
+            guard let window else {
+                onFrameHandler?(nil)
+                return
+            }
+            // convert(to: nil) 自动完成坐标系转换，零误差。
+            onFrameHandler?(convert(bounds, to: nil))
+        }
+    }
+}
+
+/// 捕获悬停区域内的滚轮与点击：滚轮调音量、点击展开滑块（收起状态专用，
+/// 滑块展开后该层整体移除，避免拦截滑块的拖动手势）。
+private struct VolumeScrollCatcher: NSViewRepresentable {
+    let onScroll: (Double) -> Void
+    var onClick: (() -> Void)?
+
+    func makeNSView(context: Context) -> ScrollCatcherView {
+        let view = ScrollCatcherView()
+        view.onScrollHandler = onScroll
+        view.onClickHandler = onClick
+        return view
+    }
+
+    func updateNSView(_ nsView: ScrollCatcherView, context: Context) {
+        nsView.onScrollHandler = onScroll
+        nsView.onClickHandler = onClick
+    }
+
+    final class ScrollCatcherView: NSView {
+        var onScrollHandler: ((Double) -> Void)?
+        var onClickHandler: (() -> Void)?
+
+        override func scrollWheel(with event: NSEvent) {
+            guard event.scrollingDeltaY != 0 else { return }
+            // 上滚增大音量；普通滚轮一格约 0.1，触控板细粒度滚动按比例缩放。
+            let delta = -event.scrollingDeltaY / (event.hasPreciseScrollingDeltas ? 40 : 8)
+            onScrollHandler?(delta)
+        }
+
+        // 点击交给本层处理（SwiftUI 手势会被本层拦截），滑块展开后本层即移除。
+        override func mouseUp(with event: NSEvent) {
+            guard event.clickCount >= 1 else { return }
+            onClickHandler?()
+        }
+    }
+}
+
 struct NowPlayingBackdrop: View {
     @EnvironmentObject private var player: AudioPlayer
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    /// 背景渐变缓慢漂移的状态位：onAppear 置 true 后以 repeatForever 来回摆动。
+    @State private var gradientDrift = false
+    @State private var orbDrift = false
 
     var body: some View {
         let palette = player.artworkPalette ?? .fallback
@@ -492,20 +758,46 @@ struct NowPlayingBackdrop: View {
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
             )
+            // 放大后缓慢摆动旋转：颜色带在屏幕上极慢地扫动（90 秒一个来回）。
+            .scaleEffect(2.2)
+            .rotationEffect(.degrees(gradientDrift ? 80 : -80))
+            .animation(
+                reduceMotion ? nil : .linear(duration: 90).repeatForever(autoreverses: true),
+                value: gradientDrift
+            )
 
             Circle()
                 .fill(primary.opacity(colorScheme == .dark ? 0.28 : 0.18))
                 .frame(width: 620, height: 620)
                 .blur(radius: 160)
-                .offset(x: 420, y: -340)
+                .offset(
+                    x: 420 + (orbDrift ? 52 : -52),
+                    y: -340 + (orbDrift ? -36 : 36)
+                )
+                .animation(
+                    reduceMotion ? nil : .easeInOut(duration: 55).repeatForever(autoreverses: true),
+                    value: orbDrift
+                )
 
             Circle()
                 .fill(secondary.opacity(colorScheme == .dark ? 0.18 : 0.13))
                 .frame(width: 460, height: 460)
                 .blur(radius: 150)
-                .offset(x: -430, y: 320)
+                .offset(
+                    x: -430 + (orbDrift ? -44 : 44),
+                    y: 320 + (orbDrift ? 40 : -40)
+                )
+                .animation(
+                    reduceMotion ? nil : .easeInOut(duration: 68).repeatForever(autoreverses: true),
+                    value: orbDrift
+                )
         }
         .animation(.easeInOut(duration: 0.65), value: player.currentTrack?.id)
+        .onAppear {
+            guard !reduceMotion else { return }
+            gradientDrift = true
+            orbDrift = true
+        }
     }
 }
 
