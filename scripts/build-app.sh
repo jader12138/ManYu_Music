@@ -10,9 +10,11 @@ BUILD_NUMBER="$(git -C "$ROOT_DIR" rev-list --count HEAD 2>/dev/null || echo 1)"
 cd "$ROOT_DIR"
 
 echo "正在编译 Release 版本…"
-swift build -c release
+# --disable-sandbox：SwiftPM 自身的 manifest 编译沙箱（sandbox-exec）在受限
+# 环境下会报 "sandbox_apply: Operation not permitted"，这里关闭它以保证构建可用。
+swift build -c release --disable-sandbox
 
-BIN_DIR="$(swift build -c release --show-bin-path)"
+BIN_DIR="$(swift build -c release --show-bin-path --disable-sandbox)"
 
 if [[ -d "$APP_PATH" ]]; then
     rm -rf "$APP_PATH"
