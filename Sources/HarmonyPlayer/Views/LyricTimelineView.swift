@@ -2,7 +2,10 @@ import SwiftUI
 
 struct LyricTimelineView: View {
     let lines: [LyricLine]
-    @ObservedObject var clock: PlaybackClock
+    // 故意不用 @ObservedObject：时钟每秒发布约十次，若直接观察会让
+    // 整个歌词列表以同样频率整表重算，造成滚动"一卡一卡"。
+    // 这里只订阅其 currentTime，在当前行真正变化时才更新 @State。
+    let clock: PlaybackClock
     let seek: (Double) -> Void
     var baseFontSize: CGFloat = 18
     var fontDesign: Font.Design = .rounded
@@ -11,13 +14,11 @@ struct LyricTimelineView: View {
     var visibleLineCount: Int = 9
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var activeIndex: Int = -1
 
     var body: some View {
         GeometryReader { geometry in
             let stackSpacing = max(8, baseFontSize * 0.72 * lineSpacingScale)
-            // Resolved once per pass and handed to the rows, which previously
-            // recomputed the same scan for every line.
-            let activeIndex = currentLineIndex
             ScrollViewReader { proxy in
                 ScrollView(.vertical, showsIndicators: false) {
                     // 普通 VStack：行数有限（歌词通常几百行以内），
@@ -28,7 +29,9 @@ struct LyricTimelineView: View {
                                 .id(index)
                         }
                     }
-                    .padding(.vertical, max(60, geometry.size.height * 0.34))
+                    // 底部留白比顶部多一截，让歌词整体视觉重心上移一点。
+                    .padding(.top, max(60, geometry.size.height * 0.34))
+                    .padding(.bottom, max(60, geometry.size.height * 0.34) + 56)
                     .padding(.horizontal, 14)
                     .frame(maxWidth: .infinity)
                 }
@@ -49,24 +52,32 @@ struct LyricTimelineView: View {
                     )
                 )
                 .onAppear {
+                    activeIndex = lineIndex(at: clock.currentTime)
                     scroll(to: activeIndex, proxy: proxy, animated: false)
+                }
+                .onReceive(clock.$currentTime) { time in
+                    let index = lineIndex(at: time)
+                    if index != activeIndex {
+                        activeIndex = index
+                    }
                 }
                 .onChange(of: activeIndex) { _, index in
                     scroll(to: index, proxy: proxy, animated: !reduceMotion)
+                }
+                .onChange(of: lines.first?.id) { _, _ in
+                    activeIndex = lineIndex(at: clock.currentTime)
                 }
             }
         }
     }
 
-    /// Index of the line matching the current playback position, or -1 when
-    /// none has been reached yet. Lines without a timestamp are skipped, so
-    /// the result stays -1 when nothing in the list is timed.
-    private var currentLineIndex: Int {
-        let threshold = clock.currentTime + 0.12
+    /// 与播放位置匹配的行下标；无可匹配行时为 -1。
+    private func lineIndex(at time: Double) -> Int {
+        let threshold = time + 0.12
         var result = -1
         for (index, line) in lines.enumerated() {
-            guard let time = line.time else { continue }
-            if time <= threshold {
+            guard let lineTime = line.time else { continue }
+            if lineTime <= threshold {
                 result = index
             } else {
                 break
@@ -96,7 +107,6 @@ struct LyricTimelineView: View {
                 .padding(.horizontal, 14)
                 .padding(.vertical, max(1.5, baseFontSize * 0.12 * lineSpacingScale))
                 .scaleEffect(isCurrent ? 1.30 : max(0.92, 1 - CGFloat(distance) * 0.012))
-                .blur(radius: distance > 2 ? 0.35 : 0)
                 .shadow(
                     color: textColor.opacity(isCurrent ? 0.18 : 0),
                     radius: isCurrent ? 4 : 0,
