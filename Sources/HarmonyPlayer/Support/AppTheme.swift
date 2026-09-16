@@ -90,6 +90,88 @@ extension LinearGradient {
     )
 }
 
+/// Apple Music 风格的悬停高亮按钮：默认与底色融合（无背景、无描边），
+/// 悬停时以圆角矩形渐显柔和主题色，按下加深。遵循系统"减弱动态效果"设置。
+struct HoverHighlightButtonStyle: ButtonStyle {
+    var cornerRadius: CGFloat = 9
+    var hoverOpacity: Double = 0.16
+    var pressedOpacity: Double = 0.26
+
+    func makeBody(configuration: Configuration) -> some View {
+        HoverHighlightBody(
+            configuration: configuration,
+            cornerRadius: cornerRadius,
+            hoverOpacity: hoverOpacity,
+            pressedOpacity: pressedOpacity
+        )
+    }
+
+    private struct HoverHighlightBody: View {
+        let configuration: Configuration
+        var cornerRadius: CGFloat
+        var hoverOpacity: Double
+        var pressedOpacity: Double
+
+        @Environment(\.accessibilityReduceMotion) private var reduceMotion
+        @State private var isHovering = false
+
+        var body: some View {
+            configuration.label
+                .background {
+                    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                        .fill(
+                            LinearGradient.hpAccentFill.opacity(
+                                configuration.isPressed ? pressedOpacity : (isHovering ? hoverOpacity : 0)
+                            )
+                        )
+                }
+                .contentShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+                .onHover { hovering in
+                    withAnimation(reduceMotion ? nil : .easeOut(duration: 0.16)) {
+                        isHovering = hovering
+                    }
+                }
+        }
+    }
+}
+
+/// 主操作按钮：主题色圆角矩形填充，悬停轻微提亮上浮，按下回缩。
+struct AccentFillButtonStyle: ButtonStyle {
+    var cornerRadius: CGFloat = 9
+
+    func makeBody(configuration: Configuration) -> some View {
+        AccentFillBody(configuration: configuration, cornerRadius: cornerRadius)
+    }
+
+    private struct AccentFillBody: View {
+        let configuration: Configuration
+        var cornerRadius: CGFloat
+
+        @Environment(\.accessibilityReduceMotion) private var reduceMotion
+        @State private var isHovering = false
+
+        private var isEngaged: Bool { isHovering && !configuration.isPressed }
+
+        var body: some View {
+            configuration.label
+                .background(
+                    LinearGradient.hpAccentFill,
+                    in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                )
+                .brightness(isEngaged ? 0.08 : 0)
+                .scaleEffect(
+                    configuration.isPressed ? 0.97 : (isEngaged && !reduceMotion ? 1.02 : 1)
+                )
+                .contentShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+                .animation(reduceMotion ? nil : .easeOut(duration: 0.16), value: isHovering)
+                .animation(reduceMotion ? nil : .easeOut(duration: 0.1), value: configuration.isPressed)
+                .onHover { hovering in
+                    isHovering = hovering
+                }
+        }
+    }
+}
+
 struct AppBackground: View {
     var body: some View {
         ZStack {

@@ -95,9 +95,8 @@ struct PlaylistDetailView: View {
                             .padding(.horizontal, 17)
                             .frame(height: 36)
                             .foregroundStyle(.white)
-                            .background(LinearGradient.hpAccentFill, in: Capsule())
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(AccentFillButtonStyle())
                     .disabled(tracks.isEmpty)
 
                     Button {
@@ -108,9 +107,8 @@ struct PlaylistDetailView: View {
                             .padding(.horizontal, 14)
                             .frame(height: 36)
                             .foregroundStyle(Color.hpTextPrimary.opacity(0.72))
-                            .background(Color.hpTextPrimary.opacity(0.07), in: Capsule())
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(HoverHighlightButtonStyle())
 
                     Button(action: back) {
                         Label("返回", systemImage: "chevron.left")
@@ -118,9 +116,8 @@ struct PlaylistDetailView: View {
                             .padding(.horizontal, 14)
                             .frame(height: 36)
                             .foregroundStyle(Color.hpTextPrimary.opacity(0.72))
-                            .background(Color.hpTextPrimary.opacity(0.07), in: Capsule())
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(HoverHighlightButtonStyle())
 
                     Button(role: .destructive) {
                         library.deletePlaylist(playlist)
@@ -130,9 +127,8 @@ struct PlaylistDetailView: View {
                             .font(.system(size: 12, weight: .semibold))
                             .frame(width: 36, height: 36)
                             .foregroundStyle(Color.hpPink)
-                            .background(Color.hpPink.opacity(0.10), in: Circle())
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(HoverHighlightButtonStyle(cornerRadius: 18))
                     .help("删除歌单")
                 }
             }

@@ -417,9 +417,8 @@ struct AlbumDetailView: View {
                             .padding(.horizontal, 16)
                             .frame(height: 36)
                             .foregroundStyle(.white)
-                            .background(LinearGradient.hpAccentFill, in: Capsule())
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(AccentFillButtonStyle())
 
                     Button(action: back) {
                         Label("返回", systemImage: "chevron.left")
@@ -427,9 +426,8 @@ struct AlbumDetailView: View {
                             .padding(.horizontal, 14)
                             .frame(height: 36)
                             .foregroundStyle(Color.hpTextPrimary.opacity(0.72))
-                            .background(Color.hpTextPrimary.opacity(0.07), in: Capsule())
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(HoverHighlightButtonStyle())
                 }
             }
 
@@ -584,9 +582,8 @@ struct ArtistDetailView: View {
                             .padding(.horizontal, 17)
                             .frame(height: 36)
                             .foregroundStyle(.white)
-                            .background(LinearGradient.hpAccentFill, in: Capsule())
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(AccentFillButtonStyle())
 
                     Button(action: back) {
                         Label("返回", systemImage: "chevron.left")
@@ -594,9 +591,8 @@ struct ArtistDetailView: View {
                             .padding(.horizontal, 14)
                             .frame(height: 36)
                             .foregroundStyle(Color.hpTextPrimary.opacity(0.72))
-                            .background(Color.hpTextPrimary.opacity(0.07), in: Capsule())
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(HoverHighlightButtonStyle())
                 }
             }
 
@@ -638,9 +634,8 @@ struct EmptyLibraryView: View {
                         .padding(.horizontal, 18)
                         .padding(.vertical, 10)
                         .foregroundStyle(.white)
-                        .background(LinearGradient.hpAccentFill, in: Capsule())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(AccentFillButtonStyle())
 
                 Text("也可以在设置中导入文件夹")
                     .font(.system(size: 10))
