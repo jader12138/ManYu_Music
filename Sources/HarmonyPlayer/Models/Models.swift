@@ -208,26 +208,6 @@ enum TrackSortOrder: String, CaseIterable, Identifiable {
     case dateAdded
 
     var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        case .title: "标题"
-        case .artist: "艺人"
-        case .album: "专辑"
-        case .duration: "时长"
-        case .dateAdded: "添加时间"
-        }
-    }
-
-    var systemImage: String {
-        switch self {
-        case .title: "textformat"
-        case .artist: "person"
-        case .album: "square.stack"
-        case .duration: "clock"
-        case .dateAdded: "calendar"
-        }
-    }
 }
 
 
