@@ -211,13 +211,7 @@ struct MainView: View {
             } else if section == .home, normalizedSearch.isEmpty {
                 HomeView(
                     tracks: library.tracks,
-                    albums: homeAlbums,
                     favoriteTracks: library.tracks.filter { library.favoriteIDs.contains($0.id) },
-                    openAlbum: { album in
-                        withAnimation(.easeOut(duration: 0.18)) {
-                            selectedAlbum = album
-                        }
-                    },
                     openNowPlaying: {
                         withAnimation(.spring(response: 0.56, dampingFraction: 0.86)) {
                             showNowPlaying = true
@@ -467,7 +461,6 @@ struct MainView: View {
 
     private var filteredTracks: [Track] { browse.tracks }
     private var albumGroups: [AlbumGroup] { browse.albums }
-    private var homeAlbums: [AlbumGroup] { browse.homeAlbums }
     private var folderGroups: [FolderGroup] { browse.folders }
     private var artistGroups: [ArtistGroup] { browse.artists }
 

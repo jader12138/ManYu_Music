@@ -1,10 +1,16 @@
 import SwiftUI
 
+/// 首页"最近添加"区块的显示方式：封面网格或横向文件名列表。
+enum HomeRecentDisplayMode: String {
+    case covers
+    case list
+
+    static let storageKey = "ManyuMusic.homeRecentDisplayMode"
+}
+
 struct HomeView: View {
     let tracks: [Track]
-    let albums: [AlbumGroup]
     let favoriteTracks: [Track]
-    let openAlbum: (AlbumGroup) -> Void
     let openNowPlaying: () -> Void
 
     @Environment(\.colorScheme) private var colorScheme
@@ -12,6 +18,8 @@ struct HomeView: View {
     @EnvironmentObject private var library: LibraryStore
     @State private var loadedFeaturedLyrics: [String] = []
     @State private var featuredPalette: ArtworkPalette?
+    @AppStorage(HomeRecentDisplayMode.storageKey)
+    private var recentDisplayRaw = HomeRecentDisplayMode.covers.rawValue
     @AppStorage(RecommendationSettings.frequencyKey)
     private var recommendationFrequencyRaw = RecommendationFrequency.daily.rawValue
     @AppStorage(RecommendationSettings.independentKey)
@@ -21,24 +29,41 @@ struct HomeView: View {
     @AppStorage(RecommendationSettings.dayKey)
     private var recommendationDay = ""
 
+    private var recentDisplayMode: HomeRecentDisplayMode {
+        get { HomeRecentDisplayMode(rawValue: recentDisplayRaw) ?? .covers }
+        nonmutating set { recentDisplayRaw = newValue.rawValue }
+    }
+
     var body: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 22) {
                 hero
                 quickActions
 
-                if !albums.isEmpty {
-                    mediaSection(title: "最近添加", subtitle: "资料库里的新声音") {
-                        LazyVGrid(
-                            columns: [GridItem(.adaptive(minimum: 132), spacing: 16)],
-                            spacing: 20
-                        ) {
-                            ForEach(albums) { album in
-                                HomeAlbumCard(album: album) {
-                                    openAlbum(album)
-                                } play: {
-                                    guard let first = album.tracks.first else { return }
-                                    play(first, in: album.tracks)
+                if !tracks.isEmpty {
+                    mediaSection(
+                        title: "最近添加",
+                        subtitle: "资料库里的新声音",
+                        trailing: { recentDisplayPicker }
+                    ) {
+                        switch recentDisplayMode {
+                        case .covers:
+                            LazyVGrid(
+                                columns: [GridItem(.adaptive(minimum: 116), spacing: 16)],
+                                spacing: 20
+                            ) {
+                                ForEach(tracks) { track in
+                                    HomeRecentCard(track: track) {
+                                        play(track, in: tracks)
+                                    }
+                                }
+                            }
+                        case .list:
+                            LazyVStack(spacing: 2) {
+                                ForEach(tracks) { track in
+                                    HomeRecentRow(track: track) {
+                                        play(track, in: tracks)
+                                    }
                                 }
                             }
                         }
@@ -278,24 +303,69 @@ struct HomeView: View {
         .buttonStyle(.plain)
     }
 
-    private func mediaSection<Content: View>(
+    private func mediaSection<Content: View, Trailing: View>(
         title: String,
         subtitle: String,
+        @ViewBuilder trailing: () -> Trailing = { EmptyView() },
         @ViewBuilder content: () -> Content
     ) -> some View {
         VStack(alignment: .leading, spacing: 13) {
-            HStack(alignment: .firstTextBaseline) {
-                Text(title)
-                    .font(.system(size: 19, weight: .bold, design: .rounded))
-                    .foregroundStyle(Color.hpTextPrimary)
-                Text(subtitle)
-                    .font(.system(size: 10))
-                    .foregroundStyle(Color.hpTextPrimary.opacity(0.38))
+            HStack(spacing: 12) {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text(title)
+                        .font(.system(size: 19, weight: .bold, design: .rounded))
+                        .foregroundStyle(Color.hpTextPrimary)
+                    Text(subtitle)
+                        .font(.system(size: 10))
+                        .foregroundStyle(Color.hpTextPrimary.opacity(0.38))
+                }
                 Spacer()
+                trailing()
             }
 
             content()
         }
+    }
+
+    /// "最近添加"右上角的显示方式切换：封面网格 / 文件名列表。
+    private var recentDisplayPicker: some View {
+        HStack(spacing: 4) {
+            displayPickerButton("square.grid.2x2", mode: .covers)
+            displayPickerButton("list.bullet", mode: .list)
+        }
+        .padding(3)
+        .background(.ultraThinMaterial, in: Capsule())
+        .overlay {
+            Capsule()
+                .stroke(
+                    .white.opacity(colorScheme == .dark ? 0.14 : 0.5),
+                    lineWidth: 1
+                )
+        }
+    }
+
+    private func displayPickerButton(
+        _ systemImage: String,
+        mode: HomeRecentDisplayMode
+    ) -> some View {
+        let isSelected = recentDisplayMode == mode
+        return Button {
+            withAnimation(.easeOut(duration: 0.18)) {
+                recentDisplayMode = mode
+            }
+        } label: {
+            Image(systemName: systemImage)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(isSelected ? .white : Color.hpTextPrimary.opacity(0.55))
+                .frame(width: 26, height: 22)
+                .background {
+                    if isSelected {
+                        Capsule().fill(LinearGradient.hpAccentFill)
+                    }
+                }
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(mode == .covers ? "封面显示" : "列表显示")
     }
 
     private func ensureRecommendation() {
@@ -502,59 +572,95 @@ struct HomeView: View {
     }
 }
 
-private struct HomeAlbumCard: View {
-    let album: AlbumGroup
-    let open: () -> Void
+/// "最近添加"封面网格的歌曲卡片：小方形封面 + 歌名 + 紧凑演唱者行。
+private struct HomeRecentCard: View {
+    let track: Track
     let play: () -> Void
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var isHovering = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 9) {
+        VStack(alignment: .leading, spacing: 7) {
             ZStack {
                 GeometryReader { geo in
                     // 封面随网格列宽伸缩，保持方形；像素档位会自动归一化。
-                    let side = max(96, geo.size.width)
+                    let side = max(84, geo.size.width)
                     ZStack {
-                        if let track = album.artworkTrack {
-                            LazyArtworkView(track: track, size: side, cornerRadius: 14)
-                        } else {
-                            ArtworkView(image: nil, size: side, cornerRadius: 14)
-                        }
+                        LazyArtworkView(track: track, size: side, cornerRadius: 12)
 
-                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
                             .fill(.black.opacity(0.27))
                             .opacity(isHovering ? 1 : 0)
 
-                        Button(action: play) {
-                            Image(systemName: "play.fill")
-                                .font(.system(size: 16, weight: .bold))
-                                .foregroundStyle(.white)
-                                .frame(width: 44, height: 44)
-                                .background(LinearGradient.hpAccentFill, in: Circle())
-                        }
-                        .buttonStyle(.plain)
-                        .opacity(isHovering ? 1 : 0)
-                        .allowsHitTesting(isHovering)
+                        Image(systemName: "play.fill")
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundStyle(.white)
+                            .frame(width: 38, height: 38)
+                            .background(LinearGradient.hpAccentFill, in: Circle())
+                            .opacity(isHovering ? 1 : 0)
                     }
                 }
             }
             .aspectRatio(1, contentMode: .fit)
-            .onTapGesture(perform: open)
+            .onTapGesture(perform: play)
 
-            Text(album.title)
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(Color.hpTextPrimary.opacity(0.92))
-                .lineLimit(1)
-            Text(album.artist)
-                .font(.system(size: 9))
-                .foregroundStyle(Color.hpTextPrimary.opacity(0.42))
-                .lineLimit(1)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(track.displayTitle)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(Color.hpTextPrimary.opacity(0.92))
+                    .lineLimit(1)
+                Text(track.displayArtist)
+                    .font(.system(size: 9))
+                    .foregroundStyle(Color.hpTextPrimary.opacity(0.42))
+                    .lineLimit(1)
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .offset(y: isHovering && !reduceMotion ? -2 : 0)
         .onHover { isHovering = $0 }
         .animation(reduceMotion ? nil : .easeOut(duration: 0.16), value: isHovering)
+    }
+}
+
+/// "最近添加"列表模式：横向一行的歌曲条目。
+private struct HomeRecentRow: View {
+    let track: Track
+    let play: () -> Void
+
+    @State private var isHovering = false
+
+    var body: some View {
+        Button(action: play) {
+            HStack(spacing: 12) {
+                LazyArtworkView(track: track, size: 38, cornerRadius: 8)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(track.displayTitle)
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Color.hpTextPrimary.opacity(0.92))
+                        .lineLimit(1)
+                    Text(track.displayArtist)
+                        .font(.system(size: 10))
+                        .foregroundStyle(Color.hpTextPrimary.opacity(0.45))
+                        .lineLimit(1)
+                }
+
+                Spacer()
+
+                Text(track.formattedDuration)
+                    .font(.system(size: 11, weight: .medium).monospacedDigit())
+                    .foregroundStyle(Color.hpTextPrimary.opacity(0.42))
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .background {
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(Color.hpTextPrimary.opacity(isHovering ? 0.07 : 0.03))
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { isHovering = $0 }
     }
 }
