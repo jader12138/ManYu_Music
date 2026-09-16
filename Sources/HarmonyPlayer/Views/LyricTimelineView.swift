@@ -162,7 +162,7 @@ struct LyricTimelineView: View {
         // 之间速度完全连续，观感是一条匀速滑行；起段加速、末段减速。
         // 段数压低、每行不叠加阴影，控制滚动时的渲染负担，
         // 避免和左侧进度条的动画互相抢主线程。
-        let hopCount = min(10, max(2, abs(distance) / 6))
+        let hopCount = min(8, max(2, abs(distance) / 7))
         let step = Double(distance) / Double(hopCount)
         glideTask = Task { @MainActor in
             for hop in 1...hopCount {
@@ -172,13 +172,13 @@ struct LyricTimelineView: View {
                 switch hop {
                 case 1:
                     target = min(max(start + Int(step.rounded()), 0), lines.count - 1)
-                    duration = 0.22
+                    duration = 0.30
                 case hopCount:
                     target = index
-                    duration = 0.38
+                    duration = 0.55
                 default:
                     target = min(max(start + Int((step * Double(hop)).rounded()), 0), lines.count - 1)
-                    duration = 0.30
+                    duration = 0.40
                 }
                 let curve: Animation = hop == 1
                     ? .easeIn(duration: duration)
@@ -187,7 +187,7 @@ struct LyricTimelineView: View {
                     proxy.scrollTo(target, anchor: .center)
                 }
                 if hop < hopCount {
-                    try? await Task.sleep(nanoseconds: 300_000_000)
+                    try? await Task.sleep(nanoseconds: 400_000_000)
                 }
             }
         }

@@ -380,7 +380,10 @@ private struct SmoothScrubber: View {
             }
             .frame(width: width, height: geo.size.height, alignment: .leading)
             .contentShape(Rectangle())
-            .animation(isDragging ? nil : .easeInOut(duration: 0.45), value: progress)
+            // 时钟每 0.25s 推进一次进度；用等长的 linear 缓动把相邻两次
+            // 更新接成恒速滑行（easeInOut 每次都从零速起步，一秒四次
+            // "加速-减速"循环，正是"一跳一跳"的来源），主线程开销也最低。
+            .animation(isDragging ? nil : .linear(duration: 0.25), value: progress)
             .animation(.easeInOut(duration: 0.16), value: showKnob)
             .onHover { isHovering = $0 }
             .gesture(dragGesture(width))
