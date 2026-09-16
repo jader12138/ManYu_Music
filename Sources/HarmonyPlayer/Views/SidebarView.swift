@@ -10,7 +10,6 @@ struct SidebarView: View {
     @State private var newPlaylistName = ""
     @State private var playlistToRename: Playlist?
     @State private var renameText = ""
-    @Namespace private var selectionNamespace
 
     private let discoverySections: [LibrarySection] = [.home]
     private let librarySections: [LibrarySection] = [.all, .albums, .artists, .folders]
@@ -95,24 +94,10 @@ struct SidebarView: View {
             }
         }
         .frame(width: 238)
-        .background {
-            ZStack {
-                VisualEffectView(material: .sidebar, blendingMode: .behindWindow)
-
-                LinearGradient(
-                    colors: [
-                        Color.hpNavyDeep.opacity(0.96),
-                        Color.hpNavy.opacity(0.90),
-                        Color.hpAccentSecondary.opacity(0.08)
-                    ],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-            }
-        }
+        .background(Color.hpNavy)
         .overlay(alignment: .trailing) {
             Rectangle()
-                .fill(Color.hpTextPrimary.opacity(0.07))
+                .fill(Color.hpHairline)
                 .frame(width: 1)
         }
         .sheet(isPresented: $showingCreatePlaylist) {
@@ -250,17 +235,8 @@ struct SidebarView: View {
         .frame(height: 39)
         .background {
             if selected {
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(LinearGradient.hpSelectedRow)
-                    .matchedGeometryEffect(id: "sidebarSelection", in: selectionNamespace)
-            }
-        }
-        .overlay(alignment: .leading) {
-            if selected {
-                RoundedRectangle(cornerRadius: 2)
-                    .fill(Color.hpAccent)
-                    .frame(width: 3, height: 19)
-                    .offset(x: -1)
+                RoundedRectangle(cornerRadius: HPMetrics.radiusRow, style: .continuous)
+                    .fill(Color.hpAccent.opacity(0.15))
             }
         }
         .contentShape(Rectangle())

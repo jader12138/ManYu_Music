@@ -164,31 +164,15 @@ struct HomeView: View {
 
             if let track = featuredTrack {
                 ZStack {
-                    RoundedRectangle(cornerRadius: 27, style: .continuous)
-                        .fill(.ultraThinMaterial)
-                        .overlay {
-                            RoundedRectangle(cornerRadius: 27, style: .continuous)
-                                .fill(Color.white.opacity(0.08))
-                        }
-                        .overlay {
-                            RoundedRectangle(cornerRadius: 27, style: .continuous)
-                                .stroke(
-                                    LinearGradient(
-                                        colors: [.white.opacity(0.45), .white.opacity(0.08)],
-                                        startPoint: .topLeading,
-                                        endPoint: .bottomTrailing
-                                    ),
-                                    lineWidth: 1
-                                )
-                        }
+                    RoundedRectangle(cornerRadius: HPMetrics.radiusTile, style: .continuous)
+                        .fill(Color.hpSurfaceRaised)
                         .frame(width: 206, height: 206)
-                        .shadow(color: .black.opacity(0.18), radius: 18, y: 10)
 
                     ZStack(alignment: .bottomTrailing) {
                         Button {
                             openFeaturedPlayer(track)
                         } label: {
-                            LazyArtworkView(track: track, size: 184, cornerRadius: 20)
+                            LazyArtworkView(track: track, size: 184, cornerRadius: HPMetrics.radiusCard)
                         }
                         .buttonStyle(.plain)
                         .help("进入播放界面")
@@ -210,25 +194,21 @@ struct HomeView: View {
                 }
             } else {
                 ZStack {
-                    RoundedRectangle(cornerRadius: 27, style: .continuous)
-                        .fill(.ultraThinMaterial)
+                    RoundedRectangle(cornerRadius: HPMetrics.radiusTile, style: .continuous)
+                        .fill(Color.hpSurfaceRaised)
                         .frame(width: 206, height: 206)
-                    ArtworkView(image: nil, size: 184, cornerRadius: 20)
+                    ArtworkView(image: nil, size: 184, cornerRadius: HPMetrics.radiusCard)
                 }
             }
         }
         .padding(24)
         .background(
-            LinearGradient(
-                colors: [Color.hpSurface.opacity(0.86), Color.hpAccent.opacity(0.13)],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            ),
-            in: RoundedRectangle(cornerRadius: 24, style: .continuous)
+            Color.hpSurface.opacity(0.92),
+            in: RoundedRectangle(cornerRadius: HPMetrics.radiusCard, style: .continuous)
         )
         .overlay {
-            RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .stroke(Color.hpTextPrimary.opacity(0.07), lineWidth: 1)
+            RoundedRectangle(cornerRadius: HPMetrics.radiusCard, style: .continuous)
+                .stroke(Color.hpHairline, lineWidth: 1)
         }
     }
 
@@ -239,13 +219,6 @@ struct HomeView: View {
             .lineSpacing(6)
             .lineLimit(3...4)
             .fixedSize(horizontal: false, vertical: true)
-            .padding(.leading, 15)
-            .overlay(alignment: .leading) {
-                Capsule()
-                    .fill(LinearGradient.hpAccentFill)
-                    .frame(width: 3)
-                    .frame(maxHeight: .infinity)
-            }
             .frame(maxWidth: 430, alignment: .leading)
     }
 
