@@ -116,7 +116,7 @@ struct LyricTimelineView: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .animation(reduceMotion ? nil : .easeInOut(duration: 0.30), value: activeIndex)
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.50), value: activeIndex)
         .help(line.time == nil ? "" : "点击跳到这一句")
     }
 
@@ -140,8 +140,8 @@ struct LyricTimelineView: View {
     private func scroll(to index: Int, proxy: ScrollViewProxy, animated: Bool) {
         guard index >= 0, lines.indices.contains(index) else { return }
         if animated, !reduceMotion {
-            // 临界阻尼弹簧：平滑滑到位、不回弹，连续换行时观感连贯。
-            withAnimation(.spring(response: 0.45, dampingFraction: 1.0)) {
+            // 长缓动：滑动有明显的"缓冲"过程，换行与点击跳转都不生硬。
+            withAnimation(.easeInOut(duration: 0.70)) {
                 proxy.scrollTo(index, anchor: .center)
             }
         } else {

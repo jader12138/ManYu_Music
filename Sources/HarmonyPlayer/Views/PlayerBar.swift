@@ -312,26 +312,19 @@ struct PlaybackProgressRow: View {
     var controlSize: ControlSize = .mini
     var fontWeight: Font.Weight = .medium
 
-    @State private var scrubTime: Double?
-
     var body: some View {
         HStack(spacing: 8) {
-            Text(Track.formatTime(scrubTime ?? clock.currentTime))
+            Text(Track.formatTime(clock.currentTime))
                 .font(.system(size: 9, weight: fontWeight, design: .monospaced))
                 .foregroundStyle(Color.hpTextPrimary.opacity(0.38))
                 .frame(width: 40, alignment: .trailing)
 
-            Slider(
-                value: playbackBinding,
-                in: 0...max(clock.duration, 1),
-                onEditingChanged: { isEditing in
-                    guard !isEditing, let scrubTime else { return }
-                    seek(scrubTime)
-                    self.scrubTime = nil
-                }
+            SmoothScrubber(
+                time: clock.currentTime,
+                duration: clock.duration,
+                isEnabled: isEnabled,
+                seek: seek
             )
-            .controlSize(controlSize)
-            .tint(.hpAccent)
             .disabled(!isEnabled)
 
             Text(clock.duration > 0 ? Track.formatTime(clock.duration) : "--:--")
@@ -340,15 +333,69 @@ struct PlaybackProgressRow: View {
                 .frame(width: 40, alignment: .leading)
         }
     }
+}
 
-    private var playbackBinding: Binding<Double> {
-        Binding(
-            get: {
-                let time = scrubTime ?? clock.currentTime
-                return min(time, max(clock.duration, time))
-            },
-            set: { scrubTime = $0 }
-        )
+/// Apple Music 风格的平滑进度条。
+///
+/// 时钟每 0.25s 才更新一次进度，系统 Slider 会一格一格地跳；这里把进度值
+/// 挂上缓动动画，让相邻两次更新连成连续的滑行。拖动时关闭缓动，保证跟手。
+private struct SmoothScrubber: View {
+    let time: Double
+    let duration: Double
+    let isEnabled: Bool
+    let seek: (Double) -> Void
+
+    @State private var dragTime: Double?
+    @State private var isHovering = false
+
+    private var progress: Double {
+        let current = dragTime ?? time
+        return duration > 0 ? min(max(current / duration, 0), 1) : 0
+    }
+    private var isDragging: Bool { dragTime != nil }
+    private var showKnob: Bool { isHovering || isDragging }
+
+    var body: some View {
+        GeometryReader { geo in
+            let width = geo.size.width
+            let knobX = min(max(width * progress - 5.5, -1), width - 10)
+            ZStack(alignment: .leading) {
+                Capsule()
+                    .fill(Color.hpTextPrimary.opacity(0.15))
+                    .frame(height: 3.5)
+                Capsule()
+                    .fill(Color.hpAccent)
+                    .frame(width: max(3.5, width * progress), height: 3.5)
+                Circle()
+                    .fill(Color.hpAccent)
+                    .frame(width: 11, height: 11)
+                    .shadow(color: .black.opacity(0.22), radius: 1.6, y: 0.5)
+                    .offset(x: knobX)
+                    .opacity(showKnob ? 1 : 0)
+                    .scaleEffect(showKnob ? 1 : 0.5)
+            }
+            .frame(width: width, height: geo.size.height, alignment: .leading)
+            .contentShape(Rectangle())
+            .animation(isDragging ? nil : .easeInOut(duration: 0.45), value: progress)
+            .animation(.easeInOut(duration: 0.16), value: showKnob)
+            .onHover { isHovering = $0 }
+            .gesture(dragGesture(width))
+        }
+        .frame(height: 13)
+    }
+
+    private func dragGesture(_ width: CGFloat) -> some Gesture {
+        DragGesture(minimumDistance: 0)
+            .onChanged { value in
+                guard isEnabled else { return }
+                let ratio = min(max(value.location.x / max(width, 1), 0), 1)
+                dragTime = ratio * duration
+            }
+            .onEnded { _ in
+                guard let target = dragTime else { return }
+                seek(target)
+                dragTime = nil
+            }
     }
 }
 
