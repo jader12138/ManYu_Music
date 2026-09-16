@@ -80,16 +80,19 @@ struct TrackListView: View {
         alignment: Alignment = .leading
     ) -> some View {
         let isActive = sortColumn == column
-        let label = HStack(spacing: 3) {
+        // 固定 8pt 指示位：三角显隐不挤动列头文字。
+        let label = HStack(spacing: 2) {
             Text(title)
-            if isActive {
-                Image(systemName: sortAscending ? "arrowtriangle.up.fill" : "arrowtriangle.down.fill")
-                    .font(.system(size: 6, weight: .bold))
-                    .foregroundStyle(Color.hpAccent)
-                    .transition(reduceMotion ? .opacity : .scale.combined(with: .opacity))
+            ZStack {
+                Image(systemName: sortAscending ? "chevron.up" : "chevron.down")
+                    .font(.system(size: 7, weight: .semibold))
+                    .foregroundStyle(Color.hpTextPrimary.opacity(0.62))
+                    .transition(reduceMotion ? .opacity : .opacity)
             }
+            .frame(width: 8)
+            .opacity(isActive ? 1 : 0)
         }
-        .foregroundStyle(isActive ? Color.hpTextPrimary.opacity(0.60) : Color.hpTextPrimary.opacity(0.36))
+        .foregroundStyle(Color.hpTextPrimary.opacity(0.36))
         return Group {
             if let width {
                 label.frame(width: width, alignment: alignment)
