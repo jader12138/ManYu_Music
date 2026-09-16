@@ -14,8 +14,8 @@ struct MainView: View {
     @State private var showQueue = false
     @State private var showNowPlaying = false
     @State private var isDropTargeted = false
-    @State private var sortOrder: TrackSortOrder = .dateAdded
-    @State private var sortAscending = false
+    @State private var headerSort: TrackSortOrder?
+    @State private var headerAscending = true
     @State private var browse = LibraryBrowseSnapshot(request: nil)
     @Namespace private var nowPlayingTransition
     @FocusState private var searchIsFocused: Bool
@@ -248,8 +248,13 @@ struct MainView: View {
     private var sectionContent: some View {
         switch section {
         case .home, .all, .recent, .history, .favorites:
-            TrackListView(tracks: filteredTracks) { track in
-                play(track, in: filteredTracks)
+            TrackListView(
+                tracks: sectionDisplayTracks,
+                sortColumn: headerSort,
+                sortAscending: headerAscending,
+                onSortTap: toggleHeaderSort
+            ) { track in
+                play(track, in: sectionDisplayTracks)
             }
         case .albums:
             AlbumGridView(albums: albumGroups) { album in
@@ -314,38 +319,6 @@ struct MainView: View {
             }
 
             Spacer(minLength: 18)
-
-            if showsSortMenu {
-                Menu {
-                    Picker("排序方式", selection: $sortOrder) {
-                        ForEach(TrackSortOrder.allCases) { order in
-                            Label(order.title, systemImage: order.systemImage)
-                                .tag(order)
-                        }
-                    }
-
-                    Divider()
-
-                    Button {
-                        sortAscending.toggle()
-                    } label: {
-                        Label(
-                            sortAscending ? "改为降序" : "改为升序",
-                            systemImage: sortAscending ? "arrow.down" : "arrow.up"
-                        )
-                    }
-                } label: {
-                    Image(systemName: "arrow.up.arrow.down")
-                        .font(.system(size: 12, weight: .semibold))
-                        .frame(width: 34, height: 34)
-                        .foregroundStyle(Color.hpTextPrimary.opacity(0.62))
-                        .background(Color.hpTextPrimary.opacity(0.055), in: RoundedRectangle(cornerRadius: 10))
-                }
-                .menuStyle(.borderlessButton)
-                .menuIndicator(.hidden)
-                .frame(width: 34)
-                .help("排序")
-            }
 
             if destination != .settings {
             HStack(spacing: 7) {
@@ -467,7 +440,36 @@ struct MainView: View {
     private var browseRequest: LibraryBrowseRequest {
         LibraryBrowseRequest(revision: library.revision, isLoading: library.isLoading,
                              section: section, search: normalizedSearch,
-                             sortOrder: sortOrder, ascending: sortAscending)
+                             sortOrder: .dateAdded, ascending: false)
+    }
+
+    /// 列头排序后的展示顺序（同时用于点击行时的播放队列，保证顺序一致）。
+    private var sectionDisplayTracks: [Track] {
+        guard let column = headerSort else { return filteredTracks }
+        return filteredTracks.sorted { lhs, rhs in
+            let ascending: Bool
+            switch column {
+            case .title:
+                ascending = lhs.displayTitle.localizedStandardCompare(rhs.displayTitle) == .orderedAscending
+            case .album:
+                ascending = lhs.displayAlbum.localizedStandardCompare(rhs.displayAlbum) == .orderedAscending
+            case .duration:
+                ascending = lhs.duration < rhs.duration
+            default:
+                ascending = lhs.displayTitle.localizedStandardCompare(rhs.displayTitle) == .orderedAscending
+            }
+            return headerAscending ? ascending : !ascending
+        }
+    }
+
+    /// 点击列头：首次点击升序，再点同列切换降序，点其他列回到升序。
+    private func toggleHeaderSort(_ column: TrackSortOrder) {
+        if headerSort == column {
+            headerAscending.toggle()
+        } else {
+            headerSort = column
+            headerAscending = true
+        }
     }
 
     private func refreshBrowseSnapshot() async {
@@ -554,12 +556,6 @@ struct MainView: View {
         }
     }
 
-    private var showsSortMenu: Bool {
-        guard destination != .settings else { return false }
-        guard selectedAlbum == nil, selectedArtist == nil else { return false }
-        if activePlaylist != nil { return true }
-        return section != .home && section != .albums && section != .artists && section != .folders
-    }
 }
 
 private struct LibraryLoadErrorView: View {

@@ -3,10 +3,17 @@ import SwiftUI
 struct TrackListView: View {
     let tracks: [Track]
     var showsHeader = true
+    /// 当前列排序依据；nil 表示未点过列头，保持原始顺序。
+    /// 排序本身由宿主页完成（保证展示顺序与播放队列一致），这里只负责指示与回调。
+    var sortColumn: TrackSortOrder?
+    var sortAscending = true
+    /// 点击列头回调（升/降序切换逻辑由宿主页处理）。
+    var onSortTap: ((TrackSortOrder) -> Void)?
     let onPlay: (Track) -> Void
 
     @EnvironmentObject private var library: LibraryStore
     @EnvironmentObject private var player: AudioPlayer
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private let headerHeight: CGFloat = 28
     private let headerDividerHeight: CGFloat = 1
@@ -50,22 +57,52 @@ struct TrackListView: View {
         }
     }
 
+    /// 可点击的列头：点击切换排序，激活列右侧显示升/降序小三角。
     private var header: some View {
         HStack(spacing: 12) {
             Color.clear.frame(width: 44)
-            Text("标题")
-                .frame(maxWidth: .infinity, alignment: .leading)
-            Text("专辑")
-                .frame(width: 170, alignment: .leading)
-            Text("时长")
-                .frame(width: 48, alignment: .trailing)
+            sortHeaderButton("标题", column: .title, maxWidth: .infinity)
+            sortHeaderButton("专辑", column: .album, width: 170)
+            sortHeaderButton("时长", column: .duration, width: 48, alignment: .trailing)
             Color.clear.frame(width: 72)
         }
         .font(.system(size: 10, weight: .semibold))
-        .foregroundStyle(Color.hpTextPrimary.opacity(0.36))
         .tracking(0.45)
         .padding(.horizontal, 22)
         .padding(.vertical, 7)
+    }
+
+    private func sortHeaderButton(
+        _ title: String,
+        column: TrackSortOrder,
+        width: CGFloat? = nil,
+        maxWidth: CGFloat? = nil,
+        alignment: Alignment = .leading
+    ) -> some View {
+        let isActive = sortColumn == column
+        let label = HStack(spacing: 3) {
+            Text(title)
+            if isActive {
+                Image(systemName: sortAscending ? "arrowtriangle.up.fill" : "arrowtriangle.down.fill")
+                    .font(.system(size: 6, weight: .bold))
+                    .foregroundStyle(Color.hpAccent)
+                    .transition(reduceMotion ? .opacity : .scale.combined(with: .opacity))
+            }
+        }
+        .foregroundStyle(isActive ? Color.hpTextPrimary.opacity(0.60) : Color.hpTextPrimary.opacity(0.36))
+        return Group {
+            if let width {
+                label.frame(width: width, alignment: alignment)
+            } else {
+                label.frame(maxWidth: maxWidth, alignment: alignment)
+            }
+        }
+        .contentShape(Rectangle())
+        .onTapGesture { onSortTap?(column) }
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.14), value: sortColumn)
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.14), value: sortAscending)
+        .accessibilityLabel("\(title)排序")
+        .accessibilityAddTraits(.isButton)
     }
 }
 
