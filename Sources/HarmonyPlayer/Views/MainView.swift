@@ -212,7 +212,6 @@ struct MainView: View {
                 HomeView(
                     tracks: library.tracks,
                     albums: homeAlbums,
-                    recentTracks: library.recentlyPlayedTracks(limit: 20),
                     favoriteTracks: library.tracks.filter { library.favoriteIDs.contains($0.id) },
                     openAlbum: { album in
                         withAnimation(.easeOut(duration: 0.18)) {
