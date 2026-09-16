@@ -239,8 +239,8 @@ enum RecommendationFrequency: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .daily: "每天一次"
-        case .everyLaunch: "每次打开"
+        case .daily: "每天更新"
+        case .everyLaunch: "每次打开软件时更新"
         }
     }
 

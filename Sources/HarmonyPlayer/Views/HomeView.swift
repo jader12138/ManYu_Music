@@ -14,7 +14,6 @@ struct HomeView: View {
     @State private var displayedRecentTracks: [Track] = []
     @State private var refreshRecentTracksOnAppear = true
     @State private var featuredPalette: ArtworkPalette?
-    @State private var launchRecommendationID: UUID?
     @AppStorage(RecommendationSettings.frequencyKey)
     private var recommendationFrequencyRaw = RecommendationFrequency.daily.rawValue
     @AppStorage(RecommendationSettings.independentKey)
@@ -116,7 +115,7 @@ struct HomeView: View {
             ensureRecommendation()
         }
         .onChange(of: recommendationFrequencyRaw) { _, _ in
-            launchRecommendationID = nil
+            library.sessionRecommendationTrackID = nil
             recommendationDay = ""
             ensureRecommendation()
         }
@@ -344,8 +343,8 @@ struct HomeView: View {
             selectRecommendation(from: candidates, frequency: frequency, day: today)
 
         case .everyLaunch:
-            if let launchRecommendationID,
-               tracks.contains(where: { $0.id == launchRecommendationID }) {
+            if let sessionID = library.sessionRecommendationTrackID,
+               tracks.contains(where: { $0.id == sessionID }) {
                 return
             }
             selectRecommendation(from: candidates, frequency: frequency, day: today)
@@ -363,9 +362,9 @@ struct HomeView: View {
         case .daily:
             recommendationTrackID = selected.id.uuidString
             recommendationDay = day
-            launchRecommendationID = nil
+            library.sessionRecommendationTrackID = nil
         case .everyLaunch:
-            launchRecommendationID = selected.id
+            library.sessionRecommendationTrackID = selected.id
         }
     }
 
@@ -405,8 +404,8 @@ struct HomeView: View {
             return current
         }
 
-        if let launchRecommendationID,
-           let track = tracks.first(where: { $0.id == launchRecommendationID }) {
+        if let sessionID = library.sessionRecommendationTrackID,
+           let track = tracks.first(where: { $0.id == sessionID }) {
             return track
         }
 

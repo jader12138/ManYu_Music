@@ -168,7 +168,7 @@ struct SettingsView: View {
         VStack(spacing: 16) {
             settingsCard(
                 title: "推荐切换频率",
-                subtitle: "控制首页推荐歌曲什么时候更换"
+                subtitle: "控制首页推荐曲目什么时候更换；切换页面时推荐保持不变"
             ) {
                 HStack(spacing: 8) {
                     ForEach(RecommendationFrequency.allCases) { frequency in

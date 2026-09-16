@@ -22,6 +22,10 @@ final class LibraryStore: ObservableObject {
     @Published private(set) var isImporting = false
     @Published var importNotice: String?
 
+    /// 首页"每次打开软件时更新"的推荐曲目，仅存活于本次应用会话：
+    /// 切换页面时保持稳定，应用重启后重新挑选。
+    @Published var sessionRecommendationTrackID: UUID?
+
     /// `true` until the cached library has been read from disk off the main thread.
     @Published private(set) var isLoading = true
 
