@@ -111,11 +111,6 @@ struct LyricTimelineView: View {
                 .padding(.horizontal, 14)
                 .padding(.vertical, max(1.5, baseFontSize * 0.12 * lineSpacingScale))
                 .scaleEffect(isCurrent ? 1.30 : max(0.92, 1 - CGFloat(distance) * 0.012))
-                .shadow(
-                    color: textColor.opacity(isCurrent ? 0.18 : 0),
-                    radius: isCurrent ? 4 : 0,
-                    y: isCurrent ? 1 : 0
-                )
                 .frame(maxWidth: .infinity)
                 .contentShape(Rectangle())
         }
@@ -163,21 +158,36 @@ struct LyricTimelineView: View {
         }
 
         // 远距离（点击跳转）：macOS 对超长距离的 scrollTo 常常直接跳变、
-        // 不播动画；改为分多段小步滑行，观感是快速而平滑地掠过中间歌词。
-        let hopCount = min(14, max(2, abs(distance) / 5))
+        // 不播动画；改为分多段滑行。中段用 linear 且各段时长一致，段与段
+        // 之间速度完全连续，观感是一条匀速滑行；起段加速、末段减速。
+        // 段数压低、每行不叠加阴影，控制滚动时的渲染负担，
+        // 避免和左侧进度条的动画互相抢主线程。
+        let hopCount = min(10, max(2, abs(distance) / 6))
         let step = Double(distance) / Double(hopCount)
         glideTask = Task { @MainActor in
             for hop in 1...hopCount {
                 if Task.isCancelled { return }
-                let isFinal = hop == hopCount
-                let target = isFinal
-                    ? index
-                    : min(max(start + Int((step * Double(hop)).rounded()), 0), lines.count - 1)
-                withAnimation(.easeInOut(duration: isFinal ? 0.30 : 0.16)) {
+                let target: Int
+                let duration: Double
+                switch hop {
+                case 1:
+                    target = min(max(start + Int(step.rounded()), 0), lines.count - 1)
+                    duration = 0.22
+                case hopCount:
+                    target = index
+                    duration = 0.38
+                default:
+                    target = min(max(start + Int((step * Double(hop)).rounded()), 0), lines.count - 1)
+                    duration = 0.30
+                }
+                let curve: Animation = hop == 1
+                    ? .easeIn(duration: duration)
+                    : (hop == hopCount ? .easeOut(duration: duration) : .linear(duration: duration))
+                withAnimation(curve) {
                     proxy.scrollTo(target, anchor: .center)
                 }
-                if !isFinal {
-                    try? await Task.sleep(nanoseconds: 150_000_000)
+                if hop < hopCount {
+                    try? await Task.sleep(nanoseconds: 300_000_000)
                 }
             }
         }
