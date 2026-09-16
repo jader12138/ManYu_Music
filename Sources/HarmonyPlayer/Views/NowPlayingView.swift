@@ -322,6 +322,61 @@ struct NowPlayingView: View {
                     }
                 }
             }
+
+            Divider()
+
+            // 歌词进度微调：与样式调节融合在同一个面板，步进 0.2 秒。
+            HStack(spacing: 12) {
+                Text("进度")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 38, alignment: .leading)
+
+                Button {
+                    player.adjustLyricOffset(-0.2)
+                } label: {
+                    Image(systemName: "minus")
+                        .frame(width: 26, height: 26)
+                }
+                .buttonStyle(.borderless)
+                .disabled(player.currentTrack == nil)
+                .help("歌词提前 0.2 秒")
+
+                Text(player.lyricOffset == 0
+                     ? "已对齐"
+                     : "\(player.lyricOffset > 0 ? "延后" : "提前") \(offsetText(player.lyricOffset))")
+                    .font(.system(size: 11, weight: .semibold))
+                    .monospacedDigit()
+                    .foregroundStyle(player.lyricOffset == 0 ? Color.secondary : Color.hpAccent)
+                    .frame(maxWidth: .infinity)
+
+                Button {
+                    player.adjustLyricOffset(0.2)
+                } label: {
+                    Image(systemName: "plus")
+                        .frame(width: 26, height: 26)
+                }
+                .buttonStyle(.borderless)
+                .disabled(player.currentTrack == nil)
+                .help("歌词延后 0.2 秒")
+            }
+
+            // 常驻按钮：重置后仅置灰，面板高度不变、不跳动。
+            Button {
+                player.resetLyricOffset()
+            } label: {
+                Text("重置为已对齐")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(player.lyricOffset == 0 ? Color.hpTextPrimary.opacity(0.3) : Color.hpPink)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 26)
+                    .background(
+                        RoundedRectangle(cornerRadius: 8)
+                            .fill(Color.hpTextPrimary.opacity(0.05))
+                    )
+            }
+            .buttonStyle(.plain)
+            .disabled(player.lyricOffset == 0)
         }
         .padding(18)
         .frame(width: 300)
@@ -336,6 +391,11 @@ struct NowPlayingView: View {
             ("ff5f96", "粉色", Color.hpPink),
             ("f2b84b", "金色", Color.hpGold)
         ]
+    }
+
+    /// 偏移秒数显示（保留 1 位小数）。
+    private func offsetText(_ value: Double) -> String {
+        String(format: "%.1fs", abs(value) < 0.001 ? 0 : value)
     }
 
     private var lyricsPanel: some View {
@@ -360,7 +420,8 @@ struct NowPlayingView: View {
                     fontDesign: lyricsFontDesign,
                     textColor: lyricsTextColor,
                     lineSpacingScale: CGFloat(lyricsLineSpacing),
-                    visibleLineCount: Int(lyricsVisibleLines)
+                    visibleLineCount: Int(lyricsVisibleLines),
+                    lyricOffset: player.lyricOffset
                 )
             }
 
@@ -384,7 +445,7 @@ struct NowPlayingView: View {
                     .frame(height: 26)
                 }
                 .buttonStyle(HoverHighlightButtonStyle(cornerRadius: 8))
-                .help("歌词样式")
+                .help("歌词设置")
                 .popover(isPresented: $showingLyricsStyle, arrowEdge: .trailing) {
                     lyricsStylePanel
                 }
