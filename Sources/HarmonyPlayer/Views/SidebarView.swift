@@ -381,7 +381,7 @@ struct PlaylistNameEditor: View {
 
 struct BrandMark: View {
     @Environment(\.colorScheme) private var colorScheme
-    @AppStorage(AppIconStyle.storageKey) private var appIconStyleRaw = AppIconStyle.automatic.rawValue
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         Group {
@@ -390,16 +390,24 @@ struct BrandMark: View {
                     .resizable()
                     .interpolation(.high)
                     .aspectRatio(contentMode: .fit)
+                    .transition(reduceMotion ? .opacity : .opacity.combined(with: .scale(scale: 0.92)))
             } else {
                 fallbackMark
             }
         }
+        .id(iconVariantKey)
         .frame(width: 40, height: 40)
+        .animation(reduceMotion ? .easeOut(duration: 0.12) : .easeOut(duration: 0.22), value: iconVariantKey)
     }
 
+    /// 左上角品牌图标始终跟随昼夜模式：白天显示白色图标，夜间显示深色图标，
+    /// 不受设置里 Dock 图标风格的影响。
     private var appIconImage: NSImage? {
-        let style = AppIconStyle(rawValue: appIconStyleRaw) ?? .automatic
-        return AppIconStyleManager.image(for: style, colorScheme: colorScheme)
+        AppIconStyleManager.image(for: colorScheme == .dark ? .dark : .light)
+    }
+
+    private var iconVariantKey: String {
+        colorScheme == .dark ? "dark" : "light"
     }
 
     private var fallbackMark: some View {

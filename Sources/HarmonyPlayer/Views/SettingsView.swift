@@ -119,7 +119,7 @@ struct SettingsView: View {
 
             settingsCard(
                 title: "应用图标",
-                subtitle: "自动跟随主题，也可以固定深色或浅色图标"
+                subtitle: "Dock 图标自动跟随主题，也可固定深色或浅色；左上角品牌图标始终跟随昼夜模式"
             ) {
                 HStack(spacing: 20) {
                     ForEach(AppIconStyle.allCases) { style in
