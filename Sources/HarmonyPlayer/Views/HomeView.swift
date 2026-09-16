@@ -3,16 +3,14 @@ import SwiftUI
 struct HomeView: View {
     let tracks: [Track]
     let albums: [AlbumGroup]
-    let recentTracks: [Track]
     let favoriteTracks: [Track]
     let openAlbum: (AlbumGroup) -> Void
     let openNowPlaying: () -> Void
 
+    @Environment(\.colorScheme) private var colorScheme
     @EnvironmentObject private var player: AudioPlayer
     @EnvironmentObject private var library: LibraryStore
     @State private var loadedFeaturedLyrics: [String] = []
-    @State private var displayedRecentTracks: [Track] = []
-    @State private var refreshRecentTracksOnAppear = true
     @State private var featuredPalette: ArtworkPalette?
     @State private var launchRecommendationID: UUID?
     @AppStorage(RecommendationSettings.frequencyKey)
@@ -30,35 +28,20 @@ struct HomeView: View {
                 hero
                 quickActions
 
-                if !displayedRecentTracks.isEmpty {
-                    mediaSection(title: "最近播放", subtitle: "继续上次的音乐旅程") {
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            LazyHStack(spacing: 16) {
-                                ForEach(displayedRecentTracks.prefix(10)) { track in
-                                    HomeTrackCard(track: track) {
-                                        play(track, in: displayedRecentTracks)
-                                    }
-                                }
-                            }
-                            .padding(.vertical, 3)
-                        }
-                    }
-                }
-
                 if !albums.isEmpty {
                     mediaSection(title: "最近添加", subtitle: "资料库里的新声音") {
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            LazyHStack(spacing: 18) {
-                                ForEach(albums.prefix(10)) { album in
-                                    HomeAlbumCard(album: album) {
-                                        openAlbum(album)
-                                    } play: {
-                                        guard let first = album.tracks.first else { return }
-                                        play(first, in: album.tracks)
-                                    }
+                        LazyVGrid(
+                            columns: [GridItem(.adaptive(minimum: 132), spacing: 16)],
+                            spacing: 20
+                        ) {
+                            ForEach(albums) { album in
+                                HomeAlbumCard(album: album) {
+                                    openAlbum(album)
+                                } play: {
+                                    guard let first = album.tracks.first else { return }
+                                    play(first, in: album.tracks)
                                 }
                             }
-                            .padding(.vertical, 3)
                         }
                     }
                 }
@@ -93,24 +76,6 @@ struct HomeView: View {
             .padding(.horizontal, 26)
             .padding(.top, 14)
             .padding(.bottom, 20)
-        }
-        .onAppear {
-            if refreshRecentTracksOnAppear {
-                displayedRecentTracks = recentTracks
-                refreshRecentTracksOnAppear = false
-            } else if displayedRecentTracks.isEmpty {
-                displayedRecentTracks = recentTracks
-            }
-        }
-        .onDisappear {
-            refreshRecentTracksOnAppear = true
-        }
-        .onChange(of: recentTracks.map(\.id)) { _, newIDs in
-            if displayedRecentTracks.isEmpty {
-                displayedRecentTracks = newIDs.compactMap { id in
-                    recentTracks.first(where: { $0.id == id })
-                }
-            }
         }
         .task(id: recommendationTaskKey) {
             ensureRecommendation()
@@ -262,36 +227,25 @@ struct HomeView: View {
 
     private var quickActions: some View {
         HStack(spacing: 12) {
-            Button {
+            quickActionButton("播放全部", systemImage: "play.fill") {
                 if let first = tracks.first {
                     play(first, in: tracks)
                 }
-            } label: {
-                Label("播放全部", systemImage: "play.fill")
-                    .font(.system(size: 12, weight: .semibold))
-                    .padding(.horizontal, 17)
-                    .frame(height: 38)
-                    .foregroundStyle(.white)
-                    .background(LinearGradient.hpAccentFill, in: Capsule())
             }
-            .buttonStyle(.plain)
             .disabled(tracks.isEmpty)
 
-            Button {
+            quickActionButton("随机播放", systemImage: "shuffle") {
                 player.isShuffle = true
                 if let random = tracks.randomElement() {
                     play(random, in: tracks)
                 }
-            } label: {
-                Label("随机播放", systemImage: "shuffle")
-                    .font(.system(size: 12, weight: .semibold))
-                    .padding(.horizontal, 16)
-                    .frame(height: 38)
-                    .foregroundStyle(Color.hpTextPrimary.opacity(0.78))
-                    .background(Color.hpTextPrimary.opacity(0.065), in: Capsule())
             }
-            .buttonStyle(.plain)
             .disabled(tracks.isEmpty)
+
+            quickActionButton("继续播放", systemImage: "play.circle") {
+                player.resume()
+            }
+            .disabled(player.currentTrack == nil)
 
             Spacer()
 
@@ -299,6 +253,30 @@ struct HomeView: View {
                 .font(.system(size: 10, weight: .medium))
                 .foregroundStyle(Color.hpTextPrimary.opacity(0.42))
         }
+    }
+
+    /// 首页快捷操作按钮：亚克力玻璃胶囊，三枚样式统一。
+    private func quickActionButton(
+        _ title: String,
+        systemImage: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Label(title, systemImage: systemImage)
+                .font(.system(size: 12, weight: .semibold))
+                .padding(.horizontal, 17)
+                .frame(height: 38)
+                .foregroundStyle(Color.hpTextPrimary.opacity(0.88))
+                .background(.ultraThinMaterial, in: Capsule())
+                .overlay {
+                    Capsule()
+                        .stroke(
+                            .white.opacity(colorScheme == .dark ? 0.16 : 0.52),
+                            lineWidth: 1
+                        )
+                }
+        }
+        .buttonStyle(.plain)
     }
 
     private func mediaSection<Content: View>(
@@ -525,48 +503,6 @@ struct HomeView: View {
     }
 }
 
-private struct HomeTrackCard: View {
-    let track: Track
-    let play: () -> Void
-
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var isHovering = false
-
-    var body: some View {
-        Button(action: play) {
-            VStack(alignment: .leading, spacing: 9) {
-                ZStack {
-                    LazyArtworkView(track: track, size: 136, cornerRadius: 14)
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .fill(.black.opacity(0.28))
-                        .opacity(isHovering ? 1 : 0)
-                    Image(systemName: "play.fill")
-                        .font(.system(size: 16, weight: .bold))
-                        .foregroundStyle(.white)
-                        .frame(width: 42, height: 42)
-                        .background(LinearGradient.hpAccentFill, in: Circle())
-                        .opacity(isHovering ? 1 : 0)
-                }
-
-                Text(track.displayTitle)
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(Color.hpTextPrimary.opacity(0.92))
-                    .lineLimit(1)
-                Text(track.displayArtist)
-                    .font(.system(size: 9))
-                    .foregroundStyle(Color.hpTextPrimary.opacity(0.42))
-                    .lineLimit(1)
-            }
-            .frame(width: 136, alignment: .leading)
-            .offset(y: isHovering && !reduceMotion ? -2 : 0)
-        }
-        .buttonStyle(.plain)
-        .onHover { isHovering = $0 }
-        // Card-local only: no other card or the surrounding list is re-laid out.
-        .animation(reduceMotion ? nil : .easeOut(duration: 0.16), value: isHovering)
-    }
-}
-
 private struct HomeAlbumCard: View {
     let album: AlbumGroup
     let open: () -> Void
@@ -578,28 +514,34 @@ private struct HomeAlbumCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 9) {
             ZStack {
-                if let track = album.artworkTrack {
-                    LazyArtworkView(track: track, size: 146, cornerRadius: 14)
-                } else {
-                    ArtworkView(image: nil, size: 146, cornerRadius: 14)
-                }
+                GeometryReader { geo in
+                    // 封面随网格列宽伸缩，保持方形；像素档位会自动归一化。
+                    let side = max(96, geo.size.width)
+                    ZStack {
+                        if let track = album.artworkTrack {
+                            LazyArtworkView(track: track, size: side, cornerRadius: 14)
+                        } else {
+                            ArtworkView(image: nil, size: side, cornerRadius: 14)
+                        }
 
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .fill(.black.opacity(0.27))
-                    .opacity(isHovering ? 1 : 0)
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .fill(.black.opacity(0.27))
+                            .opacity(isHovering ? 1 : 0)
 
-                Button(action: play) {
-                    Image(systemName: "play.fill")
-                        .font(.system(size: 16, weight: .bold))
-                        .foregroundStyle(.white)
-                        .frame(width: 44, height: 44)
-                        .background(LinearGradient.hpAccentFill, in: Circle())
+                        Button(action: play) {
+                            Image(systemName: "play.fill")
+                                .font(.system(size: 16, weight: .bold))
+                                .foregroundStyle(.white)
+                                .frame(width: 44, height: 44)
+                                .background(LinearGradient.hpAccentFill, in: Circle())
+                        }
+                        .buttonStyle(.plain)
+                        .opacity(isHovering ? 1 : 0)
+                        .allowsHitTesting(isHovering)
+                    }
                 }
-                .buttonStyle(.plain)
-                .opacity(isHovering ? 1 : 0)
-                .allowsHitTesting(isHovering)
             }
-            .frame(width: 146, height: 146)
+            .aspectRatio(1, contentMode: .fit)
             .onTapGesture(perform: open)
 
             Text(album.title)
@@ -611,7 +553,7 @@ private struct HomeAlbumCard: View {
                 .foregroundStyle(Color.hpTextPrimary.opacity(0.42))
                 .lineLimit(1)
         }
-        .frame(width: 146, alignment: .leading)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .offset(y: isHovering && !reduceMotion ? -2 : 0)
         .onHover { isHovering = $0 }
         .animation(reduceMotion ? nil : .easeOut(duration: 0.16), value: isHovering)
