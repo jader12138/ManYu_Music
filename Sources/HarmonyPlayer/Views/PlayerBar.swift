@@ -370,9 +370,13 @@ private struct SmoothScrubber: View {
                     .fill(Color.hpAccent)
                     .frame(width: 11, height: 11)
                     .shadow(color: .black.opacity(0.22), radius: 1.6, y: 0.5)
-                    .offset(x: knobX)
-                    .opacity(showKnob ? 1 : 0)
                     .scaleEffect(showKnob ? 1 : 0.5)
+                    .opacity(showKnob ? 1 : 0)
+                    // 出现/消失动画只作用在缩放与透明度上；位置不参与这次
+                    // 动画，因此小球出现时直接就在当前播放位置，不会从
+                    // 上次消失的地方滑过来。
+                    .animation(.easeInOut(duration: 0.16), value: showKnob)
+                    .offset(x: knobX)
             }
             .frame(width: width, height: geo.size.height, alignment: .leading)
             .contentShape(Rectangle())

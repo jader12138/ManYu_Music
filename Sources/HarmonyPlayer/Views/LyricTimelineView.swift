@@ -15,6 +15,8 @@ struct LyricTimelineView: View {
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var activeIndex: Int = -1
+    @State private var lastScrolledIndex: Int = -1
+    @State private var glideTask: Task<Void, Never>?
 
     var body: some View {
         GeometryReader { geometry in
@@ -65,6 +67,8 @@ struct LyricTimelineView: View {
                     scroll(to: index, proxy: proxy, animated: !reduceMotion)
                 }
                 .onChange(of: lines.first?.id) { _, _ in
+                    glideTask?.cancel()
+                    lastScrolledIndex = -1
                     activeIndex = lineIndex(at: clock.currentTime)
                 }
             }
@@ -139,13 +143,43 @@ struct LyricTimelineView: View {
 
     private func scroll(to index: Int, proxy: ScrollViewProxy, animated: Bool) {
         guard index >= 0, lines.indices.contains(index) else { return }
-        if animated, !reduceMotion {
-            // 长缓动：滑动有明显的"缓冲"过程，换行与点击跳转都不生硬。
+        glideTask?.cancel()
+        guard animated, !reduceMotion else {
+            proxy.scrollTo(index, anchor: .center)
+            lastScrolledIndex = index
+            return
+        }
+
+        let start = lastScrolledIndex
+        let distance = index - start
+        lastScrolledIndex = index
+
+        // 近距离（正常逐行推进）：一段长缓动，观感是缓慢的缓冲。
+        guard abs(distance) > 4 else {
             withAnimation(.easeInOut(duration: 0.70)) {
                 proxy.scrollTo(index, anchor: .center)
             }
-        } else {
-            proxy.scrollTo(index, anchor: .center)
+            return
+        }
+
+        // 远距离（点击跳转）：macOS 对超长距离的 scrollTo 常常直接跳变、
+        // 不播动画；改为分多段小步滑行，观感是快速而平滑地掠过中间歌词。
+        let hopCount = min(14, max(2, abs(distance) / 5))
+        let step = Double(distance) / Double(hopCount)
+        glideTask = Task { @MainActor in
+            for hop in 1...hopCount {
+                if Task.isCancelled { return }
+                let isFinal = hop == hopCount
+                let target = isFinal
+                    ? index
+                    : min(max(start + Int((step * Double(hop)).rounded()), 0), lines.count - 1)
+                withAnimation(.easeInOut(duration: isFinal ? 0.30 : 0.16)) {
+                    proxy.scrollTo(target, anchor: .center)
+                }
+                if !isFinal {
+                    try? await Task.sleep(nanoseconds: 150_000_000)
+                }
+            }
         }
     }
 }
