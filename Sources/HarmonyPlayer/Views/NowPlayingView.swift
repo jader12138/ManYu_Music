@@ -364,9 +364,8 @@ struct NowPlayingView: View {
                     .foregroundStyle(Color.hpTextPrimary.opacity(0.58))
                     .padding(.horizontal, 9)
                     .frame(height: 26)
-                    .background(Color.hpTextPrimary.opacity(0.055), in: Capsule())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(HoverHighlightButtonStyle(cornerRadius: 8))
                 .help("歌词样式")
                 .popover(isPresented: $showingLyricsStyle, arrowEdge: .trailing) {
                     lyricsStylePanel

@@ -13,7 +13,6 @@ struct HomeView: View {
     let favoriteTracks: [Track]
     let openNowPlaying: () -> Void
 
-    @Environment(\.colorScheme) private var colorScheme
     @EnvironmentObject private var player: AudioPlayer
     @EnvironmentObject private var library: LibraryStore
     @State private var loadedFeaturedLyrics: [String] = []
@@ -279,7 +278,7 @@ struct HomeView: View {
         }
     }
 
-    /// 首页快捷操作按钮：亚克力玻璃胶囊，三枚样式统一。
+    /// 首页快捷操作按钮：默认与底色融合，悬停渐显主题色高亮。
     private func quickActionButton(
         _ title: String,
         systemImage: String,
@@ -291,16 +290,8 @@ struct HomeView: View {
                 .padding(.horizontal, 17)
                 .frame(height: 38)
                 .foregroundStyle(Color.hpTextPrimary.opacity(0.88))
-                .background(.ultraThinMaterial, in: Capsule())
-                .overlay {
-                    Capsule()
-                        .stroke(
-                            .white.opacity(colorScheme == .dark ? 0.16 : 0.52),
-                            lineWidth: 1
-                        )
-                }
         }
-        .buttonStyle(.plain)
+        .buttonStyle(HoverHighlightButtonStyle(cornerRadius: 10))
     }
 
     private func mediaSection<Content: View, Trailing: View>(
@@ -333,15 +324,6 @@ struct HomeView: View {
             displayPickerButton("square.grid.2x2", mode: .covers)
             displayPickerButton("list.bullet", mode: .list)
         }
-        .padding(3)
-        .background(.ultraThinMaterial, in: Capsule())
-        .overlay {
-            Capsule()
-                .stroke(
-                    .white.opacity(colorScheme == .dark ? 0.14 : 0.5),
-                    lineWidth: 1
-                )
-        }
     }
 
     private func displayPickerButton(
@@ -360,11 +342,12 @@ struct HomeView: View {
                 .frame(width: 26, height: 22)
                 .background {
                     if isSelected {
-                        Capsule().fill(LinearGradient.hpAccentFill)
+                        RoundedRectangle(cornerRadius: 7, style: .continuous)
+                            .fill(LinearGradient.hpAccentFill)
                     }
                 }
         }
-        .buttonStyle(.plain)
+        .buttonStyle(HoverHighlightButtonStyle(cornerRadius: 7, hoverOpacity: 0.12))
         .accessibilityLabel(mode == .covers ? "封面显示" : "列表显示")
     }
 
@@ -656,7 +639,7 @@ private struct HomeRecentRow: View {
             .padding(.vertical, 6)
             .background {
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(Color.hpTextPrimary.opacity(isHovering ? 0.07 : 0.03))
+                    .fill(Color.hpTextPrimary.opacity(isHovering ? 0.07 : 0))
             }
             .contentShape(Rectangle())
         }

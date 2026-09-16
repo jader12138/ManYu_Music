@@ -167,7 +167,7 @@ struct SidebarView: View {
                 selected: selected
             )
         }
-        .buttonStyle(.plain)
+        .buttonStyle(HoverHighlightButtonStyle(cornerRadius: 10, hoverOpacity: 0.12))
         .padding(.horizontal, 10)
     }
 
@@ -184,7 +184,7 @@ struct SidebarView: View {
                 selected: selected
             )
         }
-        .buttonStyle(.plain)
+        .buttonStyle(HoverHighlightButtonStyle(cornerRadius: 10, hoverOpacity: 0.12))
         .padding(.horizontal, 10)
         .contextMenu {
             Button {
@@ -254,7 +254,7 @@ struct SidebarView: View {
                 selected: destination == .settings
             )
         }
-        .buttonStyle(.plain)
+        .buttonStyle(HoverHighlightButtonStyle(cornerRadius: 10, hoverOpacity: 0.12))
         .padding(.horizontal, 10)
         .help("设置")
     }

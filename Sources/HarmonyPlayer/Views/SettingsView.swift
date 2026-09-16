@@ -80,18 +80,15 @@ struct SettingsView: View {
                         .foregroundStyle(selectedTab == tab ? .white : Color.hpTextPrimary.opacity(0.58))
                         .padding(.horizontal, 14)
                         .frame(height: 32)
-                        .background(
-                            selectedTab == tab ? AnyShapeStyle(LinearGradient.hpAccentFill) : AnyShapeStyle(Color.clear),
-                            in: Capsule()
-                        )
+                        .background {
+                            if selectedTab == tab {
+                                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                    .fill(LinearGradient.hpAccentFill)
+                            }
+                        }
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(HoverHighlightButtonStyle(cornerRadius: 8, hoverOpacity: 0.12))
             }
-        }
-        .padding(4)
-        .background(Color.hpTextPrimary.opacity(0.05), in: Capsule())
-        .overlay {
-            Capsule().stroke(Color.hpTextPrimary.opacity(0.06), lineWidth: 1)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }

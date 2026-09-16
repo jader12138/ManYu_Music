@@ -599,9 +599,8 @@ private struct LibraryLoadErrorView: View {
                     .padding(.horizontal, 18)
                     .padding(.vertical, 10)
                     .foregroundStyle(.white)
-                    .background(LinearGradient.hpAccentFill, in: Capsule())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(AccentFillButtonStyle())
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding(40)
@@ -621,9 +620,10 @@ private struct NoticeView: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 9)
-        .background(Color.hpSurface.opacity(0.94), in: Capsule())
+        .background(Color.hpSurface.opacity(0.94), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
         .overlay {
-            Capsule().stroke(Color.hpTextPrimary.opacity(0.10), lineWidth: 1)
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(Color.hpTextPrimary.opacity(0.10), lineWidth: 1)
         }
         .shadow(color: .black.opacity(0.28), radius: 14, y: 7)
     }
