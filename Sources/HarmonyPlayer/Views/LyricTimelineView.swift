@@ -1,10 +1,18 @@
 import SwiftUI
 
+/// Apple Music 风格的歌词时间轴。
+///
+/// 刻意不使用 ScrollView/ScrollViewReader：macOS 上程序化 scrollTo 的动画
+/// 不可靠（远距离经常不播动画直接跳变），这是此前歌词跳转"僵硬"的根因。
+/// 这里改为自管内容偏移量——行位置在布局后测量一次，之后所有滚动都只是
+/// 对单个 offset 值的原生动画（平移变换，逐帧合成、不触发布局），任何
+/// 距离都必然是一条连续的缓动滑行，且渲染开销极低，不会与进度条动画
+/// 互相争抢主线程。
 struct LyricTimelineView: View {
     let lines: [LyricLine]
-    // 故意不用 @ObservedObject：时钟每秒发布约十次，若直接观察会让
-    // 整个歌词列表以同样频率整表重算，造成滚动"一卡一卡"。
-    // 这里只订阅其 currentTime，在当前行真正变化时才更新 @State。
+    // 故意不用 @ObservedObject：时钟每秒发布约四次，若直接观察会带动
+    // 整个歌词列表以同样频率整表重算。这里只订阅 currentTime，
+    // 在当前行真正变化时才更新 @State。
     let clock: PlaybackClock
     let seek: (Double) -> Void
     var baseFontSize: CGFloat = 18
@@ -15,64 +23,121 @@ struct LyricTimelineView: View {
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var activeIndex: Int = -1
-    @State private var lastScrolledIndex: Int = -1
-    @State private var glideTask: Task<Void, Never>?
+    @State private var linePositions: [Int: CGFloat] = [:]
+    @State private var currentOffset: CGFloat = 0
+    @State private var dragBase: CGFloat?
 
     var body: some View {
         GeometryReader { geometry in
             let stackSpacing = max(8, baseFontSize * 0.72 * lineSpacingScale)
-            ScrollViewReader { proxy in
-                ScrollView(.vertical, showsIndicators: false) {
-                    // 普通 VStack：行数有限（歌词通常几百行以内），
-                    // 避免 Lazy 版本在滚动过程中逐行实例化造成的顿挫。
-                    VStack(spacing: stackSpacing) {
-                        ForEach(Array(lines.enumerated()), id: \.element.id) { index, line in
-                            lyricLine(line, index: index, activeIndex: activeIndex)
-                                .id(index)
-                        }
-                    }
-                    // 底部留白比顶部多一截，让歌词整体视觉重心上移一点。
-                    .padding(.top, max(60, geometry.size.height * 0.34))
-                    .padding(.bottom, max(60, geometry.size.height * 0.34) + 56)
-                    .padding(.horizontal, 14)
-                    .frame(maxWidth: .infinity)
-                }
-                .mask(
-                    LinearGradient(
-                        stops: [
-                            .init(color: .clear, location: 0),
-                            .init(color: .black.opacity(0.20), location: 0.11),
-                            .init(color: .black.opacity(0.86), location: 0.30),
-                            .init(color: .black, location: 0.42),
-                            .init(color: .black, location: 0.58),
-                            .init(color: .black.opacity(0.86), location: 0.70),
-                            .init(color: .black.opacity(0.20), location: 0.89),
-                            .init(color: .clear, location: 1)
-                        ],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                )
-                .onAppear {
-                    activeIndex = lineIndex(at: clock.currentTime)
-                    scroll(to: activeIndex, proxy: proxy, animated: false)
-                }
-                .onReceive(clock.$currentTime) { time in
-                    let index = lineIndex(at: time)
-                    if index != activeIndex {
-                        activeIndex = index
-                    }
-                }
-                .onChange(of: activeIndex) { _, index in
-                    scroll(to: index, proxy: proxy, animated: !reduceMotion)
-                }
-                .onChange(of: lines.first?.id) { _, _ in
-                    glideTask?.cancel()
-                    lastScrolledIndex = -1
-                    activeIndex = lineIndex(at: clock.currentTime)
+            let topPad = max(60, geometry.size.height * 0.34)
+            let bottomPad = topPad + 56
+            VStack(spacing: stackSpacing) {
+                ForEach(Array(lines.enumerated()), id: \.element.id) { index, line in
+                    lyricLine(line, index: index, activeIndex: activeIndex)
+                        .background(
+                            GeometryReader { proxy in
+                                Color.clear.preference(
+                                    key: LyricLinePositionsKey.self,
+                                    value: [line.id: proxy.frame(in: .named("LyricContent")).midY]
+                                )
+                            }
+                        )
                 }
             }
+            // 内容坐标系：行位置在内容空间内测量，外层平移不影响读数，
+            // 因此拖动/滑行过程中不会触发偏好值重算。
+            .coordinateSpace(name: "LyricContent")
+            .padding(.top, topPad)
+            .padding(.bottom, bottomPad)
+            .padding(.horizontal, 14)
+            .frame(maxWidth: .infinity, alignment: .top)
+            .offset(y: -currentOffset)
+            .frame(width: geometry.size.width, height: geometry.size.height, alignment: .top)
+            .clipped()
+            .mask(
+                LinearGradient(
+                    stops: [
+                        .init(color: .clear, location: 0),
+                        .init(color: .black.opacity(0.20), location: 0.11),
+                        .init(color: .black.opacity(0.86), location: 0.30),
+                        .init(color: .black, location: 0.42),
+                        .init(color: .black, location: 0.58),
+                        .init(color: .black.opacity(0.86), location: 0.70),
+                        .init(color: .black.opacity(0.20), location: 0.89),
+                        .init(color: .clear, location: 1)
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+            )
+            .contentShape(Rectangle())
+            .gesture(dragGesture(in: geometry.size))
+            .onPreferenceChange(LyricLinePositionsKey.self) { positions in
+                guard positions != linePositions else { return }
+                linePositions = positions
+                centerActive(in: geometry.size.height, animated: false)
+            }
+            .onAppear {
+                activeIndex = lineIndex(at: clock.currentTime)
+            }
+            .onReceive(clock.$currentTime) { time in
+                let index = lineIndex(at: time)
+                if index != activeIndex {
+                    activeIndex = index
+                }
+            }
+            .onChange(of: activeIndex) { _, _ in
+                centerActive(in: geometry.size.height, animated: !reduceMotion)
+            }
+            .onChange(of: lines.first?.id) { _, _ in
+                linePositions = [:]
+                currentOffset = 0
+                dragBase = nil
+                activeIndex = lineIndex(at: clock.currentTime)
+            }
         }
+    }
+
+    // MARK: - 滚动控制
+
+    /// 把当前行滑到视口中心。长距离跳转与逐行推进都用同一条原生缓动，
+    /// 区别只在时长：跳转 1.5 秒从容滑到，逐行 0.7 秒缓冲跟进。
+    private func centerActive(in height: CGFloat, animated: Bool) {
+        guard lines.indices.contains(activeIndex),
+              let centerY = linePositions[lines[activeIndex].id] else { return }
+        let maxOffset = max(0, contentHeight(in: height) - height)
+        let target = min(max(centerY - height / 2, 0), maxOffset)
+        guard animated, !reduceMotion else {
+            currentOffset = target
+            return
+        }
+        let distance = abs(target - currentOffset)
+        let isLongJump = distance > max(240, height * 0.9)
+        withAnimation(.easeInOut(duration: isLongJump ? 1.5 : 0.70)) {
+            currentOffset = target
+        }
+    }
+
+    private func contentHeight(in height: CGFloat) -> CGFloat {
+        let topPad = max(60, height * 0.34)
+        let bottomPad = topPad + 56
+        guard let lastID = lines.last?.id, let lastY = linePositions[lastID] else { return height }
+        return lastY + bottomPad + baseFontSize * 1.6
+    }
+
+    /// 拖动浏览：直接改 currentOffset（不带动画、实时跟手），
+    /// 松手后停留在原地，下一次换行自动归位到当前句。
+    private func dragGesture(in size: CGSize) -> some Gesture {
+        DragGesture(minimumDistance: 5)
+            .onChanged { value in
+                if dragBase == nil { dragBase = currentOffset }
+                let maxOffset = max(0, contentHeight(in: size.height) - size.height)
+                currentOffset = min(max((dragBase ?? 0) - value.translation.height, 0), maxOffset)
+            }
+            .onEnded { _ in
+                dragBase = nil
+            }
     }
 
     /// 与播放位置匹配的行下标；无可匹配行时为 -1。
@@ -90,6 +155,8 @@ struct LyricTimelineView: View {
         return result
     }
 
+    // MARK: - 行渲染
+
     private func lyricLine(_ line: LyricLine, index: Int, activeIndex: Int) -> some View {
         let isCurrent = index == activeIndex
         let distance = activeIndex >= 0 ? abs(index - activeIndex) : 0
@@ -101,8 +168,8 @@ struct LyricTimelineView: View {
             guard let time = line.time else { return }
             seek(time)
         } label: {
-            // 字号与字重保持恒定：只靠 scaleEffect 做强调，避免行高变化
-            // 在滚动动画进行时改变布局、造成"卡一下"的观感。
+            // 字号与字重保持恒定：只靠 scaleEffect 做强调，行高不随播放变化，
+            // 测量好的行位置始终有效。
             Text(line.text)
                 .font(.system(size: baseFontSize, weight: .semibold, design: fontDesign))
                 .foregroundStyle(lineForegroundStyle(isCurrent: isCurrent, opacity: visibleOpacity))
@@ -135,61 +202,12 @@ struct LyricTimelineView: View {
         }
         return AnyShapeStyle(textColor.opacity(opacity))
     }
+}
 
-    private func scroll(to index: Int, proxy: ScrollViewProxy, animated: Bool) {
-        guard index >= 0, lines.indices.contains(index) else { return }
-        glideTask?.cancel()
-        guard animated, !reduceMotion else {
-            proxy.scrollTo(index, anchor: .center)
-            lastScrolledIndex = index
-            return
-        }
-
-        let start = lastScrolledIndex
-        let distance = index - start
-        lastScrolledIndex = index
-
-        // 近距离（正常逐行推进）：一段长缓动，观感是缓慢的缓冲。
-        guard abs(distance) > 4 else {
-            withAnimation(.easeInOut(duration: 0.70)) {
-                proxy.scrollTo(index, anchor: .center)
-            }
-            return
-        }
-
-        // 远距离（点击跳转）：macOS 对超长距离的 scrollTo 常常直接跳变、
-        // 不播动画；改为分多段滑行。中段用 linear 且各段时长一致，段与段
-        // 之间速度完全连续，观感是一条匀速滑行；起段加速、末段减速。
-        // 段数压低、每行不叠加阴影，控制滚动时的渲染负担，
-        // 避免和左侧进度条的动画互相抢主线程。
-        let hopCount = min(8, max(2, abs(distance) / 7))
-        let step = Double(distance) / Double(hopCount)
-        glideTask = Task { @MainActor in
-            for hop in 1...hopCount {
-                if Task.isCancelled { return }
-                let target: Int
-                let duration: Double
-                switch hop {
-                case 1:
-                    target = min(max(start + Int(step.rounded()), 0), lines.count - 1)
-                    duration = 0.30
-                case hopCount:
-                    target = index
-                    duration = 0.55
-                default:
-                    target = min(max(start + Int((step * Double(hop)).rounded()), 0), lines.count - 1)
-                    duration = 0.40
-                }
-                let curve: Animation = hop == 1
-                    ? .easeIn(duration: duration)
-                    : (hop == hopCount ? .easeOut(duration: duration) : .linear(duration: duration))
-                withAnimation(curve) {
-                    proxy.scrollTo(target, anchor: .center)
-                }
-                if hop < hopCount {
-                    try? await Task.sleep(nanoseconds: 400_000_000)
-                }
-            }
-        }
+/// 汇总每行歌词在内容坐标系里的纵向中心，用于计算目标偏移。
+private struct LyricLinePositionsKey: PreferenceKey {
+    static var defaultValue: [Int: CGFloat] { [:] }
+    static func reduce(value: inout [Int: CGFloat], nextValue: () -> [Int: CGFloat]) {
+        value.merge(nextValue(), uniquingKeysWith: { _, new in new })
     }
 }

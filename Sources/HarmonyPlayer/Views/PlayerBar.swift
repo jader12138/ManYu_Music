@@ -181,7 +181,8 @@ struct PlayerBar: View {
             PlaybackProgressRow(
                 clock: player.clock,
                 isEnabled: player.currentTrack != nil,
-                seek: player.seek
+                seek: player.seek,
+                isPlaying: player.isPlaying
             )
         }
     }
@@ -309,38 +310,55 @@ struct PlaybackProgressRow: View {
     @ObservedObject var clock: PlaybackClock
     let isEnabled: Bool
     let seek: (Double) -> Void
+    var isPlaying: Bool = false
     var controlSize: ControlSize = .mini
     var fontWeight: Font.Weight = .medium
 
+    /// 最近一次时钟 tick 的墙钟锚点。
+    ///
+    /// 时钟回调经 `Task { @MainActor }` 投递，到达时刻天然抖动；任何基于
+    /// "tick → 播动画"的方案都会被抖动打断而一跳一跳。这里改为记录锚点后
+    /// 由 TimelineView 按帧插值：显示进度 = 锚点时间 + 距锚点的真实流逝，
+    /// 与 tick 何时到达完全无关，天然连续。
+    @State private var anchorDate = Date()
+
     var body: some View {
-        HStack(spacing: 8) {
-            Text(Track.formatTime(clock.currentTime))
-                .font(.system(size: 9, weight: fontWeight, design: .monospaced))
-                .foregroundStyle(Color.hpTextPrimary.opacity(0.38))
-                .frame(width: 40, alignment: .trailing)
+        TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { context in
+            let raw = clock.currentTime + (isPlaying ? context.date.timeIntervalSince(anchorDate) : 0)
+            let displayed = clock.duration > 0 ? min(max(raw, 0), clock.duration) : max(raw, 0)
+            HStack(spacing: 8) {
+                Text(Track.formatTime(displayed))
+                    .font(.system(size: 9, weight: fontWeight, design: .monospaced))
+                    .foregroundStyle(Color.hpTextPrimary.opacity(0.38))
+                    .frame(width: 40, alignment: .trailing)
 
-            SmoothScrubber(
-                time: clock.currentTime,
-                duration: clock.duration,
-                isEnabled: isEnabled,
-                seek: seek
-            )
-            .disabled(!isEnabled)
+                SmoothScrubber(
+                    progress: clock.duration > 0 ? min(max(displayed / clock.duration, 0), 1) : 0,
+                    duration: clock.duration,
+                    isEnabled: isEnabled,
+                    seek: seek
+                )
+                .disabled(!isEnabled)
 
-            Text(clock.duration > 0 ? Track.formatTime(clock.duration) : "--:--")
-                .font(.system(size: 9, weight: fontWeight, design: .monospaced))
-                .foregroundStyle(Color.hpTextPrimary.opacity(0.38))
-                .frame(width: 40, alignment: .leading)
+                Text(clock.duration > 0 ? Track.formatTime(clock.duration) : "--:--")
+                    .font(.system(size: 9, weight: fontWeight, design: .monospaced))
+                    .foregroundStyle(Color.hpTextPrimary.opacity(0.38))
+                    .frame(width: 40, alignment: .leading)
+            }
+        }
+        .onAppear { anchorDate = Date() }
+        .onChange(of: clock.currentTime) { _, _ in
+            anchorDate = Date()
         }
     }
 }
 
 /// Apple Music 风格的平滑进度条。
 ///
-/// 时钟每 0.25s 才更新一次进度，系统 Slider 会一格一格地跳；这里把进度值
-/// 挂上缓动动画，让相邻两次更新连成连续的滑行。拖动时关闭缓动，保证跟手。
+/// 进度由 TimelineView 按帧插值后传入，这里不做任何进度动画，绘制即所见；
+/// 拖动时本地覆盖显示值并实时跟手，松手才 seek。
 private struct SmoothScrubber: View {
-    let time: Double
+    let progress: Double
     let duration: Double
     let isEnabled: Bool
     let seek: (Double) -> Void
@@ -348,9 +366,11 @@ private struct SmoothScrubber: View {
     @State private var dragTime: Double?
     @State private var isHovering = false
 
-    private var progress: Double {
-        let current = dragTime ?? time
-        return duration > 0 ? min(max(current / duration, 0), 1) : 0
+    private var displayProgress: Double {
+        if let dragTime {
+            return duration > 0 ? min(max(dragTime / duration, 0), 1) : 0
+        }
+        return progress
     }
     private var isDragging: Bool { dragTime != nil }
     private var showKnob: Bool { isHovering || isDragging }
@@ -358,14 +378,14 @@ private struct SmoothScrubber: View {
     var body: some View {
         GeometryReader { geo in
             let width = geo.size.width
-            let knobX = min(max(width * progress - 5.5, -1), width - 10)
+            let knobX = min(max(width * displayProgress - 5.5, -1), width - 10)
             ZStack(alignment: .leading) {
                 Capsule()
                     .fill(Color.hpTextPrimary.opacity(0.15))
                     .frame(height: 3.5)
                 Capsule()
                     .fill(Color.hpAccent)
-                    .frame(width: max(3.5, width * progress), height: 3.5)
+                    .frame(width: max(3.5, width * displayProgress), height: 3.5)
                 Circle()
                     .fill(Color.hpAccent)
                     .frame(width: 11, height: 11)
@@ -380,11 +400,6 @@ private struct SmoothScrubber: View {
             }
             .frame(width: width, height: geo.size.height, alignment: .leading)
             .contentShape(Rectangle())
-            // 时钟每 0.25s 推进一次进度；用等长的 linear 缓动把相邻两次
-            // 更新接成恒速滑行（easeInOut 每次都从零速起步，一秒四次
-            // "加速-减速"循环，正是"一跳一跳"的来源），主线程开销也最低。
-            .animation(isDragging ? nil : .linear(duration: 0.25), value: progress)
-            .animation(.easeInOut(duration: 0.16), value: showKnob)
             .onHover { isHovering = $0 }
             .gesture(dragGesture(width))
         }

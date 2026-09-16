@@ -94,6 +94,7 @@ struct NowPlayingView: View {
                 clock: player.clock,
                 isEnabled: player.currentTrack != nil,
                 seek: player.seek,
+                isPlaying: player.isPlaying,
                 controlSize: .small,
                 fontWeight: .semibold
             )
