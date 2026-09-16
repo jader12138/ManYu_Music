@@ -115,6 +115,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 frameView.layer?.isOpaque = false
             }
             window.minSize = NSSize(width: 840, height: 520)
+            offsetTrafficLights(of: window)
 
             let current = window.frame
             let targetWidth = min(current.width, maxWidth)
@@ -132,6 +133,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
             NSApp.windows.first(where: { $0.isVisible })?.makeFirstResponder(nil)
+        }
+    }
+
+    /// 窗口尺寸变化后重新应用交通灯偏移（带 identifier 防止重复累加）。
+    private static let trafficLightResizeObserver: Void = {
+        NotificationCenter.default.addObserver(
+            forName: NSWindow.didResizeNotification,
+            object: nil,
+            queue: .main
+        ) { note in
+            guard let window = note.object as? NSWindow else { return }
+            offsetTrafficLights(of: window)
+        }
+    }()
+
+    /// 把窗口左上角的红黄绿三键整体往右、往下挪一点，避免过于贴住左上角。
+    private static func offsetTrafficLights(of window: NSWindow) {
+        _ = trafficLightResizeObserver
+        let dx: CGFloat = 6
+        let dy: CGFloat = -6
+        let marker = NSUserInterfaceItemIdentifier("ManyuMusic.trafficLightOffset")
+        for type in [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton] {
+            guard let button = window.standardWindowButton(type) else { continue }
+            guard button.identifier != marker else { continue }
+            var frame = button.frame
+            button.setFrameOrigin(NSPoint(x: frame.origin.x + dx, y: frame.origin.y + dy))
+            button.identifier = marker
         }
     }
 

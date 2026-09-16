@@ -250,6 +250,11 @@ struct HomeView: View {
 
     private var quickActions: some View {
         HStack(spacing: 12) {
+            quickActionButton("继续播放", systemImage: "play.circle") {
+                player.resume()
+            }
+            .disabled(player.currentTrack == nil)
+
             quickActionButton("播放全部", systemImage: "play.fill") {
                 if let first = tracks.first {
                     play(first, in: tracks)
@@ -264,11 +269,6 @@ struct HomeView: View {
                 }
             }
             .disabled(tracks.isEmpty)
-
-            quickActionButton("继续播放", systemImage: "play.circle") {
-                player.resume()
-            }
-            .disabled(player.currentTrack == nil)
 
             Spacer()
 
