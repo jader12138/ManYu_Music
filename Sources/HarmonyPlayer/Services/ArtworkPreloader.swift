@@ -40,16 +40,22 @@ final class ArtworkPreloader {
 
         let allTracks = tracks
         runningTask = Task(priority: .utility) {
-            // 小档在前：列表行缩略图的使用频率最高。
+            // 小档在前：列表行缩略图的使用频率最高。已缓存的项目无需让步，直接快进。
             for track in allTracks {
                 guard !Task.isCancelled, isEnabled else { break }
+                let hit = ArtworkCache.shared.image(for: track.url, tier: .small) != nil
                 _ = await ArtworkPipeline.shared.artwork(for: track, pixelSize: ArtworkPixelTier.small.pixels)
-                try? await Task.sleep(for: .milliseconds(3))
+                if !hit {
+                    try? await Task.sleep(for: .milliseconds(3))
+                }
             }
             for track in albumRepresentatives {
                 guard !Task.isCancelled, isEnabled else { break }
+                let hit = ArtworkCache.shared.image(for: track.url, tier: .medium) != nil
                 _ = await ArtworkPipeline.shared.artwork(for: track, pixelSize: ArtworkPixelTier.medium.pixels)
-                try? await Task.sleep(for: .milliseconds(3))
+                if !hit {
+                    try? await Task.sleep(for: .milliseconds(3))
+                }
             }
             runningTask = nil
         }

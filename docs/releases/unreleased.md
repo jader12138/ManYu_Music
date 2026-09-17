@@ -52,13 +52,15 @@
 
 ### 修复
 
+- 预加载效果修复（codex/preload-cache-hit 分支内容）：`LazyArtworkView` 缓存命中后改为在 body 中同步解析、随首帧渲染，不再"占位图 → task 下一帧换图"闪烁；封面图状态带请求标识，视图复用换曲目时不会闪上一首的封面。封面缓存成本上限 128MB→256MB、条目上限 900→1200（预热总量约等于小档全部曲目 + 中档全部专辑，此前超出 128MB 会被 NSCache 挤掉一部分，表现为部分封面仍需现加载）。预热循环对已缓存项目跳过让步等待、直接快进。
 - 修复点击歌词/进度条跳转后进度显示与时钟"乒乓"冲突的问题：seek 落位完成前丢弃观察器的旧位置回调，跳转后进度条不再回跳抖动。
 - 修复"每次打开软件时更新"的首页推荐在切换页面后被重新随机的问题：推荐现在在整个运行期间保持稳定，重启应用后才更换。
 - 补齐歌单/专辑/歌手详情页缺失的过渡动画定义（编译错误修复）。
 
 ## 技术变更
 
-- 启动预加载：新增 `ArtworkPreloader`（MainActor 单例，低优先级 Task 逐项调用 `ArtworkPipeline`，每项间隔 3ms 让步；开关 key `ManyuMusic.preloadArtwork`，幂等防重入，运行中检测开关关闭即中止）。触发点：MainView 在资料库加载完成时、设置里打开开关时。`ArtworkCache.countLimit` 320 → 900（`totalCostLimit` 保持 128MB，由 NSCache 按内存压力自行淘汰）。
+- 预加载调优：`LazyArtworkView` 用 `currentImage`（缓存同步查找 + 带请求标识的加载状态）在 body 内解析封面；`ArtworkCache.countLimit` 900→1200、`totalCostLimit` 128MB→256MB。
+- 启动预加载：新增 `ArtworkPreloader`（MainActor 单例，低优先级 Task 逐项调用 `ArtworkPipeline`，每项间隔 3ms 让步；开关 key `ManyuMusic.preloadArtwork`，幂等防重入，运行中检测开关关闭即中止）。触发点：MainView 在资料库加载完成时、设置里打开开关时。
 - 性能优化：`NowPlayingView` 不再在内部 ZStack 重复挂载 `NowPlayingBackdrop`（由 MainView 统一挂载一份）；`AudioPlayer.loadArtwork` 的 `ArtworkPaletteExtractor.palette(from:)` 改为 `Task.detached` 后台执行（带当前曲目校验防串歌）；`DockArtworkController` 新增后台串行渲染队列与 `renderGeneration` 代数号，`makeDockIcon`/`aspectFillRect` 改为 static 以脱离 MainActor 隔离。
 - 全局隐藏滚动条：`AppDelegate` 启动时安装扫描器（1.5 秒低频定时 + 启动后延迟扫描 + 窗口成为主窗口通知），递归遍历可见窗口视图树，把所有 `NSScrollView` 的 `hasVerticalScroller`/`hasHorizontalScroller` 置为 false（仅在仍开启时写回，避免重复赋值触发布局），覆盖 SwiftUI 懒创建的滚动视图；纯 Swift 实现，无 swizzle/hook。
 - `AudioPlayer` 新增按歌曲记忆的歌词时间轴偏移（`lyricOffset`，UserDefaults 字典存储，键为 track UUID，不动 library.json 格式）；`LyricTimelineView.lineIndex` 按偏移平移歌词时间轴，偏移变化时立即重算当前行。
@@ -103,3 +105,4 @@
 - 2026-09-17：补充隐藏滚动条分支（codex/hide-scrollbars）的合并内容——所有界面不再显示滚动条。
 - 2026-09-17：补充性能优化分支（codex/perf-smooth-scroll）的内容——去重播放页背景、主色提取与 Dock 图标后台化、滚动条扫描幂等化。
 - 2026-09-17：补充启动预加载分支（codex/startup-preload）的内容——设置新增启动预加载开关与 ArtworkPreloader。
+- 2026-09-17：补充预加载调优分支（codex/preload-cache-hit）的内容——缓存命中同步渲染、缓存上限放宽、预热快进。
