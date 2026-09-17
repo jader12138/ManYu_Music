@@ -29,6 +29,11 @@ enum AppIconStyle: String, CaseIterable, Identifiable {
 
 @MainActor
 enum AppIconStyleManager {
+    /// 上一次解析出的具体图标（深色/浅色）。启动时直接恢复它，
+    /// 避免启动早期外观解析（SwiftUI 首窗创建前 effectiveAppearance 可能不准）
+    /// 与主题加载之间出现 Dock 图标跳变。
+    private static let lastResolvedStyleKey = "ManyuMusic.lastResolvedAppIconStyle"
+
     static func selectedStyle() -> AppIconStyle {
         if let rawValue = UserDefaults.standard.string(forKey: AppIconStyle.storageKey) {
             if rawValue == "albumArtwork" {
@@ -62,7 +67,22 @@ enum AppIconStyleManager {
         }
 
         let resolvedStyle: AppIconStyle = isDark ? .dark : .light
+        UserDefaults.standard.set(resolvedStyle.rawValue, forKey: lastResolvedStyleKey)
         guard let image = image(for: resolvedStyle) else { return }
+        NSApplication.shared.applicationIconImage = image
+        NSApplication.shared.dockTile.display()
+    }
+
+    /// 启动第一步调用：直接恢复上一次会话解析出的具体图标（深色/浅色），
+    /// 不做任何外观解析。首次启动没有记录时回退到正常解析。
+    static func applyLastUsedIcon() {
+        guard let rawValue = UserDefaults.standard.string(forKey: lastResolvedStyleKey),
+              let style = AppIconStyle(rawValue: rawValue),
+              style == .dark || style == .light,
+              let image = image(for: style) else {
+            apply()
+            return
+        }
         NSApplication.shared.applicationIconImage = image
         NSApplication.shared.dockTile.display()
     }
