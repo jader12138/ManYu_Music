@@ -94,6 +94,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             AppIconStyleManager.apply()
         }
 
+        // 内存压力兜底：长期挂机听歌时，系统内存吃紧时自动清空可再生成缓存。
+        MemoryPressureMonitor.install()
+
         Self.installScrollbarHider()
 
         DispatchQueue.main.async {

@@ -706,6 +706,11 @@ private enum PlaybackStateKeys {
 enum BlurredBackdropRenderer {
     private static let context = CIContext()
 
+    /// CoreImage 内部缓存清理（内存压力兜底用）：背景图与光斑按需重算，可再生。
+    static func clearCaches() {
+        context.clearCaches()
+    }
+
     static func image(from artwork: NSImage) -> NSImage? {
         guard let cgSource = artwork.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
             return nil

@@ -423,6 +423,12 @@ final class ArtworkCache {
         cache.setObject(image, forKey: Self.key(for: url, tier: tier) as NSString, cost: Int(pixels * 4))
     }
 
+    /// 系统内存压力下的兜底清理：NSCache 自身会自动淘汰，这里显式清空、
+    /// 立即释放。清掉的都是可再生成的封面（下次显示时按需重新解码）。
+    func removeAllObjects() {
+        cache.removeAllObjects()
+    }
+
     // Kept for callers that only know a URL: equivalent to the default 768px tier.
     func image(for url: URL) -> NSImage? {
         image(for: url, tier: .large)
