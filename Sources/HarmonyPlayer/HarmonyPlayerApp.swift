@@ -87,11 +87,51 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.activate(ignoringOtherApps: true)
         AppIconStyleManager.apply()
 
+        Self.installScrollbarHider()
+
         DispatchQueue.main.async {
             Self.fitWindowsToVisibleScreen()
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
             Self.fitWindowsToVisibleScreen()
+        }
+    }
+
+    // MARK: - 全局隐藏滚动条
+
+    /// 所有界面都不显示滚动条（滚动功能本身不受影响，触控板/滚轮照常使用）。
+    /// SwiftUI 的 ScrollView/List 懒创建底层 NSScrollView，因此用低频扫描 +
+    /// 窗口成为主窗口时扫描，保证切换页面后新出现的滚动视图也被覆盖。
+    private static func installScrollbarHider() {
+        Timer.scheduledTimer(withTimeInterval: 1.5, repeats: true) { _ in
+            hideScrollbarsInAllWindows()
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            hideScrollbarsInAllWindows()
+        }
+        NotificationCenter.default.addObserver(
+            forName: NSWindow.didBecomeMainNotification,
+            object: nil,
+            queue: .main
+        ) { _ in
+            hideScrollbarsInAllWindows()
+        }
+    }
+
+    private static func hideScrollbarsInAllWindows() {
+        for window in NSApp.windows where window.isVisible {
+            hideScrollbars(in: window.contentView)
+        }
+    }
+
+    private static func hideScrollbars(in view: NSView?) {
+        guard let view else { return }
+        if let scrollView = view as? NSScrollView {
+            scrollView.hasVerticalScroller = false
+            scrollView.hasHorizontalScroller = false
+        }
+        for subview in view.subviews {
+            hideScrollbars(in: subview)
         }
     }
 
