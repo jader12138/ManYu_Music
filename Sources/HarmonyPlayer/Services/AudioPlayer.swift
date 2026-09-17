@@ -406,16 +406,6 @@ final class AudioPlayer: ObservableObject {
                 self.currentTime = seconds
                 self.persistPlaybackState(force: false)
 
-                // 声明终点守卫：部分下载源的 FLAC 可播流比元数据时长多出十几秒
-                // （编码器写入的尾部冗余帧，AVPlayerItem.duration 也随之失真），
-                // AVPlayer 要到真实流末尾才发结束通知——表现为进度条钉在终点、
-                // 歌曲继续播放很久、歌词早已结束。到达声明终点仍在播放即视为
-                // 播完，走正常切歌流程（与主流播放器按元数据时长收尾一致）。
-                if self.duration > 0, self.player.rate > 0, seconds >= self.duration - 0.05 {
-                    self.handleTrackFinished()
-                    return
-                }
-
                 if self.duration <= 0,
                    let itemDuration = self.player.currentItem?.duration.seconds,
                    itemDuration.isFinite,
