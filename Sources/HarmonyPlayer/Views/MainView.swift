@@ -30,7 +30,7 @@ struct MainView: View {
                     transitionNamespace: nowPlayingTransition,
                     artworkEntry: nowPlayingEntry
                 )
-                .transition(.opacity.combined(with: .scale(scale: 0.985)))
+                .transition(.opacity)
                 .frame(width: geometry.size.width, height: geometry.size.height)
                 .background {
                     NowPlayingBackdrop()
