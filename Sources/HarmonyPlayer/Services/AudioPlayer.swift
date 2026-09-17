@@ -752,11 +752,12 @@ enum BlurredBackdropRenderer {
     ///   - blurRadius: 原实时模糊半径（pt）
     /// - Returns: 图片及其显示尺寸（含模糊外溢余量）
     static func blurredOrb(color: NSColor, diameter: CGFloat, blurRadius: CGFloat) -> (image: NSImage, displaySize: CGFloat)? {
+        // 1/4 分辨率烘焙：光斑本就是模糊团，低分辨率放大后无视觉差，速度快约 4 倍。
+        let quarterScale: CGFloat = 0.25
         let reach = blurRadius * 1.25
-        let halfScale: CGFloat = 0.5
-        let canvas = (diameter + reach * 2) * halfScale
-        let circleDiameter = diameter * halfScale
-        let sigma = blurRadius * halfScale
+        let canvas = (diameter + reach * 2) * quarterScale
+        let circleDiameter = diameter * quarterScale
+        let sigma = blurRadius * quarterScale
 
         let size = NSSize(width: canvas, height: canvas)
         let image = NSImage(size: size)
@@ -786,6 +787,6 @@ enum BlurredBackdropRenderer {
               let cg = context.createCGImage(output, from: extent)
         else { return nil }
         let result = NSImage(cgImage: cg, size: NSSize(width: extent.width, height: extent.height))
-        return (result, canvas / halfScale)
+        return (result, canvas / quarterScale)
     }
 }

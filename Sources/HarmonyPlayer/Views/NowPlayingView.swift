@@ -73,8 +73,10 @@ struct NowPlayingView: View {
             if reduceMotion {
                 lyricsReady = true
             } else {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.28) {
-                    withAnimation(.easeIn(duration: 0.22)) {
+                // 0.65s > 转场 spring 的 0.56s：歌词首次布局的重活落在动画结束后的
+                // 静止画面里（淡入呈现），而不是与收尾帧争抢——避免"快到终点"的顿挫。
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.65) {
+                    withAnimation(.easeIn(duration: 0.25)) {
                         lyricsReady = true
                     }
                 }

@@ -23,6 +23,8 @@ struct MainView: View {
     /// 播放页背景 GPU 预热：启动后短暂挂载一次背景视图（几乎透明），
     /// 让模糊光斑与渐变层的首次光栅化发生在启动静默期，首次打开播放页不再冷启动卡顿。
     @State private var warmupBackdropVisible = false
+    /// 预热实例专用的几何命名空间，与真实转场的命名空间互不干扰。
+    @Namespace private var warmupTransitionNamespace
     @Namespace private var nowPlayingTransition
     @FocusState private var searchIsFocused: Bool
 
@@ -250,15 +252,18 @@ struct MainView: View {
             }
         }
         .background(Color.hpNavy.opacity(0.32))
-        // 播放页背景预热层：藏在最底层、几乎透明，只为让模糊光斑与渐变层
-        // 在启动静默期完成首次 GPU 光栅化。
+        // 播放页预热层：藏在最底层、几乎透明，启动静默期把完整播放页（含歌词、
+        // 渐变、光斑、几何配对）的首帧构建与 GPU 光栅化提前做完，
+        // 首次真实打开不再有冷启动大停顿。
         .background {
-            if warmupBackdropVisible {
-                NowPlayingBackdrop()
-                    .opacity(0.01)
-                    .allowsHitTesting(false)
-                    .accessibilityHidden(true)
-                    .ignoresSafeArea(.container, edges: .top)
+            if warmupBackdropVisible, !showNowPlaying {
+                NowPlayingView(
+                    transitionNamespace: warmupTransitionNamespace,
+                    artworkEntry: .playerBar
+                )
+                .opacity(0.01)
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
             }
         }
         .overlay(alignment: .topTrailing) {
