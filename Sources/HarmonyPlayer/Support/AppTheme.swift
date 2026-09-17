@@ -400,7 +400,10 @@ final class ArtworkCache {
     private let cache = NSCache<NSString, NSImage>()
 
     private init() {
-        cache.countLimit = 320
+        // 启动预加载开启后，小档（全部曲目）与中档（按专辑）会同时驻留，键数约
+        // 曲目数 + 专辑数；条目上限放宽，成本上限保持 128MB，由 NSCache 在内存
+        // 压力下自行淘汰。
+        cache.countLimit = 900
         cache.totalCostLimit = 128 * 1024 * 1024
     }
 

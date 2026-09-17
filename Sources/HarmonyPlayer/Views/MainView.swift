@@ -110,11 +110,18 @@ struct MainView: View {
         .animation(.easeInOut(duration: 0.2), value: library.importNotice)
         .onAppear {
             searchIsFocused = false
-            if !library.isLoading { player.restorePlaybackState(from: library.tracks) }
+            if !library.isLoading {
+                player.restorePlaybackState(from: library.tracks)
+                ArtworkPreloader.shared.preloadIfNeeded(tracks: library.tracks)
+            }
             updateWindowBackground()
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
                 searchIsFocused = false
             }
+        }
+        .onChange(of: library.isLoading) { _, loading in
+            guard !loading else { return }
+            ArtworkPreloader.shared.preloadIfNeeded(tracks: library.tracks)
         }
         .task(id: browseRequest) {
             await refreshBrowseSnapshot()

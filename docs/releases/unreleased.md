@@ -12,6 +12,7 @@
 
 ### 新增
 
+- 启动预加载：设置 → 资料库新增"启动时预加载封面"开关（默认关闭）。开启后软件启动（以及开关打开的那一刻）会在后台把封面按显示档位提前解码进缓存：小档（128px）覆盖全部曲目行缩略图，中档（384px）按专辑去重覆盖专辑/艺术家网格与首页卡片；逐项低优先级推进并周期让步，不抢占滚动与播放等前台工作。浏览歌曲页、首页、专辑/艺术家页时封面即取即用，不再等待解码。
 - 播放页音量控制：控制行"喜欢"右侧新增小喇叭音量键——点击弹出横向滑块（可点击轨道或拖动小球调整），点击滑块与喇叭以外的任意位置自动收起（那次点击本身的功能照常执行）；滑块展开期间关闭悬停滚轮调节；收起时悬停喇叭上下滚动可调音量，图标下方小字实时显示音量数字。
 - 播放模式互斥：开启随机播放自动退出循环模式，进入循环（含单曲循环）自动关闭随机；随机/循环移到"上一曲"左侧，选中时按钮本身不再亮起，改为图标下方主题色小点（顺序播放无点）。
 - 播放页歌曲标题改用专辑封面主色与白色的混合渐变（浅色模式下文字端自动换成深色保证可读），切歌时颜色平滑过渡。
@@ -57,6 +58,7 @@
 
 ## 技术变更
 
+- 启动预加载：新增 `ArtworkPreloader`（MainActor 单例，低优先级 Task 逐项调用 `ArtworkPipeline`，每项间隔 3ms 让步；开关 key `ManyuMusic.preloadArtwork`，幂等防重入，运行中检测开关关闭即中止）。触发点：MainView 在资料库加载完成时、设置里打开开关时。`ArtworkCache.countLimit` 320 → 900（`totalCostLimit` 保持 128MB，由 NSCache 按内存压力自行淘汰）。
 - 性能优化：`NowPlayingView` 不再在内部 ZStack 重复挂载 `NowPlayingBackdrop`（由 MainView 统一挂载一份）；`AudioPlayer.loadArtwork` 的 `ArtworkPaletteExtractor.palette(from:)` 改为 `Task.detached` 后台执行（带当前曲目校验防串歌）；`DockArtworkController` 新增后台串行渲染队列与 `renderGeneration` 代数号，`makeDockIcon`/`aspectFillRect` 改为 static 以脱离 MainActor 隔离。
 - 全局隐藏滚动条：`AppDelegate` 启动时安装扫描器（1.5 秒低频定时 + 启动后延迟扫描 + 窗口成为主窗口通知），递归遍历可见窗口视图树，把所有 `NSScrollView` 的 `hasVerticalScroller`/`hasHorizontalScroller` 置为 false（仅在仍开启时写回，避免重复赋值触发布局），覆盖 SwiftUI 懒创建的滚动视图；纯 Swift 实现，无 swizzle/hook。
 - `AudioPlayer` 新增按歌曲记忆的歌词时间轴偏移（`lyricOffset`，UserDefaults 字典存储，键为 track UUID，不动 library.json 格式）；`LyricTimelineView.lineIndex` 按偏移平移歌词时间轴，偏移变化时立即重算当前行。
@@ -100,3 +102,4 @@
 - 2026-09-17：补充播放页视觉与音量分支（codex/nowplaying-cover-gradient）的合并内容——标题封面渐变、背景缓慢流动、小喇叭音量滑块（含点击外部收起）、随机/循环互斥与小点选中样式。
 - 2026-09-17：补充隐藏滚动条分支（codex/hide-scrollbars）的合并内容——所有界面不再显示滚动条。
 - 2026-09-17：补充性能优化分支（codex/perf-smooth-scroll）的内容——去重播放页背景、主色提取与 Dock 图标后台化、滚动条扫描幂等化。
+- 2026-09-17：补充启动预加载分支（codex/startup-preload）的内容——设置新增启动预加载开关与 ArtworkPreloader。
