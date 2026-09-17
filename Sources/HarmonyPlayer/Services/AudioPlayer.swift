@@ -477,11 +477,6 @@ final class AudioPlayer: ObservableObject {
             }.value
             self.orbPrimaryImage = await orbA?.image
             self.orbSecondaryImage = await orbB?.image
-            // 旧的背景/光斑图已被新图替换，CoreImage 内部的中间纹理与着色缓存
-            // 不再有用——顺手清掉，避免长会话中随切歌次数缓慢增长。
-            await Task.detached(priority: .utility) {
-                BlurredBackdropRenderer.clearCaches()
-            }.value
             self.refreshDockIcon()
             self.updateNowPlaying()
         }
@@ -725,11 +720,11 @@ private enum PlaybackStateKeys {
 /// 预渲染播放页背景的模糊封面：换歌时在后台用 CoreImage 算一次，
 /// 转场首帧直接贴图，避免全屏实时 .blur 层的光栅化开销（进出播放页各一次）。
 enum BlurredBackdropRenderer {
-    private static let context = CIContext()
-
-    /// CoreImage 内部缓存清理（内存压力兜底用）：背景图与光斑按需重算，可再生。
-    static func clearCaches() {
-        context.clearCaches()
+    /// 每次渲染用一次性 context：共享 CIContext 会常驻一个 IOSurface 纹理池
+    /// （实测每次渲染泄漏式滞留 5-6 张 2-5MB 表面，50 首歌 ≈ 120MB 不释放，
+    /// clearCaches() 也清不掉池子）。禁用中间缓存 + 用完即释放，表面随对象消亡。
+    private static func makeContext() -> CIContext {
+        CIContext(options: [.cacheIntermediates: false])
     }
 
     static func image(from artwork: NSImage) -> NSImage? {
@@ -756,6 +751,8 @@ enum BlurredBackdropRenderer {
         guard let filter = CIFilter(name: "CIGaussianBlur") else { return nil }
         filter.setValue(source.clampedToExtent(), forKey: kCIInputImageKey)
         filter.setValue(sigma, forKey: kCIInputRadiusKey)
+        let context = makeContext()
+        defer { /* context 在此释放，渲染表面一并归还 */ }
         guard let output = filter.outputImage?.cropped(to: extent),
               let cg = context.createCGImage(output, from: extent)
         else { return nil }
@@ -802,6 +799,7 @@ enum BlurredBackdropRenderer {
         guard let filter = CIFilter(name: "CIGaussianBlur") else { return nil }
         filter.setValue(source.clampedToExtent(), forKey: kCIInputImageKey)
         filter.setValue(sigma, forKey: kCIInputRadiusKey)
+        let context = makeContext()
         guard let output = filter.outputImage?.cropped(to: extent),
               let cg = context.createCGImage(output, from: extent)
         else { return nil }
