@@ -762,7 +762,16 @@ struct NowPlayingBackdrop: View {
         let secondary = Color(nsColor: palette.secondary)
 
         ZStack {
-            if let artwork = player.artwork {
+            if let backdrop = player.backdropImage {
+                // 预渲染模糊图：换歌时后台算好，转场首帧只是贴一张图。
+                Image(nsImage: backdrop)
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .scaleEffect(1.16)
+                    .opacity(colorScheme == .dark ? 0.48 : 0.30)
+            } else if let artwork = player.artwork {
+                // 模糊图尚未就绪（刚换歌的极短窗口）时的兜底：保持原实时模糊。
                 Image(nsImage: artwork)
                     .resizable()
                     .aspectRatio(contentMode: .fill)
