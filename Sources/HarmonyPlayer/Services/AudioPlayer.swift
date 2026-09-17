@@ -406,6 +406,13 @@ final class AudioPlayer: ObservableObject {
                 self.currentTime = seconds
                 self.persistPlaybackState(force: false)
 
+                // 可播流比元数据时长长（下载源 FLAC 常见的头部少写总采样数）：
+                // 越过声明终点后用真实播放位置实时撑长总时长，进度条与听感
+                // 保持重合，直到 AVPlayer 在真实流末尾发出结束通知再切歌。
+                if self.duration > 0, self.player.rate > 0, seconds > self.duration {
+                    self.duration = seconds
+                }
+
                 if self.duration <= 0,
                    let itemDuration = self.player.currentItem?.duration.seconds,
                    itemDuration.isFinite,
@@ -443,7 +450,11 @@ final class AudioPlayer: ObservableObject {
         // AVFoundation 内部会按 URL 缓存资产（解析结果/索引），逐首累积可观测。
         guard track.duration <= 0 else { return }
         Task {
-            let asset = AVURLAsset(url: track.url)
+            // 与资料库扫描一致：开启精确解析选项读取时长。
+            let asset = AVURLAsset(
+                url: track.url,
+                options: [AVURLAssetPreferPreciseDurationAndTimingKey: true]
+            )
             guard let loadedDuration = try? await asset.load(.duration) else { return }
             guard self.currentTrack?.id == track.id else { return }
             let seconds = loadedDuration.seconds
