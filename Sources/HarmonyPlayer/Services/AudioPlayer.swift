@@ -139,7 +139,7 @@ final class AudioPlayer: ObservableObject {
         let savedTime = defaults.double(forKey: PlaybackStateKeys.currentTime)
         currentTime = max(0, min(savedTime, track.duration > 0 ? track.duration : savedTime))
 
-        let item = AVPlayerItem(url: track.url)
+        let item = Self.makePlaybackItem(url: track.url)
         player.replaceCurrentItem(with: item)
         player.volume = Float(volume)
         player.seek(
@@ -356,7 +356,7 @@ final class AudioPlayer: ObservableObject {
 
         // Keep the previous artwork and Dock icon visible until the next
         // track's artwork has loaded. This removes the one-frame Dock flicker.
-        let item = AVPlayerItem(url: track.url)
+        let item = Self.makePlaybackItem(url: track.url)
         // 本地文件按需读取，无需长前向缓冲：限制解码缓冲上限，
         // 避免播放器为每首曲目驻留过多解码数据。
         item.preferredForwardBufferDuration = 45
@@ -406,15 +406,6 @@ final class AudioPlayer: ObservableObject {
                 self.currentTime = seconds
                 self.persistPlaybackState(force: false)
 
-                // 按元数据时长收尾（与主流播放器一致）：这批下载源 FLAC 的
-                // 可播流比文件头声明长十几秒（编码器尾部冗余帧），AVPlayer
-                // 要播到真实流末尾才发结束通知。到达声明终点仍在播放即视为
-                // 播完，走正常切歌流程。
-                if self.duration > 0, self.player.rate > 0, seconds >= self.duration - 0.05 {
-                    self.handleTrackFinished()
-                    return
-                }
-
                 if self.duration <= 0,
                    let itemDuration = self.player.currentItem?.duration.seconds,
                    itemDuration.isFinite,
@@ -445,6 +436,17 @@ final class AudioPlayer: ObservableObject {
                 self?.pause()
             }
         }
+    }
+
+    /// 播放条目统一走精确解析：AVPlayer 对 FLAC 的估算时序有已知偏差
+    /// （收尾位置可超出元数据时长十几秒，Apple 论坛确认开启
+    /// AVURLAssetPreferPreciseDurationAndTimingKey 是正确解法）。
+    private static func makePlaybackItem(url: URL) -> AVPlayerItem {
+        let asset = AVURLAsset(
+            url: url,
+            options: [AVURLAssetPreferPreciseDurationAndTimingKey: true]
+        )
+        return AVPlayerItem(asset: asset)
     }
 
     private func refreshDuration(for track: Track) {
