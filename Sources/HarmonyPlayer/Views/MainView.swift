@@ -20,12 +20,24 @@ struct MainView: View {
     @StateObject private var backToTop = BackToTopController()
     /// 进入播放页的入口：决定大封面 matched geometry 用哪个来源（放大成长 vs 平移就位）。
     @State private var nowPlayingEntry: NowPlayingEntry = .playerBar
+    /// 播放页背景 GPU 预热：启动后短暂挂载一次背景视图（几乎透明），
+    /// 让模糊光斑与渐变层的首次光栅化发生在启动静默期，首次打开播放页不再冷启动卡顿。
+    @State private var warmupBackdropVisible = false
     @Namespace private var nowPlayingTransition
     @FocusState private var searchIsFocused: Bool
 
     var body: some View {
         GeometryReader { geometry in
-            if showNowPlaying {
+            ZStack {
+                if warmupBackdropVisible {
+                    NowPlayingBackdrop()
+                        .opacity(0.01)
+                        .allowsHitTesting(false)
+                        .accessibilityHidden(true)
+                        .ignoresSafeArea(.container, edges: .top)
+                }
+
+                if showNowPlaying {
                 NowPlayingView(
                     transitionNamespace: nowPlayingTransition,
                     artworkEntry: nowPlayingEntry
@@ -243,6 +255,7 @@ struct MainView: View {
             } else {
                 sectionContent
                     .disabled(browse.request != browseRequest)
+                }
             }
         }
         .background(Color.hpNavy.opacity(0.32))
@@ -268,6 +281,15 @@ struct MainView: View {
                 .padding(.trailing, 22)
                 .padding(.bottom, 20)
             }
+        }
+        .task {
+            // 启动静默期预热播放页背景：等首屏布局稳定后挂载 1.2 秒再卸下，
+            // 模糊光斑/渐变层的首次 GPU 光栅化就发生在启动阶段，首次打开播放页不再冷启动。
+            try? await Task.sleep(nanoseconds: 1_500_000_000)
+            guard !showNowPlaying else { return }
+            withAnimation(.linear(duration: 0.15)) { warmupBackdropVisible = true }
+            try? await Task.sleep(nanoseconds: 1_200_000_000)
+            withAnimation(.linear(duration: 0.3)) { warmupBackdropVisible = false }
         }
     }
 
