@@ -94,9 +94,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             AppIconStyleManager.apply()
         }
 
-        TransitionProbe.install()
-        TransitionProbe.mark("应用启动完成")
-
         Self.installScrollbarHider()
 
         DispatchQueue.main.async {

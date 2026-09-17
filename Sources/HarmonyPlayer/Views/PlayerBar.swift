@@ -77,7 +77,6 @@ struct PlayerBar: View {
             Button {
                 guard player.currentTrack != nil else { return }
                 withAnimation(.spring(response: 0.56, dampingFraction: 0.86)) {
-                    TransitionProbe.mark("转场动画开始(playerBar)")
                     onNowPlayingEntrySelected()
                     showNowPlaying.toggle()
                 }
