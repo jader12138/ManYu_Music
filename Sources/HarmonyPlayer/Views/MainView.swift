@@ -28,16 +28,7 @@ struct MainView: View {
 
     var body: some View {
         GeometryReader { geometry in
-            ZStack {
-                if warmupBackdropVisible {
-                    NowPlayingBackdrop()
-                        .opacity(0.01)
-                        .allowsHitTesting(false)
-                        .accessibilityHidden(true)
-                        .ignoresSafeArea(.container, edges: .top)
-                }
-
-                if showNowPlaying {
+            if showNowPlaying {
                 NowPlayingView(
                     transitionNamespace: nowPlayingTransition,
                     artworkEntry: nowPlayingEntry
@@ -255,10 +246,20 @@ struct MainView: View {
             } else {
                 sectionContent
                     .disabled(browse.request != browseRequest)
-                }
             }
         }
         .background(Color.hpNavy.opacity(0.32))
+        // 播放页背景预热层：藏在最底层、几乎透明，只为让模糊光斑与渐变层
+        // 在启动静默期完成首次 GPU 光栅化。
+        .background {
+            if warmupBackdropVisible {
+                NowPlayingBackdrop()
+                    .opacity(0.01)
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
+                    .ignoresSafeArea(.container, edges: .top)
+            }
+        }
         .overlay(alignment: .topTrailing) {
             if browse.request != browseRequest && !library.isLoading && destination != .settings {
                 ProgressView().controlSize(.mini).padding(.top, 26).padding(.trailing, 12)
