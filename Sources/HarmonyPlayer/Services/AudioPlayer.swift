@@ -4,6 +4,10 @@ import AVFoundation
 import Combine
 import CoreImage
 import MediaPlayer
+import os
+
+/// 临时探针：排查「拖动进度条到末尾后歌曲仍长时间播放」。验证完成后删除。
+private let seekProbeLog = Logger(subsystem: "com.local.manyu.music", category: "SeekProbe")
 
 /// High-frequency playback progress, kept apart from `AudioPlayer` so the
 /// 0.25s tick and the 1s sleep-timer countdown only invalidate the small
@@ -227,6 +231,7 @@ final class AudioPlayer: ObservableObject {
         guard seconds.isFinite else { return }
         let upperBound = duration > 0 ? duration : max(0, seconds)
         let target = min(max(0, seconds), upperBound)
+        seekProbeLog.notice("SEEK target=\(target, format: .fixed(precision: 2)) declaredDur=\(duration, format: .fixed(precision: 2)) rate=\(self.player.rate, format: .fixed(precision: 2))")
         seekInFlight = true
         player.seek(
             to: CMTime(seconds: target, preferredTimescale: 600),
@@ -236,6 +241,7 @@ final class AudioPlayer: ObservableObject {
             Task { @MainActor in
                 guard let self else { return }
                 let landed = self.player.currentTime().seconds
+                seekProbeLog.notice("SEEK landed=\(landed, format: .fixed(precision: 2)) itemDur=\(self.player.currentItem.map { CMTimeGetSeconds($0.duration) } ?? -1, format: .fixed(precision: 2))")
                 self.currentTime = landed.isFinite && landed > 0 ? landed : target
                 self.seekInFlight = false
                 self.persistPlaybackState(force: true)
@@ -406,6 +412,15 @@ final class AudioPlayer: ObservableObject {
                 self.currentTime = seconds
                 self.persistPlaybackState(force: false)
 
+                // 临时探针：观察播放越过声明终点的行为
+                let itemDur = self.player.currentItem.map { CMTimeGetSeconds($0.duration) } ?? -1
+                if itemDur.isFinite, itemDur > 0, seconds > itemDur + 0.2 {
+                    seekProbeLog.notice("PAST-ITEM-END t=\(seconds, format: .fixed(precision: 2)) itemDur=\(itemDur, format: .fixed(precision: 2)) rate=\(self.player.rate, format: .fixed(precision: 2)) timeControl=\(self.player.timeControlStatus.rawValue)")
+                }
+                if self.duration > 0, seconds > self.duration + 0.2 {
+                    seekProbeLog.notice("PAST-DECLARED-END t=\(seconds, format: .fixed(precision: 2)) declaredDur=\(self.duration, format: .fixed(precision: 2)) rate=\(self.player.rate, format: .fixed(precision: 2)) timeControl=\(self.player.timeControlStatus.rawValue)")
+                }
+
                 if self.duration <= 0,
                    let itemDuration = self.player.currentItem?.duration.seconds,
                    itemDuration.isFinite,
@@ -423,6 +438,7 @@ final class AudioPlayer: ObservableObject {
             Task { @MainActor in
                 guard let self else { return }
                 guard notification.object as? AVPlayerItem === self.player.currentItem else { return }
+                seekProbeLog.notice("END-EVENT t=\(self.player.currentTime().seconds, format: .fixed(precision: 2)) declaredDur=\(self.duration, format: .fixed(precision: 2))")
                 self.handleTrackFinished()
             }
         }
@@ -626,6 +642,7 @@ final class AudioPlayer: ObservableObject {
     }
 
     private func handleTrackFinished() {
+        seekProbeLog.notice("FINISHED mode=\(self.repeatMode.rawValue) t=\(self.player.currentTime().seconds, format: .fixed(precision: 2))")
         switch repeatMode {
         case .one:
             seek(to: 0)

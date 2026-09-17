@@ -356,13 +356,20 @@ struct PlaybackProgressRow: View {
             anchorWall = Date()
         }
         .onChange(of: clock.currentTime) { old, new in
-            let wallDelta = Date().timeIntervalSince(anchorWall)
+            let wallNow = Date()
             let clockDelta = new - old
-            let desynced = abs(clockDelta - wallDelta) > 1.0 || clockDelta < -0.5 || !isPlaying
-            if desynced {
-                // seek、切歌、暂停恢复：媒体时间与墙钟脱钩，整体重同步。
+            // 显示值与真实媒体时间的绝对偏差兜底：tick 投递到主线程的延迟
+            // 会逐次累积在锚点墙钟里（每次只差几十毫秒，单次偏差阈值永远
+            // 触发不了），显示值跟着墙钟越跑越超前——进度条先于歌曲到达
+            // 末尾、与歌词错位。用绝对偏差兜底后，累积误差最多存活 0.25s
+            // 即被清零，tick 间的插值平滑保持不变。
+            let displayedNow = isPlaying
+                ? anchorTime + wallNow.timeIntervalSince(anchorWall)
+                : anchorTime
+            if !isPlaying || abs(displayedNow - new) > 0.35 {
+                // seek、切歌、暂停恢复或漂移超限：媒体时间与墙钟脱钩，整体重同步。
                 anchorTime = new
-                anchorWall = Date()
+                anchorWall = wallNow
             } else {
                 // 正常推进：锚点墙钟按媒体时间走，投递延迟不进显示。
                 anchorTime = new
