@@ -231,7 +231,7 @@ final class AudioPlayer: ObservableObject {
         guard seconds.isFinite else { return }
         let upperBound = duration > 0 ? duration : max(0, seconds)
         let target = min(max(0, seconds), upperBound)
-        seekProbeLog.notice("SEEK target=\(target, format: .fixed(precision: 2)) declaredDur=\(duration, format: .fixed(precision: 2)) rate=\(self.player.rate, format: .fixed(precision: 2))")
+        seekProbeLog.notice("SEEK target=\(target, format: .fixed(precision: 2)) declaredDur=\(self.duration, format: .fixed(precision: 2)) rate=\(self.player.rate, format: .fixed(precision: 2))")
         seekInFlight = true
         player.seek(
             to: CMTime(seconds: target, preferredTimescale: 600),
