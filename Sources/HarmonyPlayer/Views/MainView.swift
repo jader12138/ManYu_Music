@@ -17,6 +17,7 @@ struct MainView: View {
     @State private var headerSort: TrackSortOrder?
     @State private var headerAscending = true
     @State private var browse = LibraryBrowseSnapshot(request: nil)
+    @StateObject private var backToTop = BackToTopController()
     @Namespace private var nowPlayingTransition
     @FocusState private var searchIsFocused: Bool
 
@@ -110,6 +111,7 @@ struct MainView: View {
         .animation(.easeInOut(duration: 0.2), value: library.importNotice)
         .onAppear {
             searchIsFocused = false
+            backToTop.start()
             if !library.isLoading {
                 player.restorePlaybackState(from: library.tracks)
                 ArtworkPreloader.shared.preloadIfNeeded(tracks: library.tracks)
@@ -247,6 +249,16 @@ struct MainView: View {
                 Text(message).font(.system(size: 11)).foregroundStyle(Color.hpTextPrimary)
                     .padding(10).frame(maxWidth: .infinity)
                     .background(Color.hpGold.opacity(0.18))
+            }
+        }
+        // 「回到顶部」悬浮按钮：浮在所有内容页之上，不嵌进任何页面。
+        .overlay(alignment: .bottomTrailing) {
+            if backToTop.showButton {
+                BackToTopButton {
+                    backToTop.scrollToTop()
+                }
+                .padding(.trailing, 22)
+                .padding(.bottom, 20)
             }
         }
     }
@@ -607,6 +619,36 @@ private struct LibraryLoadErrorView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding(40)
+    }
+}
+
+/// 「回到顶部」悬浮按钮：圆形玻璃质感，悬停轻微加深。
+private struct BackToTopButton: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var isHovered = false
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: "chevron.up")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(Color.hpTextPrimary.opacity(isHovered ? 0.95 : 0.72))
+                .frame(width: 40, height: 40)
+                .background(Color.hpSurface.opacity(0.92), in: Circle())
+                .overlay {
+                    Circle()
+                        .stroke(Color.hpTextPrimary.opacity(isHovered ? 0.22 : 0.12), lineWidth: 1)
+                }
+                .shadow(color: .black.opacity(0.22), radius: 10, y: 4)
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering in
+            withAnimation(.easeOut(duration: 0.14)) {
+                isHovered = hovering
+            }
+        }
+        .help("回到顶部")
+        .transition(reduceMotion ? .opacity : .opacity.combined(with: .scale(scale: 0.7)).combined(with: .offset(y: 10)))
     }
 }
 
