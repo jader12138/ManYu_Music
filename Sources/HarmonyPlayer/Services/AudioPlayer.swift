@@ -356,6 +356,9 @@ final class AudioPlayer: ObservableObject {
         // Keep the previous artwork and Dock icon visible until the next
         // track's artwork has loaded. This removes the one-frame Dock flicker.
         let item = AVPlayerItem(url: track.url)
+        // 本地文件按需读取，无需长前向缓冲：限制解码缓冲上限，
+        // 避免播放器为每首曲目驻留过多解码数据。
+        item.preferredForwardBufferDuration = 45
         player.replaceCurrentItem(with: item)
         player.volume = Float(volume)
         player.play()
@@ -366,6 +369,16 @@ final class AudioPlayer: ObservableObject {
         loadLyrics(for: track)
         persistPlaybackState(force: true)
         updateNowPlaying()
+        scheduleMemoryRelease()
+    }
+
+    /// 切歌的封面解码、调色、背景模糊会产生大量一次性中间内存，任务结束后
+    /// 内存虽已释放但 malloc 不立即把空闲页归还系统——报告占用停留在峰值。
+    /// 延迟几秒等在途任务落地后做一次 malloc 归还，长会话报告占用保持平稳。
+    private func scheduleMemoryRelease() {
+        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 4) {
+            malloc_zone_pressure_relief(malloc_default_zone(), 0)
+        }
     }
 
     private func configurePlayerObservation() {
@@ -425,6 +438,9 @@ final class AudioPlayer: ObservableObject {
     }
 
     private func refreshDuration(for track: Track) {
+        // 曲库扫描已写入真实时长的曲目直接用，不再为每首歌建 AVURLAsset——
+        // AVFoundation 内部会按 URL 缓存资产（解析结果/索引），逐首累积可观测。
+        guard track.duration <= 0 else { return }
         Task {
             let asset = AVURLAsset(url: track.url)
             guard let loadedDuration = try? await asset.load(.duration) else { return }
