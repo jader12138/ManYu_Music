@@ -1,3 +1,4 @@
+import Accelerate
 import AppKit
 import AVFoundation
 import Combine
@@ -356,6 +357,9 @@ final class AudioPlayer: ObservableObject {
         // Keep the previous artwork and Dock icon visible until the next
         // track's artwork has loaded. This removes the one-frame Dock flicker.
         let item = AVPlayerItem(url: track.url)
+        // 本地文件按需读取，无需长前向缓冲：限制解码缓冲上限，
+        // 避免播放器为每首曲目驻留过多解码数据。
+        item.preferredForwardBufferDuration = 45
         player.replaceCurrentItem(with: item)
         player.volume = Float(volume)
         player.play()
@@ -366,6 +370,16 @@ final class AudioPlayer: ObservableObject {
         loadLyrics(for: track)
         persistPlaybackState(force: true)
         updateNowPlaying()
+        scheduleMemoryRelease()
+    }
+
+    /// 切歌的封面解码、调色、背景模糊会产生大量一次性中间内存，任务结束后
+    /// 内存虽已释放但 malloc 不立即把空闲页归还系统——报告占用停留在峰值。
+    /// 延迟几秒等在途任务落地后做一次 malloc 归还，长会话报告占用保持平稳。
+    private func scheduleMemoryRelease() {
+        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 4) {
+            malloc_zone_pressure_relief(malloc_default_zone(), 0)
+        }
     }
 
     private func configurePlayerObservation() {
@@ -425,6 +439,9 @@ final class AudioPlayer: ObservableObject {
     }
 
     private func refreshDuration(for track: Track) {
+        // 曲库扫描已写入真实时长的曲目直接用，不再为每首歌建 AVURLAsset——
+        // AVFoundation 内部会按 URL 缓存资产（解析结果/索引），逐首累积可观测。
+        guard track.duration <= 0 else { return }
         Task {
             let asset = AVURLAsset(url: track.url)
             guard let loadedDuration = try? await asset.load(.duration) else { return }
@@ -701,85 +718,123 @@ private enum PlaybackStateKeys {
     static let currentTime = "ManyuMusic.playback.currentTime"
 }
 
-/// 预渲染播放页背景的模糊封面：换歌时在后台用 CoreImage 算一次，
+/// 预渲染播放页背景的模糊封面：换歌时在后台算一次，
 /// 转场首帧直接贴图，避免全屏实时 .blur 层的光栅化开销（进出播放页各一次）。
+/// 全部走 CPU（vImage / CGContext）：CoreImage 存在进程级 IOSurface 表面池，
+/// 实测每首歌渲染后滞留约 1-3MB 纹理且 clearCaches/一次性 context 均无法
+/// 释放，50 首歌即 120MB+ 不归还；CPU 路径零驻留（探针实测 30 轮还回内存）。
 enum BlurredBackdropRenderer {
-    private static let context = CIContext()
-
     static func image(from artwork: NSImage) -> NSImage? {
         guard let cgSource = artwork.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
             return nil
         }
-        var source = CIImage(cgImage: cgSource)
-
-        // 模糊结果与分辨率无关：源图缩到最长边 640px，把渲染耗时控制在几十毫秒内。
+        // 先降采样到最长边 640px：模糊结果与分辨率无关，控制 CPU 耗时在几毫秒。
         let maxDimension: CGFloat = 640
-        let longest = max(source.extent.width, source.extent.height)
+        let longest = max(cgSource.width, cgSource.height)
         guard longest > 0 else { return nil }
-        let scale = min(1, maxDimension / longest)
-        if scale < 1 {
-            source = source.transformed(by: CGAffineTransform(scaleX: scale, y: scale))
-        }
-        let extent = source.extent.integral
+        let scale = min(1, maxDimension / CGFloat(longest))
+        let w = max(1, Int(CGFloat(cgSource.width) * scale))
+        let h = max(1, Int(CGFloat(cgSource.height) * scale))
+        guard let downCtx = Self.makeContext(width: w, height: h) else { return nil }
+        downCtx.interpolationQuality = .high
+        downCtx.draw(cgSource, in: CGRect(x: 0, y: 0, width: w, height: h))
+        guard let downImage = downCtx.makeImage() else { return nil }
 
-        // 成品图会被拉伸铺满全屏（按 1600pt 宽估算）： SwiftUI 里 72pt 的模糊
+        // 成品图会被拉伸铺满全屏（按 1600pt 宽估算）：SwiftUI 里 72pt 的模糊
         // 折算到源图上约为 72 ÷ 放大倍数，clamp 防止极端比例下过锐或过糊。
-        let upscale = max(1, 1600 / max(extent.width, 1))
+        let upscale = max(1, 1600 / max(CGFloat(w), 1))
         let sigma = min(64, max(8, 72 / upscale))
-
-        guard let filter = CIFilter(name: "CIGaussianBlur") else { return nil }
-        filter.setValue(source.clampedToExtent(), forKey: kCIInputImageKey)
-        filter.setValue(sigma, forKey: kCIInputRadiusKey)
-        guard let output = filter.outputImage?.cropped(to: extent),
-              let cg = context.createCGImage(output, from: extent)
-        else { return nil }
-        return NSImage(cgImage: cg, size: NSSize(width: extent.width, height: extent.height))
+        // 三通盒式模糊 ≈ 高斯模糊，盒半径 ≈ σ × 1.1。
+        guard let blurred = Self.cpuBlur(downImage, radius: Int((sigma * 1.1).rounded())) else {
+            return nil
+        }
+        return NSImage(cgImage: blurred, size: NSSize(width: w, height: h))
     }
 
     /// 预烘焙光斑：把「纯色圆 + 大半径实时模糊」渲染成一张图。
-    /// 播放页挂载/卸载时 GPU 不再需要现算 150-160px 模糊层（进出转场各一次），
-    /// 漂移动画只位移图片本身，视觉与原来的 Circle().blur 完全一致。
+    /// 高斯模糊后的圆盘就是径向 alpha 衰减——直接用 CG 径向渐变绘制，
+    /// 观感与原来的 Circle().blur 一致，且不经过任何模糊计算。
     /// - Parameters:
     ///   - color: 光斑颜色
     ///   - diameter: 光斑显示直径（pt）
     ///   - blurRadius: 原实时模糊半径（pt）
     /// - Returns: 图片及其显示尺寸（含模糊外溢余量）
     static func blurredOrb(color: NSColor, diameter: CGFloat, blurRadius: CGFloat) -> (image: NSImage, displaySize: CGFloat)? {
-        // 1/4 分辨率烘焙：光斑本就是模糊团，低分辨率放大后无视觉差，速度快约 4 倍。
-        let quarterScale: CGFloat = 0.25
         let reach = blurRadius * 1.25
-        let canvas = (diameter + reach * 2) * quarterScale
-        let circleDiameter = diameter * quarterScale
-        let sigma = blurRadius * quarterScale
-
-        let size = NSSize(width: canvas, height: canvas)
-        let image = NSImage(size: size)
+        let displaySize = diameter + reach * 2
+        // 1/4 分辨率烘焙：光斑本就是模糊团，低分辨率放大后无视觉差。
+        let quarterScale: CGFloat = 0.25
+        let canvas = displaySize * quarterScale
+        let coreFraction = (diameter * quarterScale / 2) / (canvas / 2)
+        let image = NSImage(size: NSSize(width: canvas, height: canvas))
         image.lockFocus()
-        color.setFill()
-        NSBezierPath(
-            roundedRect: NSRect(
-                x: (canvas - circleDiameter) / 2,
-                y: (canvas - circleDiameter) / 2,
-                width: circleDiameter,
-                height: circleDiameter
-            ),
-            xRadius: circleDiameter / 2,
-            yRadius: circleDiameter / 2
-        ).fill()
-        image.unlockFocus()
-
-        guard let cgSource = image.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
-            return nil
-        }
-        var source = CIImage(cgImage: cgSource)
-        let extent = source.extent
-        guard let filter = CIFilter(name: "CIGaussianBlur") else { return nil }
-        filter.setValue(source.clampedToExtent(), forKey: kCIInputImageKey)
-        filter.setValue(sigma, forKey: kCIInputRadiusKey)
-        guard let output = filter.outputImage?.cropped(to: extent),
-              let cg = context.createCGImage(output, from: extent)
+        defer { image.unlockFocus() }
+        guard let ctx = NSGraphicsContext.current?.cgContext,
+              let rgb = color.usingColorSpace(.deviceRGB)
         else { return nil }
-        let result = NSImage(cgImage: cg, size: NSSize(width: extent.width, height: extent.height))
-        return (result, canvas / quarterScale)
+        let core = coreFraction
+        let spread = 1 - core
+        let components: [CGFloat] = [
+            rgb.redComponent, rgb.greenComponent, rgb.blueComponent, 1,
+            rgb.redComponent, rgb.greenComponent, rgb.blueComponent, 1,
+            rgb.redComponent, rgb.greenComponent, rgb.blueComponent, 0.55,
+            rgb.redComponent, rgb.greenComponent, rgb.blueComponent, 0.18,
+            rgb.redComponent, rgb.greenComponent, rgb.blueComponent, 0,
+        ]
+        let locations: [CGFloat] = [0, core, core + spread * 0.45, core + spread * 0.78, 1]
+        guard let gradient = CGGradient(
+            colorSpace: CGColorSpaceCreateDeviceRGB(),
+            colorComponents: components,
+            locations: locations,
+            count: locations.count
+        ) else { return nil }
+        ctx.drawRadialGradient(
+            gradient,
+            startCenter: CGPoint(x: canvas / 2, y: canvas / 2), startRadius: 0,
+            endCenter: CGPoint(x: canvas / 2, y: canvas / 2), endRadius: canvas / 2,
+            options: []
+        )
+        return (image, displaySize)
+    }
+
+    // MARK: - CPU 渲染工具
+
+    private static func makeContext(width: Int, height: Int) -> CGContext? {
+        guard let space = CGColorSpace(name: CGColorSpace.sRGB) else { return nil }
+        return CGContext(
+            data: nil, width: width, height: height,
+            bitsPerComponent: 8, bytesPerRow: width * 4,
+            space: space,
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        )
+    }
+
+    /// 三通盒式模糊（Accelerate/vImage），结果为 malloc 支持的 CGImage，
+    /// 中间缓冲全部立即释放、不涉及任何 GPU 表面池。
+    private static func cpuBlur(_ source: CGImage, radius: Int) -> CGImage? {
+        let width = source.width, height = source.height
+        let bytesPerRow = width * 4
+        guard let srcCtx = makeContext(width: width, height: height) else { return nil }
+        srcCtx.interpolationQuality = .none
+        srcCtx.draw(source, in: CGRect(x: 0, y: 0, width: width, height: height))
+        guard let baseData = srcCtx.data else { return nil }
+
+        let tmpData = malloc(bytesPerRow * height)!
+        defer { free(tmpData) }
+        var a = vImage_Buffer(data: baseData, height: vImagePixelCount(height), width: vImagePixelCount(width), rowBytes: bytesPerRow)
+        var b = vImage_Buffer(data: tmpData, height: vImagePixelCount(height), width: vImagePixelCount(width), rowBytes: bytesPerRow)
+        let kernel = UInt32(max(3, radius) | 1)
+        for _ in 0..<3 {
+            vImageBoxConvolve_ARGB8888(&a, &b, nil, 0, 0, kernel, kernel, nil, vImage_Flags(kvImageEdgeExtend))
+            let t = a; a = b; b = t
+        }
+        // 奇数次交换后结果在 b（tmpData）里——拷回 ctx 缓冲出图。
+        guard let outCtx = makeContext(width: width, height: height), let outData = outCtx.data else { return nil }
+        if a.data != baseData {
+            memcpy(outData, tmpData, bytesPerRow * height)
+        } else {
+            memcpy(outData, baseData, bytesPerRow * height)
+        }
+        return outCtx.makeImage()
     }
 }

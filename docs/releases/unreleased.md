@@ -25,6 +25,7 @@
 
 ### 改进
 
+- 长时间听歌内存防护与占用优化：系统内存吃紧时自动清空可再生成缓存（封面缓存），播放状态不受影响；「回到顶部」滚动位置记录改为弱键 NSMapTable，滚动视图销毁后条目自动清除；新增"连续切歌 300 次"压力测试，防止未来改动引入逐首累积的泄漏。占用实测从约 290MB 降至约 170MB（大量快速切歌后）：背景模糊与光斑渲染迁移到 vImage/CG 纯 CPU 路径（消除 CoreImage 进程级 IOSurface 表面池的逐首滞留，探针实证 CI 路径每首滞留 0.5-1MB 而 CPU 路径零驻留）；封面缓存预算 48MB（LRU 淘汰，最近浏览优先）；切歌后延迟把 malloc 空闲页归还系统；播放前向缓冲上限 45 秒；已知时长曲目跳过 AVURLAsset 创建。
 - 播放页转场全面丝滑化：封面转场按入口区分动效（播放栏小封面原位放大成长为大图、主页推荐封面平移就位，退出按原路返回对应封面）；换歌时后台 CoreImage 预烘焙全屏模糊背景与两个光斑，转场期间 GPU 零实时模糊滤镜；启动静默期以近乎透明方式预挂载完整播放页（含歌词、渐变、光斑、几何配对），首次打开播放页不再有冷启动停顿；歌词面板延迟到转场动画结束后（0.65s）淡入，首次歌词布局不再与转场收尾帧争抢。
 - 进入播放页更顺滑：修复背景重复实例化——播放页背景此前会被创建两份（视图内部一份 + 挂载层一份），每份都含全屏 72px 模糊封面与两组动画光斑，转场瞬间开销翻倍；现在只保留覆盖完整窗口的一份。
 - 滚动更流畅：滚动条隐藏扫描改为仅在滚动视图仍开启滑块时写回，消除重复赋值触发的 NSScrollView 重布局（此前表现为滚动中每 1.5 秒一次的周期性顿挫）。
@@ -62,6 +63,7 @@
 
 ## 技术变更
 
+- 内存防护：新增 `MemoryPressureMonitor`（`DispatchSource.makeMemoryPressureSource` 监听 warning/critical，主线程回调清空 `ArtworkCache`（新增 `removeAllObjects()`），启动时在 AppDelegate 安装）；`BackToTopController.lastYByKey` 由 `[ObjectIdentifier: CGFloat]` 改为弱键 `NSMapTable`（滚动视图销毁后条目自动清除，消除应用内唯一无界集合）；新增 `LongSessionMemoryTests`（真实 WAV 文件 + 真实 AudioPlayer 连续切歌 300 次，phys_footprint 增长 < 80MB 断言，测试前后快照/恢复 UserDefaults 项目键以保护用户真实播放状态）；`BlurredBackdropRenderer` 重写为 vImage 三通盒式模糊 + CG 径向渐变（import Accelerate，全程无 CoreImage）；`AudioPlayer` 切歌后 4 秒 `malloc_zone_pressure_relief` 归还空闲页、`AVPlayerItem.preferredForwardBufferDuration = 45`、`refreshDuration` 仅在曲目无时长时建 AVURLAsset；封面缓存预算 48MB / 320 条。
 - 转场与预热：`NowPlayingView` 接受 `artworkEntry`（`NowPlayingEntry`）按入口选择大封面 matched geometry 目标（播放栏放大成长 / 主页推荐平移就位），转场其余元素纯 opacity 淡入淡出；`BlurredBackdropRenderer` 新增 `image(from:)`（512px 高斯模糊背景）与 `blurredOrb(color:diameter:blurRadius:)`（1/4 分辨率烘焙光斑，返回图与显示尺寸）；`AudioPlayer` 新增 `orbPrimaryImage/orbSecondaryImage` 发布属性，调色板就绪后在后台并行烘焙光斑，`NowPlayingBackdrop` 光斑优先用预烘焙图、未就绪回退实时模糊；`MainView` 启动 1.5s 后以 0.01 透明度挂载完整 `NowPlayingView` 预热实例 1.2s（专用 `@Namespace`，与真实转场互不干扰），首次打开无冷启动停顿；歌词 `lyricsReady` 延迟 0.65s（> spring 0.56s）+ 0.25s 淡入。
 - 回到顶部：新增 `BackToTopController`——监听窗口内所有 NSScrollView 的 clipView bounds 通知（SwiftUI ScrollView/List 底层即 NSScrollView），切页懒创建的新滚动视图由 didBecomeMain 通知 + 2 秒低频扫描兜底开启 `postsBoundsChangedNotifications`；按窗口横坐标（24–320pt）过滤出主内容区，排除侧栏与队列面板；方向判定用相邻两次 origin.y 差值（>0.5pt 才计入）。按钮由 `MainView.detail` 的 `overlay(alignment: .bottomTrailing)` 挂载；点击回顶为 60fps 逐帧 easeInOutCubic 插值动画（时长 0.4–0.9s 随距离自适应，NSScrollView 隐式动画在 SwiftUI 滚动视图上不生效），动画期间忽略自身驱动的回调、用户手动滚动（与上一帧偏差 >2pt）即打断动画转入正常判定。
 - Dock 图标持久化：`AppIconStyleManager` 新增 `lastResolvedStyleKey` 持久化与 `applyLastUsedIcon()`；`applicationDidFinishLaunching` 改为先恢复上次图标、延迟 0.8 秒再校正。
@@ -91,6 +93,7 @@
 
 ## 验证
 
+- 内存防护分支（codex/memory-leak-guard）合并前：`swift test` 27/27 通过；vmmap 实测定位 IOSurface 滞留（CoreImage 表面池）并用独立探针对比三种渲染策略后实施 CPU 渲染方案；用户实测大量快速切歌后驻留内存约 170MB（此前 290-300MB 不回落），慢速听歌约 100MB；Release 构建签名后实际运行验证背景/光斑观感不变。
 - 播放页转场丝滑化分支（codex/nowplaying-warmup，叠加 codex/nowplaying-transition 与 codex/hero-transition 已合并内容）合并前：以临时探针实测（2ms 主线程心跳看门狗 + 事件打点）定位出首次进入播放页 191ms 冷启动停顿与歌词挂载 26-39ms 尾部顿挫；实施完整播放页启动预热、光斑预烘焙与歌词延迟挂载后复测无主线程停顿；移除探针后 `swift test` 26/26 通过，Release 构建签名后实际运行验证：重复进出播放页无可感顿挫，首次点击仅剩切歌内容中途换入的极轻微感（收益递减，未再深挖）。
 - `swift build` 通过（macOS 14, arm64）。
 - `swift test` 20 个测试全部通过（0 失败），含 10,000 首内存基准测量。

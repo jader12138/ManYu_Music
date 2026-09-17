@@ -17,7 +17,13 @@ final class BackToTopController: ObservableObject {
 
     @Published private(set) var showButton = false
 
-    private var lastYByKey = [ObjectIdentifier: CGFloat]()
+    /// 每个滚动视图最近一次的 origin.y。用弱键 NSMapTable：滚动视图销毁后条目
+    /// 会被自动清除，长期会话反复切页不会累积死键（普通字典会按 ObjectIdentifier
+    /// 无限增长——体量小但确实是唯一无界集合，这里从结构上消除）。
+    private var lastYByKey = NSMapTable<NSView, NSNumber>(
+        keyOptions: [.weakMemory, .objectPointerPersonality],
+        valueOptions: .strongMemory
+    )
     private weak var activeScrollView: NSScrollView?
     private var started = false
     private var boundsObserver: NSObjectProtocol?
@@ -28,7 +34,6 @@ final class BackToTopController: ObservableObject {
     // 回顶动画状态：逐帧插值（NSScrollView 隐式动画在 SwiftUI 滚动视图上不生效）。
     private var autoScrollTimer: Timer?
     private weak var autoScrollView: NSScrollView?
-    private var autoScrollKey: ObjectIdentifier?
     private var autoStartY: CGFloat = 0
     private var autoStartTime: CFTimeInterval = 0
     private var autoDuration: CFTimeInterval = 0.4
@@ -77,7 +82,6 @@ final class BackToTopController: ObservableObject {
         }
 
         autoScrollView = scrollView
-        autoScrollKey = ObjectIdentifier(scrollView)
         autoStartY = startY
         autoStartTime = CACurrentMediaTime()
         // 距离越远动画越长：0.4s 起步，长列表最多 0.9s。
@@ -98,7 +102,7 @@ final class BackToTopController: ObservableObject {
 
     /// easeInOutCubic 逐帧推进，到顶后收尾。
     private func stepAutoScroll() {
-        guard let scrollView = autoScrollView, let key = autoScrollKey else {
+        guard let scrollView = autoScrollView else {
             stopAutoScroll()
             return
         }
@@ -110,8 +114,11 @@ final class BackToTopController: ObservableObject {
         clipView.scroll(to: NSPoint(x: 0, y: y))
         scrollView.reflectScrolledClipView(clipView)
         if t >= 1 {
+            let finishedView = autoScrollView
             stopAutoScroll()
-            lastYByKey[key] = clipView.bounds.origin.y
+            if let finishedView {
+                lastYByKey.setObject(NSNumber(value: clipView.bounds.origin.y), forKey: finishedView)
+            }
         }
     }
 
@@ -119,7 +126,6 @@ final class BackToTopController: ObservableObject {
         autoScrollTimer?.invalidate()
         autoScrollTimer = nil
         autoScrollView = nil
-        autoScrollKey = nil
         isAutoScrolling = false
     }
 
@@ -148,19 +154,18 @@ final class BackToTopController: ObservableObject {
         guard Self.contentMinXRange.contains(frameInWindow.minX) else { return }
 
         let newY = clipView.bounds.origin.y
-        let key = ObjectIdentifier(scrollView)
-        defer { lastYByKey[key] = newY }
+        defer { lastYByKey.setObject(NSNumber(value: newY), forKey: scrollView) }
 
         // 回顶动画期间：来自动画自身的回调直接忽略；
         // 与上一帧设置值偏差明显的说明用户手动滚动了——打断动画，继续正常判定。
         if isAutoScrolling {
-            if key == autoScrollKey, abs(newY - lastAutoY) <= 2 {
+            if scrollView === autoScrollView, abs(newY - lastAutoY) <= 2 {
                 return
             }
             stopAutoScroll()
         }
 
-        guard let previousY = lastYByKey[key] else { return }
+        guard let previousY = lastYByKey.object(forKey: scrollView)?.doubleValue else { return }
         let dy = newY - previousY
         guard abs(dy) > 0.5 else { return }
 
