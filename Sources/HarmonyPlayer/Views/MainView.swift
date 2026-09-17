@@ -622,7 +622,7 @@ private struct LibraryLoadErrorView: View {
     }
 }
 
-/// 「回到顶部」悬浮按钮：圆形玻璃质感，悬停轻微加深。
+/// 「回到顶部」悬浮按钮：玻璃质感胶囊（箭头 + 文字），悬停轻微加深。
 private struct BackToTopButton: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var isHovered = false
@@ -630,16 +630,21 @@ private struct BackToTopButton: View {
 
     var body: some View {
         Button(action: action) {
-            Image(systemName: "chevron.up")
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(Color.hpTextPrimary.opacity(isHovered ? 0.95 : 0.72))
-                .frame(width: 40, height: 40)
-                .background(Color.hpSurface.opacity(0.92), in: Circle())
-                .overlay {
-                    Circle()
-                        .stroke(Color.hpTextPrimary.opacity(isHovered ? 0.22 : 0.12), lineWidth: 1)
-                }
-                .shadow(color: .black.opacity(0.22), radius: 10, y: 4)
+            HStack(spacing: 5) {
+                Image(systemName: "chevron.up")
+                    .font(.system(size: 10, weight: .bold))
+                Text("回到顶部")
+                    .font(.system(size: 11, weight: .medium))
+            }
+            .foregroundStyle(Color.hpTextPrimary.opacity(isHovered ? 0.96 : 0.76))
+            .padding(.horizontal, 13)
+            .frame(height: 30)
+            .background(Color.hpSurface.opacity(0.94), in: Capsule())
+            .overlay {
+                Capsule()
+                    .stroke(Color.hpTextPrimary.opacity(isHovered ? 0.24 : 0.12), lineWidth: 1)
+            }
+            .shadow(color: .black.opacity(0.20), radius: 9, y: 4)
         }
         .buttonStyle(.plain)
         .onHover { hovering in
@@ -648,7 +653,7 @@ private struct BackToTopButton: View {
             }
         }
         .help("回到顶部")
-        .transition(reduceMotion ? .opacity : .opacity.combined(with: .scale(scale: 0.7)).combined(with: .offset(y: 10)))
+        .transition(reduceMotion ? .opacity : .opacity.combined(with: .scale(scale: 0.8)).combined(with: .offset(y: 12)))
     }
 }
 

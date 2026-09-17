@@ -25,6 +25,15 @@ final class BackToTopController: ObservableObject {
     private var scanTimer: Timer?
     private var isAutoScrolling = false
 
+    // 回顶动画状态：逐帧插值（NSScrollView 隐式动画在 SwiftUI 滚动视图上不生效）。
+    private var autoScrollTimer: Timer?
+    private weak var autoScrollView: NSScrollView?
+    private var autoScrollKey: ObjectIdentifier?
+    private var autoStartY: CGFloat = 0
+    private var autoStartTime: CFTimeInterval = 0
+    private var autoDuration: CFTimeInterval = 0.4
+    private var lastAutoY: CGFloat = 0
+
     func start() {
         guard !started else { return }
         started = true
@@ -61,23 +70,57 @@ final class BackToTopController: ObservableObject {
 
     func scrollToTop() {
         guard let scrollView = activeScrollView else { return }
-        let clipView = scrollView.contentView
+        let startY = scrollView.contentView.bounds.origin.y
+        guard startY > 1 else {
+            showButton = false
+            return
+        }
+
+        autoScrollView = scrollView
+        autoScrollKey = ObjectIdentifier(scrollView)
+        autoStartY = startY
+        autoStartTime = CACurrentMediaTime()
+        // 距离越远动画越长：0.4s 起步，长列表最多 0.9s。
+        autoDuration = min(0.9, max(0.4, 0.35 + startY / 2500))
+        lastAutoY = startY
         isAutoScrolling = true
         showButton = false
-        NSAnimationContext.runAnimationGroup({ context in
-            context.allowsImplicitAnimation = true
-            context.duration = 0.4
-            context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-            clipView.scroll(to: .zero)
-            scrollView.reflectScrolledClipView(clipView)
-        }, completionHandler: { [weak self] in
-            let finalY = clipView.bounds.origin.y
-            let key = ObjectIdentifier(scrollView)
+
+        let timer = Timer(timeInterval: 1.0 / 60.0, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in
-                self?.isAutoScrolling = false
-                self?.lastYByKey[key] = finalY
+                self?.stepAutoScroll()
             }
-        })
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        autoScrollTimer = timer
+        stepAutoScroll()
+    }
+
+    /// easeInOutCubic 逐帧推进，到顶后收尾。
+    private func stepAutoScroll() {
+        guard let scrollView = autoScrollView, let key = autoScrollKey else {
+            stopAutoScroll()
+            return
+        }
+        let t = min(1, (CACurrentMediaTime() - autoStartTime) / autoDuration)
+        let eased = t < 0.5 ? 4 * t * t * t : 1 - pow(-2 * t + 2, 3) / 2
+        let y = autoStartY * (1 - eased)
+        lastAutoY = y
+        let clipView = scrollView.contentView
+        clipView.scroll(to: NSPoint(x: 0, y: y))
+        scrollView.reflectScrolledClipView(clipView)
+        if t >= 1 {
+            stopAutoScroll()
+            lastYByKey[key] = clipView.bounds.origin.y
+        }
+    }
+
+    private func stopAutoScroll() {
+        autoScrollTimer?.invalidate()
+        autoScrollTimer = nil
+        autoScrollView = nil
+        autoScrollKey = nil
+        isAutoScrolling = false
     }
 
     /// 给所有可见窗口里的滚动视图打开 bounds 通知。
@@ -98,8 +141,7 @@ final class BackToTopController: ObservableObject {
     }
 
     private func handleBoundsChange(of clipView: NSClipView) {
-        guard !isAutoScrolling,
-              let scrollView = clipView.enclosingScrollView else { return }
+        guard let scrollView = clipView.enclosingScrollView else { return }
 
         // 只响应主内容区的垂直滚动；侧栏与队列面板的滚动不触发按钮。
         let frameInWindow = scrollView.convert(scrollView.bounds, to: nil)
@@ -108,6 +150,15 @@ final class BackToTopController: ObservableObject {
         let newY = clipView.bounds.origin.y
         let key = ObjectIdentifier(scrollView)
         defer { lastYByKey[key] = newY }
+
+        // 回顶动画期间：来自动画自身的回调直接忽略；
+        // 与上一帧设置值偏差明显的说明用户手动滚动了——打断动画，继续正常判定。
+        if isAutoScrolling {
+            if key == autoScrollKey, abs(newY - lastAutoY) <= 2 {
+                return
+            }
+            stopAutoScroll()
+        }
 
         guard let previousY = lastYByKey[key] else { return }
         let dy = newY - previousY
