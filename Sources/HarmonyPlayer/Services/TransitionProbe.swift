@@ -1,4 +1,5 @@
 import Foundation
+import QuartzCore
 
 /// 临时探针（诊断完成后移除）：定位「主页推荐封面 → 播放页」转场卡顿来源。
 /// - mark(_:) 在关键事件点打点，输出距上次事件的间隔；
