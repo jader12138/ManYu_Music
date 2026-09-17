@@ -85,7 +85,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
-        AppIconStyleManager.apply()
+        // 启动第一步固定 Dock 图标为上一次会话的具体样式（深色/浅色），
+        // 不在启动早期解析外观（SwiftUI 首窗创建前 effectiveAppearance 可能不准），
+        // 避免图标跳变；待外观环境稳定后再校正一次——两次会话之间外观没变时
+        // 解析结果相同，不会有可见切换。
+        AppIconStyleManager.applyLastUsedIcon()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+            AppIconStyleManager.apply()
+        }
 
         Self.installScrollbarHider()
 
