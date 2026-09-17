@@ -402,11 +402,11 @@ final class ArtworkCache {
     private init() {
         // 启动预加载开启后，小档（全部曲目）与中档（按专辑）会同时驻留，键数约
         // 曲目数 + 专辑数；再加上浏览过程中产生的大档（768px）专辑详情图。
-        // 96MB 预算按典型曲库（约 500 首 + 数十专辑）的预热全集留有余量；
-        // 超出时 NSCache 按 LRU 淘汰尾部，列表命中的同步路径不受影响，
-        // 淘汰项下次显示按需重解码（毫秒级）。系统内存压力下也会自动淘汰。
-        cache.countLimit = 600
-        cache.totalCostLimit = 96 * 1024 * 1024
+        // 48MB 预算：实测驻留内存 ≈ 基线(约 170MB，含 CA 图层/系统服务) + 本预算。
+        // 超出时 NSCache 按 LRU 淘汰尾部，最近浏览的封面优先保留；淘汰项下次
+        // 显示按需重解码（毫秒级）。系统内存压力下也会自动淘汰。
+        cache.countLimit = 320
+        cache.totalCostLimit = 48 * 1024 * 1024
     }
 
     /// Cache key: file URL + pixel tier, so tiers never evict each other and the
