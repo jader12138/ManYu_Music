@@ -434,7 +434,12 @@ final class AudioPlayer: ObservableObject {
             let image = await AudioMetadataLoader.artwork(for: track)
             guard self.currentTrack?.id == track.id else { return }
             self.artwork = image
-            self.artworkPalette = image.map(ArtworkPaletteExtractor.palette(from:))
+            // 主色提取移出主线程：切歌瞬间不再与转场动画抢占主线程。
+            let palette = await Task.detached(priority: .userInitiated) {
+                image.map(ArtworkPaletteExtractor.palette(from:))
+            }.value
+            guard self.currentTrack?.id == track.id else { return }
+            self.artworkPalette = palette
             self.refreshDockIcon()
             self.updateNowPlaying()
         }

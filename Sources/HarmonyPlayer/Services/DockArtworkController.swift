@@ -10,6 +10,11 @@ final class DockArtworkController {
     private var renderedPlayingState: Bool?
     private var renderedForSetting = false
 
+    /// 图标渲染（512px 画布 + 阴影 + 渐变 + 封面主色提取）是重活，放到后台串行
+    /// 队列执行；回主线程只做最终赋值。代数号用于丢弃过期的在途渲染。
+    private let renderQueue = DispatchQueue(label: "ManyuMusic.dockArtworkRender", qos: .userInitiated)
+    private var renderGeneration = 0
+
     private init() {}
 
     func update(artwork: NSImage?, isPlaying: Bool) {
@@ -40,25 +45,35 @@ final class DockArtworkController {
         renderedPlayingState = isPlaying
         renderedForSetting = true
 
-        let icon = makeDockIcon(artwork: artwork, isPlaying: isPlaying)
-        NSApplication.shared.applicationIconImage = icon
-        NSApplication.shared.dockTile.display()
+        renderGeneration += 1
+        let generation = renderGeneration
+        let source = artwork
+        renderQueue.async {
+            let icon = Self.makeDockIcon(artwork: source, isPlaying: isPlaying)
+            DispatchQueue.main.async {
+                guard generation == self.renderGeneration else { return }
+                NSApplication.shared.applicationIconImage = icon
+                NSApplication.shared.dockTile.display()
+            }
+        }
     }
 
     func refreshSetting() {
+        renderGeneration += 1
         renderedForSetting = false
         renderedArtwork = nil
         renderedPlayingState = nil
     }
 
     private func restoreDefaultIcon() {
+        renderGeneration += 1
         AppIconStyleManager.apply()
         renderedArtwork = nil
         renderedPlayingState = nil
         renderedForSetting = false
     }
 
-    private func makeDockIcon(artwork: NSImage, isPlaying: Bool) -> NSImage {
+    private static func makeDockIcon(artwork: NSImage, isPlaying: Bool) -> NSImage {
         let size = NSSize(width: 512, height: 512)
         let icon = NSImage(size: size)
         icon.lockFocus()
@@ -188,7 +203,7 @@ final class DockArtworkController {
         return icon
     }
 
-    private func aspectFillRect(for sourceSize: NSSize, targetAspect: CGFloat) -> NSRect {
+    private static func aspectFillRect(for sourceSize: NSSize, targetAspect: CGFloat) -> NSRect {
         guard sourceSize.width > 0, sourceSize.height > 0 else {
             return NSRect(origin: .zero, size: sourceSize)
         }

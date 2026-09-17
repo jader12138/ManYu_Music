@@ -23,6 +23,9 @@
 
 ### 改进
 
+- 进入播放页更顺滑：修复背景重复实例化——播放页背景此前会被创建两份（视图内部一份 + 挂载层一份），每份都含全屏 72px 模糊封面与两组动画光斑，转场瞬间开销翻倍；现在只保留覆盖完整窗口的一份。
+- 滚动更流畅：滚动条隐藏扫描改为仅在滚动视图仍开启滑块时写回，消除重复赋值触发的 NSScrollView 重布局（此前表现为滚动中每 1.5 秒一次的周期性顿挫）。
+- 切歌不再卡主线程：封面主色提取从主线程移到后台任务；Dock 图标（512px 画布 + 阴影 + 渐变 + 二次主色提取）整体移到后台串行队列渲染，回主线程仅做赋值，并带代数号丢弃过期的在途渲染。点击歌曲进入播放页的瞬间，主线程不再被这些工作阻塞。
 - 所有界面不再显示滚动条（含横向）：滚动操作本身不受影响，触控板/滚轮照常使用，界面两侧不再有滑块闪现。
 - 歌词解析过滤"制作人员名单"行（词：/曲：/编曲：/混音：/OP： 等）与平台版权声明行：这类行以 0.1 秒间隔密集挤在歌词开头，此前会被当成歌词疯狂滚过，造成歌词与歌曲对不齐的观感；现在正文从第一句唱词开始显示。
 - 歌词左右边距各加宽约一个字的宽度，长行歌词提前换行，不再被视口裁掉半个字；歌词字号/行距/行数/字体/颜色/进度微调统一收进"Aa"歌词设置面板。
@@ -54,7 +57,8 @@
 
 ## 技术变更
 
-- 全局隐藏滚动条：`AppDelegate` 启动时安装扫描器（1.5 秒低频定时 + 启动后延迟扫描 + 窗口成为主窗口通知），递归遍历可见窗口视图树，把所有 `NSScrollView` 的 `hasVerticalScroller`/`hasHorizontalScroller` 置为 false，覆盖 SwiftUI 懒创建的滚动视图；纯 Swift 实现，无 swizzle/hook。
+- 性能优化：`NowPlayingView` 不再在内部 ZStack 重复挂载 `NowPlayingBackdrop`（由 MainView 统一挂载一份）；`AudioPlayer.loadArtwork` 的 `ArtworkPaletteExtractor.palette(from:)` 改为 `Task.detached` 后台执行（带当前曲目校验防串歌）；`DockArtworkController` 新增后台串行渲染队列与 `renderGeneration` 代数号，`makeDockIcon`/`aspectFillRect` 改为 static 以脱离 MainActor 隔离。
+- 全局隐藏滚动条：`AppDelegate` 启动时安装扫描器（1.5 秒低频定时 + 启动后延迟扫描 + 窗口成为主窗口通知），递归遍历可见窗口视图树，把所有 `NSScrollView` 的 `hasVerticalScroller`/`hasHorizontalScroller` 置为 false（仅在仍开启时写回，避免重复赋值触发布局），覆盖 SwiftUI 懒创建的滚动视图；纯 Swift 实现，无 swizzle/hook。
 - `AudioPlayer` 新增按歌曲记忆的歌词时间轴偏移（`lyricOffset`，UserDefaults 字典存储，键为 track UUID，不动 library.json 格式）；`LyricTimelineView.lineIndex` 按偏移平移歌词时间轴，偏移变化时立即重算当前行。
 - `NowPlayingView` 音量滑块为浮层（不占控制行布局，展开/收起不影响其他控件）；"点击热区外收起"由 `NSEvent.addLocalMonitorForEvents` 全局鼠标监视实现——共享展开状态与热区坐标存放于引用类型 `VolumeDismissState`（从 NSEvent 闭包读 `@State` 会拿到旧快照），热区坐标由挂在喇叭上的 `VolumeFrameReporter`（NSView `convert` 到窗口坐标）实时上报；监视器只观察不拦截事件，点击穿透照常。
 - `NowPlayingView` 标题渐变与背景流动：标题用 `ArtworkPalette` 主色 → 白色（浅色模式换深色）`LinearGradient`，背景 `TimelineView` 驱动极慢相位摆动。
@@ -95,3 +99,4 @@
 - 2026-09-17：补充收藏爱心与歌词/进度条重构分支（codex/favorite-lyrics-smoothness）的合并内容；补充歌词进度微调、credits 过滤与歌词边距分支的合并内容。
 - 2026-09-17：补充播放页视觉与音量分支（codex/nowplaying-cover-gradient）的合并内容——标题封面渐变、背景缓慢流动、小喇叭音量滑块（含点击外部收起）、随机/循环互斥与小点选中样式。
 - 2026-09-17：补充隐藏滚动条分支（codex/hide-scrollbars）的合并内容——所有界面不再显示滚动条。
+- 2026-09-17：补充性能优化分支（codex/perf-smooth-scroll）的内容——去重播放页背景、主色提取与 Dock 图标后台化、滚动条扫描幂等化。

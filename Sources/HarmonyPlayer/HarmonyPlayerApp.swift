@@ -127,8 +127,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private static func hideScrollbars(in view: NSView?) {
         guard let view else { return }
         if let scrollView = view as? NSScrollView {
-            scrollView.hasVerticalScroller = false
-            scrollView.hasHorizontalScroller = false
+            // 只在仍处于开启状态时才写回：重复赋值会触发 NSScrollView 重新布局，
+            // 在滚动进行中表现为周期性顿挫。
+            if scrollView.hasVerticalScroller {
+                scrollView.hasVerticalScroller = false
+            }
+            if scrollView.hasHorizontalScroller {
+                scrollView.hasHorizontalScroller = false
+            }
         }
         for subview in view.subviews {
             hideScrollbars(in: subview)

@@ -27,7 +27,8 @@ struct NowPlayingView: View {
 
     var body: some View {
         ZStack {
-            NowPlayingBackdrop()
+            // 背景由 MainView 在 NowPlayingView 底下统一挂载（NowPlayingBackdrop），
+            // 这里不再重复实例化：转场瞬间少一份全屏模糊封面 + 一组动画光斑的开销。
 
             GeometryReader { geometry in
                 let artworkSize = min(
