@@ -10,6 +10,9 @@ struct NowPlayingView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var showingLyricsStyle = false
     @State private var showsVolumeSlider = false
+    /// 歌词视图延迟挂载：LyricTimelineView 首次要测量全部歌词行（几百行 Text 布局），
+    /// 若与进入播放页的转场挤在同一帧会造成可感的卡顿；先占位等高，落位后再淡入。
+    @State private var lyricsReady = false
     /// 音量滑块共享状态（引用类型）：NSEvent 监视器闭包从 @State 读到的是旧快照，
     /// 必须经由 class 引用才能保证监视器始终读到最新的展开状态与热区位置。
     private final class VolumeDismissState {
@@ -58,6 +61,15 @@ struct NowPlayingView: View {
         }
         .onAppear {
             installVolumeDismissMonitor()
+            if reduceMotion {
+                lyricsReady = true
+            } else {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.28) {
+                    withAnimation(.easeIn(duration: 0.22)) {
+                        lyricsReady = true
+                    }
+                }
+            }
         }
         .onDisappear {
             if let monitor = volumeDismissMonitor {
@@ -559,7 +571,7 @@ struct NowPlayingView: View {
                         .lineSpacing(5)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
-            } else {
+            } else if lyricsReady {
                 LyricTimelineView(
                     lines: player.lyricLines,
                     clock: player.clock,
@@ -571,6 +583,10 @@ struct NowPlayingView: View {
                     visibleLineCount: Int(lyricsVisibleLines),
                     lyricOffset: player.lyricOffset
                 )
+                .transition(.opacity)
+            } else {
+                // 转场期间占住同样的空间，歌词落位后原位淡入，布局不跳动。
+                Color.clear
             }
 
             HStack(spacing: 8) {
