@@ -55,6 +55,8 @@
 
 ### 修复
 
+- 修复部分 FLAC 歌曲进度条拖到最后一秒后音乐仍继续播放十几秒、歌词与歌声对不齐的问题（codex/progress-drift-fix 分支内容）：根因是播放路径的两处 `AVPlayerItem(url:)` 没有开启 `AVURLAssetPreferPreciseDurationAndTimingKey`（资料库扫描路径本来就开着，播放路径遗漏），AVPlayer 对部分 FLAC 采用估算时序，实际收尾可超出元数据声明时长近 20 秒（实测《阴天快乐》声明 261.48s、播放路径却播到 280.96s，而 afinfo / AVAssetReader / 逐帧解码与资料库时长均为 261.48s）。恢复播放与切歌两个播放入口、以及 `refreshDuration` 的兜底读取统一改为带精确解析选项创建资产，歌曲现在精确在真实时长处结束。
+- 修复进度条逐渐超前于歌声：周期时间观察器的 tick 投递到主线程存在几十毫秒延迟，该延迟会逐次累积进锚点墙钟，而旧的"单次相对偏差 > 1 秒才重同步"判定永远触发不了，显示进度越跑越超前。改为检查"显示插值与真实媒体时间的绝对偏差 > 0.35 秒"立即重锚，累积误差最多存活一个 tick（0.25 秒），tick 之间的按帧插值平滑保持不变。
 - Dock 图标启动跳变修复（codex/dock-icon-persist 分支内容）：`AppIconStyleManager.apply()` 每次解析出具体图标（深色/浅色）时持久化到 UserDefaults（`ManyuMusic.lastResolvedAppIconStyle`）；新增 `applyLastUsedIcon()` 在 `applicationDidFinishLaunching` 第一步直接恢复上一次会话的具体图标，跳过启动早期不可靠的 `effectiveAppearance` 解析（SwiftUI 首窗创建前可能返回错误外观，导致图标从深色跳成浅色）；启动约 0.8 秒后执行一次 `apply()` 校正，仅在两次会话之间系统/主题外观真的变化时才会产生一次可见切换。
 - 预加载效果修复（codex/preload-cache-hit 分支内容）：`LazyArtworkView` 缓存命中后改为在 body 中同步解析、随首帧渲染，不再"占位图 → task 下一帧换图"闪烁；封面图状态带请求标识，视图复用换曲目时不会闪上一首的封面。封面缓存成本上限 128MB→256MB、条目上限 900→1200（预热总量约等于小档全部曲目 + 中档全部专辑，此前超出 128MB 会被 NSCache 挤掉一部分，表现为部分封面仍需现加载）。预热循环对已缓存项目跳过让步等待、直接快进。
 - 修复点击歌词/进度条跳转后进度显示与时钟"乒乓"冲突的问题：seek 落位完成前丢弃观察器的旧位置回调，跳转后进度条不再回跳抖动。
@@ -63,6 +65,8 @@
 
 ## 技术变更
 
+- 播放精确时序（codex/progress-drift-fix）：`AudioPlayer` 新增 `private static func makePlaybackItem(url:)`，以 `AVURLAsset(url:options:[AVURLAssetPreferPreciseDurationAndTimingKey: true])` 构建 `AVPlayerItem`；恢复播放（`resumeSavedPlayback`）、切歌（`play(_:)`）两处 `replaceCurrentItem` 与 `refreshDuration` 的兜底时长读取统一走该入口，资料库扫描路径原本就带此选项。
+- 进度漂移兜底：`PlaybackProgressRow.onChange(of: clock.currentTime)` 的重同步判定由"tick 增量与墙钟增量的相对偏差 > 1 秒"改为计算当前显示插值（`anchorTime + Date() - anchorWall`，暂停时直接取锚点值）与新媒体时间的**绝对偏差**，超过 0.35 秒或处于暂停态立即重锚；正常推进分支不变，tick 间仍由 TimelineView 按帧插值。
 - 内存防护：新增 `MemoryPressureMonitor`（`DispatchSource.makeMemoryPressureSource` 监听 warning/critical，主线程回调清空 `ArtworkCache`（新增 `removeAllObjects()`），启动时在 AppDelegate 安装）；`BackToTopController.lastYByKey` 由 `[ObjectIdentifier: CGFloat]` 改为弱键 `NSMapTable`（滚动视图销毁后条目自动清除，消除应用内唯一无界集合）；新增 `LongSessionMemoryTests`（真实 WAV 文件 + 真实 AudioPlayer 连续切歌 300 次，phys_footprint 增长 < 80MB 断言，测试前后快照/恢复 UserDefaults 项目键以保护用户真实播放状态）；`BlurredBackdropRenderer` 重写为 vImage 三通盒式模糊 + CG 径向渐变（import Accelerate，全程无 CoreImage）；`AudioPlayer` 切歌后 4 秒 `malloc_zone_pressure_relief` 归还空闲页、`AVPlayerItem.preferredForwardBufferDuration = 45`、`refreshDuration` 仅在曲目无时长时建 AVURLAsset；封面缓存预算 48MB / 320 条。
 - 转场与预热：`NowPlayingView` 接受 `artworkEntry`（`NowPlayingEntry`）按入口选择大封面 matched geometry 目标（播放栏放大成长 / 主页推荐平移就位），转场其余元素纯 opacity 淡入淡出；`BlurredBackdropRenderer` 新增 `image(from:)`（512px 高斯模糊背景）与 `blurredOrb(color:diameter:blurRadius:)`（1/4 分辨率烘焙光斑，返回图与显示尺寸）；`AudioPlayer` 新增 `orbPrimaryImage/orbSecondaryImage` 发布属性，调色板就绪后在后台并行烘焙光斑，`NowPlayingBackdrop` 光斑优先用预烘焙图、未就绪回退实时模糊；`MainView` 启动 1.5s 后以 0.01 透明度挂载完整 `NowPlayingView` 预热实例 1.2s（专用 `@Namespace`，与真实转场互不干扰），首次打开无冷启动停顿；歌词 `lyricsReady` 延迟 0.65s（> spring 0.56s）+ 0.25s 淡入。
 - 回到顶部：新增 `BackToTopController`——监听窗口内所有 NSScrollView 的 clipView bounds 通知（SwiftUI ScrollView/List 底层即 NSScrollView），切页懒创建的新滚动视图由 didBecomeMain 通知 + 2 秒低频扫描兜底开启 `postsBoundsChangedNotifications`；按窗口横坐标（24–320pt）过滤出主内容区，排除侧栏与队列面板；方向判定用相邻两次 origin.y 差值（>0.5pt 才计入）。按钮由 `MainView.detail` 的 `overlay(alignment: .bottomTrailing)` 挂载；点击回顶为 60fps 逐帧 easeInOutCubic 插值动画（时长 0.4–0.9s 随距离自适应，NSScrollView 隐式动画在 SwiftUI 滚动视图上不生效），动画期间忽略自身驱动的回调、用户手动滚动（与上一帧偏差 >2pt）即打断动画转入正常判定。
@@ -93,6 +97,7 @@
 
 ## 验证
 
+- 进度漂移修复分支（codex/progress-drift-fix）合并前：`swift test` 27/27 通过；用户实测两首 FLAC 精确在显示终点结束、音乐完整、歌词对齐；另以 `AVAudioFile` 全速逐帧解码到 EOF 的方式静态比对 7 首 FLAC（Creep、南山南、平凡之路、浮夸、我记得、tired、阴天快乐）的声明时长与实际采样时长，偏差全部 0.00s（CLI 内驱动 AVPlayer 异步播放探针收不到结束通知、不可靠，故改用静态解码验证）；关键案例《阴天快乐》声明 261.48s，修复前播放路径播到 280.96s（超 19.5s），afinfo / AVAssetReader / 资料库时长三方均为 261.48s，确认唯一跑偏环节是播放路径的估算解析；联网佐证 Apple Developer Forums thread/665417 中 Apple 工程师确认 `AVURLAssetPreferPreciseDurationAndTimingKey: true` 为 FLAC seek/时长偏差的正确解法。Release 构建签名后实际运行由用户验证通过。
 - 内存防护分支（codex/memory-leak-guard）合并前：`swift test` 27/27 通过；vmmap 实测定位 IOSurface 滞留（CoreImage 表面池）并用独立探针对比三种渲染策略后实施 CPU 渲染方案；用户实测大量快速切歌后驻留内存约 170MB（此前 290-300MB 不回落），慢速听歌约 100MB；Release 构建签名后实际运行验证背景/光斑观感不变。
 - 播放页转场丝滑化分支（codex/nowplaying-warmup，叠加 codex/nowplaying-transition 与 codex/hero-transition 已合并内容）合并前：以临时探针实测（2ms 主线程心跳看门狗 + 事件打点）定位出首次进入播放页 191ms 冷启动停顿与歌词挂载 26-39ms 尾部顿挫；实施完整播放页启动预热、光斑预烘焙与歌词延迟挂载后复测无主线程停顿；移除探针后 `swift test` 26/26 通过，Release 构建签名后实际运行验证：重复进出播放页无可感顿挫，首次点击仅剩切歌内容中途换入的极轻微感（收益递减，未再深挖）。
 - `swift build` 通过（macOS 14, arm64）。
@@ -119,3 +124,4 @@
 - 2026-09-17：补充 Dock 图标持久化分支（codex/dock-icon-persist）的内容——启动直接恢复上次会话的具体图标样式。
 - 2026-09-17：补充回到顶部悬浮按钮分支（codex/back-to-top）的内容。
 - 2026-09-17：补充播放页转场丝滑化与启动预热分支（codex/nowplaying-transition、codex/hero-transition 已合并，codex/nowplaying-warmup 待合并）的内容——分入口封面动效、背景/光斑 CoreImage 预烘焙、完整播放页启动预热、歌词延迟至转场结束后淡入。
+- 2026-09-18：补充进度漂移修复分支（codex/progress-drift-fix）的内容——播放路径两处入口与时长兜底开启 AVURLAsset 精确时序解析，修复 FLAC 收尾超长与歌词不同步；进度显示改为与真实媒体时间的绝对偏差兜底重同步。
