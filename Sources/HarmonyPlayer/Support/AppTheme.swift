@@ -401,10 +401,11 @@ final class ArtworkCache {
 
     private init() {
         // 启动预加载开启后，小档（全部曲目）与中档（按专辑）会同时驻留，键数约
-        // 曲目数 + 专辑数；条目上限放宽，成本上限保持 128MB，由 NSCache 在内存
-        // 压力下自行淘汰。
-        cache.countLimit = 900
-        cache.totalCostLimit = 128 * 1024 * 1024
+        // 曲目数 + 专辑数；再加上浏览过程中产生的大档（768px）专辑详情图。条目与
+        // 成本上限放宽，保证预热结果不会被彼此挤掉；系统内存压力下 NSCache 仍会
+        // 自动淘汰。
+        cache.countLimit = 1200
+        cache.totalCostLimit = 256 * 1024 * 1024
     }
 
     /// Cache key: file URL + pixel tier, so tiers never evict each other and the
@@ -445,7 +446,8 @@ struct LazyArtworkView: View {
 
     @Environment(\.displayScale) private var displayScale
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var image: NSImage?
+    @State private var loadedImage: NSImage?
+    @State private var loadedRequestID: ArtworkRequestID?
 
     private var tier: ArtworkPixelTier {
         ArtworkPixelTier.tier(for: size, displayScale: displayScale)
@@ -455,27 +457,36 @@ struct LazyArtworkView: View {
         ArtworkRequestID(url: track.url, size: size, tier: tier)
     }
 
-    var body: some View {
-        ArtworkView(image: image, size: size, cornerRadius: cornerRadius)
-            .task(id: requestID) {
-                if let cached = ArtworkCache.shared.image(for: track.url, tier: tier) {
-                    image = cached
-                    return
-                }
+    /// 首帧同步出图：缓存里有（预加载过的、或看过的）直接随本次渲染返回，
+    /// 不再经历"占位图 → task 下一帧换图"的闪烁；快速滚动时封面即取即用。
+    /// 状态里的图只在属于当前请求时才参与，避免视图复用换曲目时闪上一首的封面。
+    private var currentImage: NSImage? {
+        if let cached = ArtworkCache.shared.image(for: track.url, tier: tier) {
+            return cached
+        }
+        if let loadedRequestID, loadedRequestID == requestID {
+            return loadedImage
+        }
+        return nil
+    }
 
-                // A new request on a reused view must not keep the previous cover.
-                image = nil
+    var body: some View {
+        ArtworkView(image: currentImage, size: size, cornerRadius: cornerRadius)
+            .task(id: requestID) {
+                // 缓存命中时 body 已经直接渲染，无需再做任何事。
+                guard ArtworkCache.shared.image(for: track.url, tier: tier) == nil else { return }
 
                 let loaded = await AudioMetadataLoader.artwork(for: track, pixelSize: tier.pixels)
                 guard !Task.isCancelled, let loaded else { return }
 
                 if reduceMotion {
-                    image = loaded
+                    loadedImage = loaded
                 } else {
                     withAnimation(.easeOut(duration: 0.18)) {
-                        image = loaded
+                        loadedImage = loaded
                     }
                 }
+                loadedRequestID = requestID
             }
     }
 }
