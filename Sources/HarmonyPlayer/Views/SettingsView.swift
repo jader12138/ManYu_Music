@@ -35,6 +35,7 @@ struct SettingsView: View {
     @AppStorage(AppIconStyle.storageKey) private var appIconStyleRaw = AppIconStyle.automatic.rawValue
     @AppStorage(DockArtworkController.showsArtworkKey) private var showDockArtwork = true
     @AppStorage(AudioPlayer.rememberPlaybackKey) private var rememberPlaybackState = true
+    @AppStorage(ArtworkPreloader.enabledKey) private var preloadArtwork = false
     @AppStorage(RecommendationSettings.frequencyKey)
     private var recommendationFrequencyRaw = RecommendationFrequency.daily.rawValue
     @AppStorage(RecommendationSettings.independentKey)
@@ -318,6 +319,40 @@ struct SettingsView: View {
                 }
                 .buttonStyle(.plain)
                 .disabled(!library.canEdit || library.isImporting)
+            }
+
+            settingsCard(
+                title: "启动预加载",
+                subtitle: "打开软件后在后台提前加载封面，浏览各页面更快"
+            ) {
+                HStack(spacing: 14) {
+                    ZStack {
+                        Circle()
+                            .fill(Color.hpAccent.opacity(0.12))
+                            .frame(width: 38, height: 38)
+                        Image(systemName: "bolt.horizontal.fill")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundStyle(Color.hpAccent)
+                    }
+
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("启动时预加载封面")
+                            .font(.system(size: 12, weight: .semibold))
+                        Text("提前把歌曲列表与专辑网格的封面读入缓存；会多占用一些内存")
+                            .font(.system(size: 10))
+                            .foregroundStyle(Color.hpTextPrimary.opacity(0.42))
+                    }
+
+                    Spacer()
+
+                    Toggle("", isOn: $preloadArtwork)
+                        .labelsHidden()
+                        .onChange(of: preloadArtwork) { _, enabled in
+                            if enabled {
+                                ArtworkPreloader.shared.preloadIfNeeded(tracks: library.tracks)
+                            }
+                        }
+                }
             }
 
             settingsCard(
