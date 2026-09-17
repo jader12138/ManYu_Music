@@ -11,6 +11,7 @@ enum HomeRecentDisplayMode: String {
 struct HomeView: View {
     let tracks: [Track]
     let favoriteTracks: [Track]
+    let transitionNamespace: Namespace.ID
     let openNowPlaying: () -> Void
 
     @EnvironmentObject private var player: AudioPlayer
@@ -188,6 +189,7 @@ struct HomeView: View {
                             openFeaturedPlayer(track)
                         } label: {
                             LazyArtworkView(track: track, size: 184, cornerRadius: 20)
+                                .matchedGeometryEffect(id: "nowPlayingArtwork.homeHero", in: transitionNamespace, isSource: true)
                         }
                         .buttonStyle(.plain)
                         .help("进入播放界面")

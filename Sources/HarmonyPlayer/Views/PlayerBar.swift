@@ -5,6 +5,8 @@ struct PlayerBar: View {
     @Binding var showQueue: Bool
     @Binding var showNowPlaying: Bool
     let transitionNamespace: Namespace.ID
+    /// 进入播放页前（同一动画事务内）标记入口，让大封面用「放大成长」的几何来源。
+    var onNowPlayingEntrySelected: () -> Void = {}
 
     @EnvironmentObject private var player: AudioPlayer
     @EnvironmentObject private var library: LibraryStore
@@ -75,12 +77,13 @@ struct PlayerBar: View {
             Button {
                 guard player.currentTrack != nil else { return }
                 withAnimation(.spring(response: 0.56, dampingFraction: 0.86)) {
+                    onNowPlayingEntrySelected()
                     showNowPlaying.toggle()
                 }
             } label: {
                 HStack(spacing: 10) {
                     ArtworkView(image: player.artwork, size: 44, cornerRadius: 10)
-                        .matchedGeometryEffect(id: "nowPlayingArtwork", in: transitionNamespace)
+                        .matchedGeometryEffect(id: "nowPlayingArtwork.playerBar", in: transitionNamespace, isSource: true)
 
                     if let track = player.currentTrack {
                         HStack(spacing: 8) {

@@ -1,8 +1,16 @@
 import AppKit
 import SwiftUI
 
+/// 进入播放页的入口：决定大封面 matched geometry 的来源——
+/// 播放栏小封面为「放大成长」，主页推荐大封面为「平移就位」。
+enum NowPlayingEntry {
+    case playerBar
+    case homeHero
+}
+
 struct NowPlayingView: View {
     let transitionNamespace: Namespace.ID
+    let artworkEntry: NowPlayingEntry
 
     @EnvironmentObject private var player: AudioPlayer
     @EnvironmentObject private var library: LibraryStore
@@ -104,7 +112,11 @@ struct NowPlayingView: View {
     private func albumPanel(artworkSize: CGFloat) -> some View {
         VStack(spacing: 15) {
             ArtworkView(image: player.artwork, size: artworkSize, cornerRadius: 22)
-                .matchedGeometryEffect(id: "nowPlayingArtwork", in: transitionNamespace)
+                .matchedGeometryEffect(
+                    id: artworkEntry == .playerBar ? "nowPlayingArtwork.playerBar" : "nowPlayingArtwork.homeHero",
+                    in: transitionNamespace,
+                    isSource: false
+                )
 
             VStack(spacing: 8) {
                 Text(player.currentTrack?.displayTitle ?? "还未播放")
