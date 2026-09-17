@@ -694,7 +694,7 @@ enum BlurredBackdropRenderer {
     private static let context = CIContext()
 
     static func image(from artwork: NSImage) -> NSImage? {
-        guard let cgSource = artwork.cgImage(forProposedSize: .zero, context: nil, hints: nil) else {
+        guard let cgSource = artwork.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
             return nil
         }
         var source = CIImage(cgImage: cgSource)
