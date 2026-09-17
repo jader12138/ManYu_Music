@@ -24,6 +24,9 @@ final class AudioPlayer: ObservableObject {
     /// 预渲染好的模糊封面背景：播放页转场直接贴图，
     /// 不再挂全屏实时 blur 层（转场首帧的光栅化大头）。
     @Published private(set) var backdropImage: NSImage?
+    /// 预烘焙的背景光斑（主色/次色）：播放页进出时 GPU 不再现算大半径模糊层。
+    @Published private(set) var orbPrimaryImage: NSImage?
+    @Published private(set) var orbSecondaryImage: NSImage?
     @Published private(set) var lyricLines: [LyricLine] = []
     @Published private(set) var queue: [Track] = []
     @Published private(set) var currentIndex: Int?
@@ -448,6 +451,16 @@ final class AudioPlayer: ObservableObject {
             guard self.currentTrack?.id == track.id else { return }
             self.artworkPalette = await palette
             self.backdropImage = await backdrop
+            // 光斑烘焙依赖调色板颜色，拿到主色后立刻在后台烘焙（毫秒级）。
+            let orbColors = self.artworkPalette ?? .fallback
+            async let orbA = Task.detached(priority: .utility) {
+                BlurredBackdropRenderer.blurredOrb(color: orbColors.primary, diameter: 620, blurRadius: 160)
+            }.value
+            async let orbB = Task.detached(priority: .utility) {
+                BlurredBackdropRenderer.blurredOrb(color: orbColors.secondary, diameter: 460, blurRadius: 150)
+            }.value
+            self.orbPrimaryImage = await orbA?.image
+            self.orbSecondaryImage = await orbB?.image
             self.refreshDockIcon()
             self.updateNowPlaying()
         }
@@ -721,5 +734,52 @@ enum BlurredBackdropRenderer {
               let cg = context.createCGImage(output, from: extent)
         else { return nil }
         return NSImage(cgImage: cg, size: NSSize(width: extent.width, height: extent.height))
+    }
+
+    /// 预烘焙光斑：把「纯色圆 + 大半径实时模糊」渲染成一张图。
+    /// 播放页挂载/卸载时 GPU 不再需要现算 150-160px 模糊层（进出转场各一次），
+    /// 漂移动画只位移图片本身，视觉与原来的 Circle().blur 完全一致。
+    /// - Parameters:
+    ///   - color: 光斑颜色
+    ///   - diameter: 光斑显示直径（pt）
+    ///   - blurRadius: 原实时模糊半径（pt）
+    /// - Returns: 图片及其显示尺寸（含模糊外溢余量）
+    static func blurredOrb(color: NSColor, diameter: CGFloat, blurRadius: CGFloat) -> (image: NSImage, displaySize: CGFloat)? {
+        // 1/4 分辨率烘焙：光斑本就是模糊团，低分辨率放大后无视觉差，速度快约 4 倍。
+        let quarterScale: CGFloat = 0.25
+        let reach = blurRadius * 1.25
+        let canvas = (diameter + reach * 2) * quarterScale
+        let circleDiameter = diameter * quarterScale
+        let sigma = blurRadius * quarterScale
+
+        let size = NSSize(width: canvas, height: canvas)
+        let image = NSImage(size: size)
+        image.lockFocus()
+        color.setFill()
+        NSBezierPath(
+            roundedRect: NSRect(
+                x: (canvas - circleDiameter) / 2,
+                y: (canvas - circleDiameter) / 2,
+                width: circleDiameter,
+                height: circleDiameter
+            ),
+            xRadius: circleDiameter / 2,
+            yRadius: circleDiameter / 2
+        ).fill()
+        image.unlockFocus()
+
+        guard let cgSource = image.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
+            return nil
+        }
+        var source = CIImage(cgImage: cgSource)
+        let extent = source.extent
+        guard let filter = CIFilter(name: "CIGaussianBlur") else { return nil }
+        filter.setValue(source.clampedToExtent(), forKey: kCIInputImageKey)
+        filter.setValue(sigma, forKey: kCIInputRadiusKey)
+        guard let output = filter.outputImage?.cropped(to: extent),
+              let cg = context.createCGImage(output, from: extent)
+        else { return nil }
+        let result = NSImage(cgImage: cg, size: NSSize(width: extent.width, height: extent.height))
+        return (result, canvas / quarterScale)
     }
 }

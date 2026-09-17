@@ -20,6 +20,11 @@ struct MainView: View {
     @StateObject private var backToTop = BackToTopController()
     /// 进入播放页的入口：决定大封面 matched geometry 用哪个来源（放大成长 vs 平移就位）。
     @State private var nowPlayingEntry: NowPlayingEntry = .playerBar
+    /// 播放页背景 GPU 预热：启动后短暂挂载一次背景视图（几乎透明），
+    /// 让模糊光斑与渐变层的首次光栅化发生在启动静默期，首次打开播放页不再冷启动卡顿。
+    @State private var warmupBackdropVisible = false
+    /// 预热实例专用的几何命名空间，与真实转场的命名空间互不干扰。
+    @Namespace private var warmupTransitionNamespace
     @Namespace private var nowPlayingTransition
     @FocusState private var searchIsFocused: Bool
 
@@ -246,6 +251,20 @@ struct MainView: View {
             }
         }
         .background(Color.hpNavy.opacity(0.32))
+        // 播放页预热层：藏在最底层、几乎透明，启动静默期把完整播放页（含歌词、
+        // 渐变、光斑、几何配对）的首帧构建与 GPU 光栅化提前做完，
+        // 首次真实打开不再有冷启动大停顿。
+        .background {
+            if warmupBackdropVisible, !showNowPlaying {
+                NowPlayingView(
+                    transitionNamespace: warmupTransitionNamespace,
+                    artworkEntry: .playerBar
+                )
+                .opacity(0.01)
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+            }
+        }
         .overlay(alignment: .topTrailing) {
             if browse.request != browseRequest && !library.isLoading && destination != .settings {
                 ProgressView().controlSize(.mini).padding(.top, 26).padding(.trailing, 12)
@@ -268,6 +287,15 @@ struct MainView: View {
                 .padding(.trailing, 22)
                 .padding(.bottom, 20)
             }
+        }
+        .task {
+            // 启动静默期预热播放页背景：等首屏布局稳定后挂载 1.2 秒再卸下，
+            // 模糊光斑/渐变层的首次 GPU 光栅化就发生在启动阶段，首次打开播放页不再冷启动。
+            try? await Task.sleep(nanoseconds: 1_500_000_000)
+            guard !showNowPlaying else { return }
+            withAnimation(.linear(duration: 0.15)) { warmupBackdropVisible = true }
+            try? await Task.sleep(nanoseconds: 1_200_000_000)
+            withAnimation(.linear(duration: 0.3)) { warmupBackdropVisible = false }
         }
     }
 
