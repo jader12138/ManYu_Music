@@ -1,6 +1,7 @@
 import AppKit
 import AVFoundation
 import Combine
+import CoreImage
 import MediaPlayer
 
 /// High-frequency playback progress, kept apart from `AudioPlayer` so the
@@ -20,6 +21,9 @@ final class AudioPlayer: ObservableObject {
     @Published private(set) var isPlaying = false
     @Published private(set) var artwork: NSImage?
     @Published private(set) var artworkPalette: ArtworkPalette?
+    /// 预渲染好的模糊封面背景：播放页转场直接贴图，
+    /// 不再挂全屏实时 blur 层（转场首帧的光栅化大头）。
+    @Published private(set) var backdropImage: NSImage?
     @Published private(set) var lyricLines: [LyricLine] = []
     @Published private(set) var queue: [Track] = []
     @Published private(set) var currentIndex: Int?
@@ -434,12 +438,16 @@ final class AudioPlayer: ObservableObject {
             let image = await AudioMetadataLoader.artwork(for: track)
             guard self.currentTrack?.id == track.id else { return }
             self.artwork = image
-            // 主色提取移出主线程：切歌瞬间不再与转场动画抢占主线程。
-            let palette = await Task.detached(priority: .userInitiated) {
+            // 主色提取与背景模糊渲染并行，都在后台：切歌瞬间不再与转场动画抢占主线程。
+            async let palette = Task.detached(priority: .userInitiated) {
                 image.map(ArtworkPaletteExtractor.palette(from:))
             }.value
+            async let backdrop = Task.detached(priority: .userInitiated) {
+                image.flatMap(BlurredBackdropRenderer.image(from:))
+            }.value
             guard self.currentTrack?.id == track.id else { return }
-            self.artworkPalette = palette
+            self.artworkPalette = await palette
+            self.backdropImage = await backdrop
             self.refreshDockIcon()
             self.updateNowPlaying()
         }
@@ -671,7 +679,7 @@ final class AudioPlayer: ObservableObject {
     private func saveVolume() {
         UserDefaults.standard.set(volume, forKey: volumeKey)
     }
-
+}
 
 private enum PlaybackStateKeys {
     static let trackID = "ManyuMusic.playback.trackID"
@@ -679,4 +687,39 @@ private enum PlaybackStateKeys {
     static let currentIndex = "ManyuMusic.playback.currentIndex"
     static let currentTime = "ManyuMusic.playback.currentTime"
 }
+
+/// 预渲染播放页背景的模糊封面：换歌时在后台用 CoreImage 算一次，
+/// 转场首帧直接贴图，避免全屏实时 .blur 层的光栅化开销（进出播放页各一次）。
+enum BlurredBackdropRenderer {
+    private static let context = CIContext()
+
+    static func image(from artwork: NSImage) -> NSImage? {
+        guard let cgSource = artwork.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
+            return nil
+        }
+        var source = CIImage(cgImage: cgSource)
+
+        // 模糊结果与分辨率无关：源图缩到最长边 640px，把渲染耗时控制在几十毫秒内。
+        let maxDimension: CGFloat = 640
+        let longest = max(source.extent.width, source.extent.height)
+        guard longest > 0 else { return nil }
+        let scale = min(1, maxDimension / longest)
+        if scale < 1 {
+            source = source.transformed(by: CGAffineTransform(scaleX: scale, y: scale))
+        }
+        let extent = source.extent.integral
+
+        // 成品图会被拉伸铺满全屏（按 1600pt 宽估算）： SwiftUI 里 72pt 的模糊
+        // 折算到源图上约为 72 ÷ 放大倍数，clamp 防止极端比例下过锐或过糊。
+        let upscale = max(1, 1600 / max(extent.width, 1))
+        let sigma = min(64, max(8, 72 / upscale))
+
+        guard let filter = CIFilter(name: "CIGaussianBlur") else { return nil }
+        filter.setValue(source.clampedToExtent(), forKey: kCIInputImageKey)
+        filter.setValue(sigma, forKey: kCIInputRadiusKey)
+        guard let output = filter.outputImage?.cropped(to: extent),
+              let cg = context.createCGImage(output, from: extent)
+        else { return nil }
+        return NSImage(cgImage: cg, size: NSSize(width: extent.width, height: extent.height))
+    }
 }

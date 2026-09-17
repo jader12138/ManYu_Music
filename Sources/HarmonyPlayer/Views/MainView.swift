@@ -18,14 +18,19 @@ struct MainView: View {
     @State private var headerAscending = true
     @State private var browse = LibraryBrowseSnapshot(request: nil)
     @StateObject private var backToTop = BackToTopController()
+    /// 进入播放页的入口：决定大封面 matched geometry 用哪个来源（放大成长 vs 平移就位）。
+    @State private var nowPlayingEntry: NowPlayingEntry = .playerBar
     @Namespace private var nowPlayingTransition
     @FocusState private var searchIsFocused: Bool
 
     var body: some View {
         GeometryReader { geometry in
             if showNowPlaying {
-                NowPlayingView(transitionNamespace: nowPlayingTransition)
-                .transition(.opacity.combined(with: .scale(scale: 0.985)))
+                NowPlayingView(
+                    transitionNamespace: nowPlayingTransition,
+                    artworkEntry: nowPlayingEntry
+                )
+                .transition(.opacity)
                 .frame(width: geometry.size.width, height: geometry.size.height)
                 .background {
                     NowPlayingBackdrop()
@@ -65,7 +70,8 @@ struct MainView: View {
                     PlayerBar(
                         showQueue: $showQueue,
                         showNowPlaying: $showNowPlaying,
-                        transitionNamespace: nowPlayingTransition
+                        transitionNamespace: nowPlayingTransition,
+                        onNowPlayingEntrySelected: { nowPlayingEntry = .playerBar }
                     )
                         .frame(width: geometry.size.width, height: 72)
                 }
@@ -221,8 +227,10 @@ struct MainView: View {
                 HomeView(
                     tracks: library.tracks,
                     favoriteTracks: library.tracks.filter { library.favoriteIDs.contains($0.id) },
+                    transitionNamespace: nowPlayingTransition,
                     openNowPlaying: {
                         withAnimation(.spring(response: 0.56, dampingFraction: 0.86)) {
+                            nowPlayingEntry = .homeHero
                             showNowPlaying = true
                         }
                     }

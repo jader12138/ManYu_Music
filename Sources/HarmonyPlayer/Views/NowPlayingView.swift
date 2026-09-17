@@ -1,8 +1,16 @@
 import AppKit
 import SwiftUI
 
+/// 进入播放页的入口：决定大封面 matched geometry 的来源——
+/// 播放栏小封面为「放大成长」，主页推荐大封面为「平移就位」。
+enum NowPlayingEntry {
+    case playerBar
+    case homeHero
+}
+
 struct NowPlayingView: View {
     let transitionNamespace: Namespace.ID
+    let artworkEntry: NowPlayingEntry
 
     @EnvironmentObject private var player: AudioPlayer
     @EnvironmentObject private var library: LibraryStore
@@ -104,7 +112,11 @@ struct NowPlayingView: View {
     private func albumPanel(artworkSize: CGFloat) -> some View {
         VStack(spacing: 15) {
             ArtworkView(image: player.artwork, size: artworkSize, cornerRadius: 22)
-                .matchedGeometryEffect(id: "nowPlayingArtwork", in: transitionNamespace)
+                .matchedGeometryEffect(
+                    id: artworkEntry == .playerBar ? "nowPlayingArtwork.playerBar" : "nowPlayingArtwork.homeHero",
+                    in: transitionNamespace,
+                    isSource: false
+                )
 
             VStack(spacing: 8) {
                 Text(player.currentTrack?.displayTitle ?? "还未播放")
@@ -750,7 +762,16 @@ struct NowPlayingBackdrop: View {
         let secondary = Color(nsColor: palette.secondary)
 
         ZStack {
-            if let artwork = player.artwork {
+            if let backdrop = player.backdropImage {
+                // 预渲染模糊图：换歌时后台算好，转场首帧只是贴一张图。
+                Image(nsImage: backdrop)
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .scaleEffect(1.16)
+                    .opacity(colorScheme == .dark ? 0.48 : 0.30)
+            } else if let artwork = player.artwork {
+                // 模糊图尚未就绪（刚换歌的极短窗口）时的兜底：保持原实时模糊。
                 Image(nsImage: artwork)
                     .resizable()
                     .aspectRatio(contentMode: .fill)
