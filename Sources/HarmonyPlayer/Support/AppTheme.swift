@@ -401,11 +401,12 @@ final class ArtworkCache {
 
     private init() {
         // 启动预加载开启后，小档（全部曲目）与中档（按专辑）会同时驻留，键数约
-        // 曲目数 + 专辑数；再加上浏览过程中产生的大档（768px）专辑详情图。条目与
-        // 成本上限放宽，保证预热结果不会被彼此挤掉；系统内存压力下 NSCache 仍会
-        // 自动淘汰。
-        cache.countLimit = 1200
-        cache.totalCostLimit = 256 * 1024 * 1024
+        // 曲目数 + 专辑数；再加上浏览过程中产生的大档（768px）专辑详情图。
+        // 96MB 预算按典型曲库（约 500 首 + 数十专辑）的预热全集留有余量；
+        // 超出时 NSCache 按 LRU 淘汰尾部，列表命中的同步路径不受影响，
+        // 淘汰项下次显示按需重解码（毫秒级）。系统内存压力下也会自动淘汰。
+        cache.countLimit = 600
+        cache.totalCostLimit = 96 * 1024 * 1024
     }
 
     /// Cache key: file URL + pixel tier, so tiers never evict each other and the

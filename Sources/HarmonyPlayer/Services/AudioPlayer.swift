@@ -461,6 +461,11 @@ final class AudioPlayer: ObservableObject {
             }.value
             self.orbPrimaryImage = await orbA?.image
             self.orbSecondaryImage = await orbB?.image
+            // 旧的背景/光斑图已被新图替换，CoreImage 内部的中间纹理与着色缓存
+            // 不再有用——顺手清掉，避免长会话中随切歌次数缓慢增长。
+            await Task.detached(priority: .utility) {
+                BlurredBackdropRenderer.clearCaches()
+            }.value
             self.refreshDockIcon()
             self.updateNowPlaying()
         }
