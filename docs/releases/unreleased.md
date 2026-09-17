@@ -12,6 +12,7 @@
 
 ### 新增
 
+- 「回到顶部」悬浮按钮：在歌曲页、首页等内容页向下滚得较远（距顶超过约 300pt）后，只要向上滚动一下，内容区右下角会出现悬浮圆形按钮（浮在所有页面之上、不嵌进任何页面），点击后平滑滚回列表顶部；向下滚动或距顶部不足 80pt 时自动隐藏，侧栏与播放队列的滚动不会触发。
 - 启动预加载：设置 → 资料库新增"启动时预加载封面"开关（默认关闭）。开启后软件启动（以及开关打开的那一刻）会在后台把封面按显示档位提前解码进缓存：小档（128px）覆盖全部曲目行缩略图，中档（384px）按专辑去重覆盖专辑/艺术家网格与首页卡片；逐项低优先级推进并周期让步，不抢占滚动与播放等前台工作。浏览歌曲页、首页、专辑/艺术家页时封面即取即用，不再等待解码。
 - 播放页音量控制：控制行"喜欢"右侧新增小喇叭音量键——点击弹出横向滑块（可点击轨道或拖动小球调整），点击滑块与喇叭以外的任意位置自动收起（那次点击本身的功能照常执行）；滑块展开期间关闭悬停滚轮调节；收起时悬停喇叭上下滚动可调音量，图标下方小字实时显示音量数字。
 - 播放模式互斥：开启随机播放自动退出循环模式，进入循环（含单曲循环）自动关闭随机；随机/循环移到"上一曲"左侧，选中时按钮本身不再亮起，改为图标下方主题色小点（顺序播放无点）。
@@ -60,6 +61,7 @@
 
 ## 技术变更
 
+- 回到顶部：新增 `BackToTopController`——监听窗口内所有 NSScrollView 的 clipView bounds 通知（SwiftUI ScrollView/List 底层即 NSScrollView），切页懒创建的新滚动视图由 didBecomeMain 通知 + 2 秒低频扫描兜底开启 `postsBoundsChangedNotifications`；按窗口横坐标（24–320pt）过滤出主内容区，排除侧栏与队列面板；方向判定用相邻两次 origin.y 差值（>0.5pt 才计入）。按钮由 `MainView.detail` 的 `overlay(alignment: .bottomTrailing)` 挂载；点击回顶为 60fps 逐帧 easeInOutCubic 插值动画（时长 0.4–0.9s 随距离自适应，NSScrollView 隐式动画在 SwiftUI 滚动视图上不生效），动画期间忽略自身驱动的回调、用户手动滚动（与上一帧偏差 >2pt）即打断动画转入正常判定。
 - Dock 图标持久化：`AppIconStyleManager` 新增 `lastResolvedStyleKey` 持久化与 `applyLastUsedIcon()`；`applicationDidFinishLaunching` 改为先恢复上次图标、延迟 0.8 秒再校正。
 - 预加载调优：`LazyArtworkView` 用 `currentImage`（缓存同步查找 + 带请求标识的加载状态）在 body 内解析封面；`ArtworkCache.countLimit` 900→1200、`totalCostLimit` 128MB→256MB。
 - 启动预加载：新增 `ArtworkPreloader`（MainActor 单例，低优先级 Task 逐项调用 `ArtworkPipeline`，每项间隔 3ms 让步；开关 key `ManyuMusic.preloadArtwork`，幂等防重入，运行中检测开关关闭即中止）。触发点：MainView 在资料库加载完成时、设置里打开开关时。
@@ -109,3 +111,4 @@
 - 2026-09-17：补充启动预加载分支（codex/startup-preload）的内容——设置新增启动预加载开关与 ArtworkPreloader。
 - 2026-09-17：补充预加载调优分支（codex/preload-cache-hit）的内容——缓存命中同步渲染、缓存上限放宽、预热快进。
 - 2026-09-17：补充 Dock 图标持久化分支（codex/dock-icon-persist）的内容——启动直接恢复上次会话的具体图标样式。
+- 2026-09-17：补充回到顶部悬浮按钮分支（codex/back-to-top）的内容。
