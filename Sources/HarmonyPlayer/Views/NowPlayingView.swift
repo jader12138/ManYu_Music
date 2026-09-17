@@ -68,6 +68,7 @@ struct NowPlayingView: View {
             }
         }
         .onAppear {
+            TransitionProbe.mark("播放页 onAppear")
             installVolumeDismissMonitor()
             if reduceMotion {
                 lyricsReady = true

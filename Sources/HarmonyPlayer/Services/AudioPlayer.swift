@@ -349,6 +349,7 @@ final class AudioPlayer: ObservableObject {
         currentTime = 0
         duration = track.duration
         lyricLines = []
+        TransitionProbe.mark("切歌加载开始: \(track.url.lastPathComponent)")
 
         // Keep the previous artwork and Dock icon visible until the next
         // track's artwork has loaded. This removes the one-frame Dock flicker.
@@ -363,6 +364,7 @@ final class AudioPlayer: ObservableObject {
         loadLyrics(for: track)
         persistPlaybackState(force: true)
         updateNowPlaying()
+        TransitionProbe.mark("切歌同步部分完成")
     }
 
     private func configurePlayerObservation() {
@@ -435,9 +437,11 @@ final class AudioPlayer: ObservableObject {
 
     private func loadArtwork(for track: Track) {
         Task {
+            TransitionProbe.mark("封面加载开始")
             let image = await AudioMetadataLoader.artwork(for: track)
             guard self.currentTrack?.id == track.id else { return }
             self.artwork = image
+            TransitionProbe.mark("封面图就绪→发布UI更新")
             // 主色提取与背景模糊渲染并行，都在后台：切歌瞬间不再与转场动画抢占主线程。
             async let palette = Task.detached(priority: .userInitiated) {
                 image.map(ArtworkPaletteExtractor.palette(from:))
@@ -447,7 +451,9 @@ final class AudioPlayer: ObservableObject {
             }.value
             guard self.currentTrack?.id == track.id else { return }
             self.artworkPalette = await palette
+            TransitionProbe.mark("调色板就绪→发布UI更新")
             self.backdropImage = await backdrop
+            TransitionProbe.mark("背景模糊图就绪→发布UI更新")
             self.refreshDockIcon()
             self.updateNowPlaying()
         }

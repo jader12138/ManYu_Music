@@ -233,6 +233,7 @@ struct MainView: View {
                     transitionNamespace: nowPlayingTransition,
                     openNowPlaying: {
                         withAnimation(.spring(response: 0.56, dampingFraction: 0.86)) {
+                            TransitionProbe.mark("转场动画开始(homeHero)")
                             nowPlayingEntry = .homeHero
                             showNowPlaying = true
                         }

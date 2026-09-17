@@ -418,7 +418,9 @@ struct HomeView: View {
     }
 
     private func openFeaturedPlayer(_ track: Track) {
-        if player.currentTrack?.id != track.id {
+        let switching = player.currentTrack?.id != track.id
+        TransitionProbe.mark("点击推荐封面(\(switching ? "切歌" : "当前曲"))")
+        if switching {
             player.play(track, in: tracks.isEmpty ? [track] : tracks)
         }
         openNowPlaying()
