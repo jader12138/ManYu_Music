@@ -805,31 +805,51 @@ struct NowPlayingBackdrop: View {
                 value: gradientDrift
             )
 
-            Circle()
-                .fill(primary.opacity(colorScheme == .dark ? 0.28 : 0.18))
-                .frame(width: 620, height: 620)
-                .blur(radius: 160)
-                .offset(
-                    x: 420 + (orbDrift ? 52 : -52),
-                    y: -340 + (orbDrift ? -36 : 36)
-                )
-                .animation(
-                    reduceMotion ? nil : .easeInOut(duration: 55).repeatForever(autoreverses: true),
-                    value: orbDrift
-                )
+            // 光斑：优先用预烘焙的模糊图（进出转场 GPU 零滤镜成本），
+            // 未就绪时回退原实时模糊。显示尺寸 = 直径 + 2×模糊外溢余量。
+            Group {
+                if let orb = player.orbPrimaryImage {
+                    Image(nsImage: orb)
+                        .resizable()
+                        .frame(width: 1020, height: 1020)
+                } else {
+                    Circle()
+                        .fill(primary)
+                        .frame(width: 620, height: 620)
+                        .blur(radius: 160)
+                }
+            }
+            .opacity(colorScheme == .dark ? 0.28 : 0.18)
+            .offset(
+                x: 420 + (orbDrift ? 52 : -52),
+                y: -340 + (orbDrift ? -36 : 36)
+            )
+            .animation(
+                reduceMotion ? nil : .easeInOut(duration: 55).repeatForever(autoreverses: true),
+                value: orbDrift
+            )
 
-            Circle()
-                .fill(secondary.opacity(colorScheme == .dark ? 0.18 : 0.13))
-                .frame(width: 460, height: 460)
-                .blur(radius: 150)
-                .offset(
-                    x: -430 + (orbDrift ? -44 : 44),
-                    y: 320 + (orbDrift ? 40 : -40)
-                )
-                .animation(
-                    reduceMotion ? nil : .easeInOut(duration: 68).repeatForever(autoreverses: true),
-                    value: orbDrift
-                )
+            Group {
+                if let orb = player.orbSecondaryImage {
+                    Image(nsImage: orb)
+                        .resizable()
+                        .frame(width: 835, height: 835)
+                } else {
+                    Circle()
+                        .fill(secondary)
+                        .frame(width: 460, height: 460)
+                        .blur(radius: 150)
+                }
+            }
+            .opacity(colorScheme == .dark ? 0.18 : 0.13)
+            .offset(
+                x: -430 + (orbDrift ? -44 : 44),
+                y: 320 + (orbDrift ? 40 : -40)
+            )
+            .animation(
+                reduceMotion ? nil : .easeInOut(duration: 68).repeatForever(autoreverses: true),
+                value: orbDrift
+            )
         }
         .animation(.easeInOut(duration: 0.65), value: player.currentTrack?.id)
         .onAppear {
