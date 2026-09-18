@@ -91,72 +91,88 @@ struct TrackListView: View {
             sortHeaderButton("专辑", column: .album, maxWidth: .infinity)
             sortHeaderButton("时长", column: .duration, width: 48, alignment: .trailing)
 
-            // 编辑按钮 / 批量操作区
-            if isSelectionMode {
-                // 全选 / 取消全选
-                Button {
-                    let allIDs = Set(tracks.map(\.id))
-                    if selectedIDs == allIDs && !tracks.isEmpty {
-                        selectedIDs.removeAll()
-                    } else {
-                        selectedIDs = allIDs
-                    }
-                } label: {
-                    Image(systemName: selectedIDs.count == tracks.count && !tracks.isEmpty ? "checkmark.circle.fill" : "checkmark.circle")
-                        .font(.system(size: 11, weight: .regular))
-                        .foregroundStyle(Color.hpAccent)
-                }
-                .buttonStyle(.plain)
-                .frame(width: 22)
-                .help(selectedIDs.count == tracks.count && !tracks.isEmpty ? "取消全选" : "全选")
-
-                // 批量删除
-                Button(role: .destructive) {
-                    let toRemove = tracks.filter { selectedIDs.contains($0.id) }
-                    for track in toRemove {
-                        removeTrack(track)
-                    }
-                    selectedIDs.removeAll()
-                    isSelectionMode = false
-                } label: {
-                    Image(systemName: "trash")
-                        .font(.system(size: 11, weight: .regular))
-                        .foregroundStyle(selectedIDs.isEmpty ? Color.hpTextPrimary.opacity(0.25) : Color.red.opacity(0.75))
-                }
-                .buttonStyle(.plain)
-                .frame(width: 22)
-                .disabled(selectedIDs.isEmpty)
-                .help("删除所选")
-
-                // 取消编辑
-                Button {
-                    isSelectionMode = false
-                    selectedIDs.removeAll()
-                } label: {
-                    Image(systemName: "xmark.circle")
-                        .font(.system(size: 11, weight: .regular))
-                        .foregroundStyle(Color.hpTextPrimary.opacity(0.4))
-                }
-                .buttonStyle(.plain)
-                .frame(width: 22)
-                .help("取消")
-            } else {
-                // 进入编辑模式（只显示图标）
+            // 编辑入口 / 批量操作区：与行尾「爱心+更多」区同宽（72），
+            // 入口图标中心对齐下方行内爱心（区内偏移 21）；
+            // 进入多选后，全选/删除/取消作为子菜单从图标右侧滑出，不挤压列宽。
+            ZStack(alignment: .leading) {
+                // 编辑入口（位置固定，选中态高亮；点击可退出多选）
                 Button {
                     withAnimation(.easeInOut(duration: 0.16)) {
-                        isSelectionMode = true
+                        isSelectionMode.toggle()
+                        if !isSelectionMode {
+                            selectedIDs.removeAll()
+                        }
                     }
                 } label: {
-                    Image(systemName: "checkmark.circle")
+                    Image(systemName: isSelectionMode ? "checkmark.circle.fill" : "checkmark.circle")
                         .font(.system(size: 11, weight: .regular))
-                        .foregroundStyle(Color.hpTextPrimary.opacity(0.35))
+                        .foregroundStyle(isSelectionMode ? Color.hpAccent : Color.hpTextPrimary.opacity(0.35))
                 }
                 .buttonStyle(.plain)
                 .frame(width: 22)
-                .help("编辑")
-            }
+                .offset(x: 10)
+                .help(isSelectionMode ? "完成" : "编辑")
 
-            Color.clear.frame(width: 50)
+                // 子菜单：向右滑出
+                if isSelectionMode {
+                    HStack(spacing: 0) {
+                        // 全选 / 取消全选
+                        Button {
+                            let allIDs = Set(tracks.map(\.id))
+                            if selectedIDs == allIDs && !tracks.isEmpty {
+                                selectedIDs.removeAll()
+                            } else {
+                                selectedIDs = allIDs
+                            }
+                        } label: {
+                            Image(systemName: selectedIDs.count == tracks.count && !tracks.isEmpty ? "checkmark.circle.fill" : "checkmark.circle")
+                                .font(.system(size: 11, weight: .regular))
+                                .foregroundStyle(Color.hpAccent)
+                        }
+                        .buttonStyle(.plain)
+                        .frame(width: 18)
+                        .help(selectedIDs.count == tracks.count && !tracks.isEmpty ? "取消全选" : "全选")
+
+                        // 批量删除
+                        Button(role: .destructive) {
+                            let toRemove = tracks.filter { selectedIDs.contains($0.id) }
+                            for track in toRemove {
+                                removeTrack(track)
+                            }
+                            selectedIDs.removeAll()
+                            withAnimation(.easeInOut(duration: 0.16)) {
+                                isSelectionMode = false
+                            }
+                        } label: {
+                            Image(systemName: "trash")
+                                .font(.system(size: 11, weight: .regular))
+                                .foregroundStyle(selectedIDs.isEmpty ? Color.hpTextPrimary.opacity(0.25) : Color.red.opacity(0.75))
+                        }
+                        .buttonStyle(.plain)
+                        .frame(width: 18)
+                        .disabled(selectedIDs.isEmpty)
+                        .help("删除所选")
+
+                        // 取消编辑
+                        Button {
+                            withAnimation(.easeInOut(duration: 0.16)) {
+                                isSelectionMode = false
+                                selectedIDs.removeAll()
+                            }
+                        } label: {
+                            Image(systemName: "xmark.circle")
+                                .font(.system(size: 11, weight: .regular))
+                                .foregroundStyle(Color.hpTextPrimary.opacity(0.4))
+                        }
+                        .buttonStyle(.plain)
+                        .frame(width: 18)
+                        .help("取消")
+                    }
+                    .offset(x: 32)
+                    .transition(.move(edge: .trailing).combined(with: .opacity))
+                }
+            }
+            .frame(width: 72, alignment: .leading)
         }
         .font(.system(size: 10, weight: .semibold))
         .tracking(0.45)

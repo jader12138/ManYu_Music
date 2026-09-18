@@ -17,7 +17,7 @@
 
 ### 改进
 
-- 歌曲列表多选入口位置调整：原顶部工具栏的「✓ 编辑」胶囊按钮移到歌曲列表列头「时长」右侧的独立区域，仅显示勾选圆图标（去掉「编辑」文字）；进入多选后该区域依次显示全选、删除所选、取消三个纯图标按钮，顶部搜索栏右侧不再有多选胶囊与批量操作条。
+- 歌曲列表多选入口位置调整：原顶部工具栏的「✓ 编辑」胶囊按钮移到歌曲列表列头「时长」右侧，图标中心与下方歌曲行的爱心按钮居中对齐，仅显示勾选圆图标（去掉「编辑」文字）；点击图标后，全选、删除所选、取消三个纯图标按钮像子菜单一样从图标右侧滑出（浮层，不挤占列宽），图标自身变为实心高亮，再点一次即完成退出，顶部搜索栏右侧不再有多选胶囊与批量操作条。
 - 随机播放、顺序播放、单曲循环三种模式融合为一个播放模式按钮：每点一下切换一个模式（顺序播放 → 单曲循环 → 随机播放 → 顺序播放），图标随模式 morph：顺序播放为灰色顺序箭头、单曲循环/随机播放时图标高亮。播放页与底部播放条两处同步。
 - 菜单栏「播放」菜单：原「循环模式」子菜单 + 「随机播放」开关合并为「播放模式」子菜单（顺序播放 / 单曲循环 / 随机播放，当前模式打勾）。
 - 首页快捷操作「随机播放」现在会正确同步三态播放模式状态。
@@ -42,7 +42,7 @@
 - `PlayerBar`：删除不再使用的 `QueuePickerMorphSymbol` 组件和 `isQueuePicker` / `onReturnToNowPlaying` 入参。
 - `QueuePanel.swift`：删除不再使用的 `QueuePickerView`。
 - `TrackListView`：新增 `onRemoveTrack` / `removeTrackLabel` 入参，宿主可覆盖行移除动作与菜单文案（默认仍为资料库移除）。
-- 多选状态从 `MainView` 下沉到 `TrackListView` 内部：`@State private var isSelectionMode / selectedIDs` 由列表自管，`TrackRow` 新增 `isSelectionMode / isSelected / onToggleSelection`（多选时行首显示勾选圆钮、点击行切换选中、选中行主题色底）；列头「时长」右侧新增独立编辑区（非编辑态单个 `checkmark.circle` 图标钮，编辑态显示全选/删除/取消三个纯图标钮）。
+- 多选状态从 `MainView` 下沉到 `TrackListView` 内部：`@State private var isSelectionMode / selectedIDs` 由列表自管，`TrackRow` 新增 `isSelectionMode / isSelected / onToggleSelection`（多选时行首显示勾选圆钮、点击行切换选中、选中行主题色底）；列头「时长」右侧新增固定 72pt 宽 `ZStack` 编辑区（与行尾爱心+更多区同宽）：入口 `checkmark.circle` 图标钮 `offset(x: 10)` 与下方爱心中心对齐，编辑态变实心高亮且再点退出；全选/删除/取消三个 18pt 宽图标钮作为浮层 `offset(x: 32)` 从右侧以 `.move(edge: .trailing) + opacity` 滑出，不参与 HStack 布局、不挤占列宽。
 - `MainView` 删除顶部工具栏的「编辑」胶囊与批量操作 HStack（已选数量/全选/删除/取消）、对应的 `isSelectionMode / selectedTrackIDs` 状态、`isTrackListSection` 计算属性与切换 destination 时的选择重置；`TrackListView` 调用点不再传多选参数。
 - `HarmonyPlayerApp`：播放菜单改为「播放模式」三态子菜单（`PlaybackMode.allCases`，当前模式打勾）。
 - `HomeView`：快捷「随机播放」改为 `setPlaybackMode(.shuffle)` 后随机点歌。
