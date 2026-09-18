@@ -185,7 +185,8 @@ struct PlayerBar: View {
                 clock: player.clock,
                 isEnabled: player.currentTrack != nil,
                 seek: player.seek,
-                isPlaying: player.isPlaying
+                isPlaying: player.isPlaying,
+                isRapidSwitching: player.isRapidSwitching
             )
         }
     }
@@ -314,6 +315,8 @@ struct PlaybackProgressRow: View {
     let isEnabled: Bool
     let seek: (Double) -> Void
     var isPlaying: Bool = false
+    /// 快速连切中：插值必须冻结，且锚点重钉到真实媒体时间。
+    var isRapidSwitching: Bool = false
     var controlSize: ControlSize = .mini
     var fontWeight: Font.Weight = .medium
 
@@ -329,7 +332,10 @@ struct PlaybackProgressRow: View {
 
     var body: some View {
         TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { context in
-            let raw = isPlaying ? anchorTime + context.date.timeIntervalSince(anchorWall) : anchorTime
+            // 快切中即使 isPlaying 的 KVO 还没来得及翻成 false，也强制冻结：
+            // 不能把切歌占用的墙钟时间误记成播放进度。
+            let advancing = isPlaying && !isRapidSwitching
+            let raw = advancing ? anchorTime + context.date.timeIntervalSince(anchorWall) : anchorTime
             let displayed = clock.duration > 0 ? min(max(raw, 0), clock.duration) : max(raw, 0)
             HStack(spacing: 8) {
                 Text(Track.formatTime(displayed))
@@ -355,18 +361,26 @@ struct PlaybackProgressRow: View {
             anchorTime = clock.currentTime
             anchorWall = Date()
         }
+        .onChange(of: isRapidSwitching) {
+            // 快切开始：钉在当前真实媒体时间（load 已置 0）并冻结；
+            // 快切结束（恢复播放前）：再钉一次真实值，新曲目从 0 平滑起步，
+            // 不会出现“虚走到几秒、恢复后被 tick 拽回 0”的跳变。
+            anchorTime = clock.currentTime
+            anchorWall = Date()
+        }
         .onChange(of: clock.currentTime) { old, new in
             let wallNow = Date()
             let clockDelta = new - old
+            let advancing = isPlaying && !isRapidSwitching
             // 显示值与真实媒体时间的绝对偏差兜底：tick 投递到主线程的延迟
             // 会逐次累积在锚点墙钟里（每次只差几十毫秒，单次偏差阈值永远
             // 触发不了），显示值跟着墙钟越跑越超前——进度条先于歌曲到达
             // 末尾、与歌词错位。用绝对偏差兜底后，累积误差最多存活 0.25s
             // 即被清零，tick 间的插值平滑保持不变。
-            let displayedNow = isPlaying
+            let displayedNow = advancing
                 ? anchorTime + wallNow.timeIntervalSince(anchorWall)
                 : anchorTime
-            if !isPlaying || abs(displayedNow - new) > 0.35 {
+            if !advancing || abs(displayedNow - new) > 0.35 {
                 // seek、切歌、暂停恢复或漂移超限：媒体时间与墙钟脱钩，整体重同步。
                 anchorTime = new
                 anchorWall = wallNow

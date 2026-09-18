@@ -178,6 +178,7 @@ struct NowPlayingView: View {
                 isEnabled: player.currentTrack != nil,
                 seek: player.seek,
                 isPlaying: player.isPlaying,
+                isRapidSwitching: player.isRapidSwitching,
                 controlSize: .small,
                 fontWeight: .semibold
             )

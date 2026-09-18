@@ -235,7 +235,9 @@ final class AudioPlayer: ObservableObject {
     private static let rapidSwitchSettleDelay: TimeInterval = 0.4
     private var lastLoadAt = Date.distantPast
     /// 快切期间为 true：播放器保持暂停、周期时间观察器忽略旧曲目回报。
-    private var isRapidSwitching = false
+    /// 暴露给进度行：墙钟插值在此期间必须冻结，否则播放条会把切歌
+    /// 占用的墙钟时间误记为播放进度。
+    @Published private(set) var isRapidSwitching = false
     /// 每次 load 自增的代数号：只有最后一次切换的延迟恢复任务会生效。
     private var switchGeneration = 0
 

@@ -20,10 +20,12 @@
 - 歌词占位状态区分加载中与确认无歌词：正在读取时显示“正在载入歌词”；确认歌曲确实没有内嵌歌词或 LRC 文件时才显示“本歌曲暂无歌词 / 未在歌曲内嵌信息或同名 LRC 文件中找到歌词。”
 - 连续快速切歌时歌词面板做极轻“呼吸”：切歌瞬间整块歌词内容透明度下沉到 0.5，约 0.14 秒内恢复，盖住列表重排顿挫；歌词视图身份保持不变、不做销毁重建，只改合成层透明度，零布局开销。
 - 连续快速切歌时立即暂停播放：相邻两次切歌间隔小于 0.7 秒即判定为快切，快切期间保持暂停，切歌停顿 0.4 秒后只播放最后选定的最新一首。修复“切了很多首后，声音和进度条仍停在第一二首、直到切完才跳到最新”的错位；慢速点歌（间隔大于 0.7 秒）仍立即播放，行为不变。
+- 修复快切期间播放条把切歌耗时误记为播放进度的问题：连续切歌五六秒，进度条不再虚走到五六秒；快切期间插值冻结在真实媒体时间，恢复播放后从 0 平滑起步，不再出现“先显示 0:06 再跳回 0:01”的跳变。播放栏与播放页两处进度行行为一致。
 
 ### 修复
 
 - 修复每切换一首歌曲歌词区域都先显示等待提示、几百毫秒后再替换为歌词造成跳动的问题（大部分歌曲本来就有歌词）。
+- 修复快速连切时播放条虚走、恢复播放后跳回 0 的问题：切歌耗时不再计入播放进度。
 
 ## 技术变更
 
@@ -35,6 +37,8 @@
 - `HomeView` 首页推荐歌词改为经由 `LyricsCache.load(track:)` 获取，与预热/播放共用同一份缓存。
 - `NowPlayingView` 歌词面板新增“呼吸”：`@State lyricsDimmed/lyricsDimmerGeneration`，`onChange(of: currentTrack?.id)` 时置暗并用代数号合并连续切换（只有最后一次的恢复生效），`DispatchQueue.main.asyncAfter` 0.06s 后以 0.14s easeInOut 恢复；作用于 Group 的 `.opacity`，无 `.id`、无视图重建，Reduce Motion 时跳过。
 - `AudioPlayer` 新增快切暂停：`rapidSwitchWindow = 0.7s / rapidSwitchSettleDelay = 0.4s`，`lastLoadAt / isRapidSwitching / switchGeneration` 状态；`load(_:)` 开头计算与上次加载的间隔，处于快切（本次间隔小或已在快切中）时 `player.pause()` 并由 `scheduleRapidSwitchResume(generation:trackID:)` 延迟恢复——代数号保证只有最后一次切换的任务执行 `player.play()`；周期时间观察器在 `isRapidSwitching` 时丢弃回报，进度条不显示前两曲的旧位置。
+- `AudioPlayer.isRapidSwitching` 由私有改为 `@Published private(set)`，暴露给进度 UI。
+- `PlayerBar.PlaybackProgressRow` 新增 `isRapidSwitching` 入参（播放栏与播放页两处调用均传入 `player.isRapidSwitching`）：TimelineView 的墙钟航位推算改为 `isPlaying && !isRapidSwitching` 才推进，否则冻结显示锚点时间；新增 `onChange(of: isRapidSwitching)` 在快切开始/结束两个边沿把锚点重钉到真实媒体时间（load 已置 0），保证新曲目从 0 平滑起步；时间 tick 重锚分支同样改用 `advancing` 判定，快切期间的 tick 不影响锚点。
 - `MemoryPressureMonitor` 内存压力处理增加清空 `LyricsCache`。
 - `LongSessionMemoryTests` 的合成曲目由 0.3s 调整为 4s：快切修复后最新曲目会在停顿后恢复播放，旧短曲会在收尾 2s RunLoop 内播完自动切歌，使“当前曲目 = 最后切换曲目”的断言失效（旧断言实际依赖快切滞后 bug）。
 - 新增 `Tests/HarmonyPlayerTests/LyricsCacheTests.swift`（合成 FLAC 字节流：验证跳过前置 PICTURE 块读取歌词、无注释块返回 nil、同名 LRC 加载与同步命中、无歌词缓存为 .missing、removeAll 清空）。
@@ -46,7 +50,7 @@
 ## 验证
 
 - `swift test`：32/32 通过（新增 5 个 LyricsCache 用例）。
-- Release 构建分支副本 `dist/漫域音乐-lyrics-preload.app` 签名后实际运行，等待用户验证：连续切换多首歌曲时歌词直接出现、不再先闪等待提示；无歌词歌曲显示“本歌曲暂无歌词”。
+- Release 构建分支副本 `dist/漫域音乐-lyrics-preload.app` 签名后实际运行，等待用户验证：连续切换多首歌曲时歌词直接出现、不再先闪等待提示；无歌词歌曲显示“本歌曲暂无歌词”；快切期间进度条冻结不虚走，恢复后从 0 平滑起步。
 
 ## 已知问题与后续
 
