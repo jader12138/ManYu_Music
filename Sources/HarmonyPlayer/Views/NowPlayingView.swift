@@ -270,7 +270,7 @@ struct NowPlayingView: View {
             Image(systemName: systemName)
                 .font(.system(size: 14, weight: .medium))
                 .foregroundStyle(Color.hpTextPrimary.opacity(0.85))
-                .frame(width: 26, height: 26)
+                .frame(width: 32, height: 32)
                 .overlay(alignment: .bottom) {
                     Circle()
                         .fill(Color.hpAccent)
@@ -297,7 +297,7 @@ struct NowPlayingView: View {
             Image(systemName: showQueueList ? "quote.bubble.fill" : "list.bullet")
                 .font(.system(size: 14, weight: .medium))
                 .foregroundStyle(Color.hpTextPrimary.opacity(0.55))
-                .frame(width: 26, height: 26)
+                .frame(width: 32, height: 32)
                 .contentTransition(reduceMotion ? .identity : .symbolEffect(.replace))
                 .animation(reduceMotion ? nil : .easeInOut(duration: 0.18),
                            value: showQueueList)
@@ -455,7 +455,7 @@ struct NowPlayingView: View {
                     lyricsFontSize = max(13, lyricsFontSize - 1)
                 } label: {
                     Image(systemName: "minus")
-                        .frame(width: 26, height: 26)
+                        .frame(width: 32, height: 32)
                 }
                 .buttonStyle(.borderless)
 
@@ -467,7 +467,7 @@ struct NowPlayingView: View {
                     lyricsFontSize = min(30, lyricsFontSize + 1)
                 } label: {
                     Image(systemName: "plus")
-                        .frame(width: 26, height: 26)
+                        .frame(width: 32, height: 32)
                 }
                 .buttonStyle(.borderless)
             }
@@ -482,7 +482,7 @@ struct NowPlayingView: View {
                     lyricsLineSpacing = max(0.7, lyricsLineSpacing - 0.05)
                 } label: {
                     Image(systemName: "minus")
-                        .frame(width: 26, height: 26)
+                        .frame(width: 32, height: 32)
                 }
                 .buttonStyle(.borderless)
 
@@ -494,7 +494,7 @@ struct NowPlayingView: View {
                     lyricsLineSpacing = min(1.4, lyricsLineSpacing + 0.05)
                 } label: {
                     Image(systemName: "plus")
-                        .frame(width: 26, height: 26)
+                        .frame(width: 32, height: 32)
                 }
                 .buttonStyle(.borderless)
             }
@@ -509,7 +509,7 @@ struct NowPlayingView: View {
                     lyricsVisibleLines = max(5, lyricsVisibleLines - 1)
                 } label: {
                     Image(systemName: "minus")
-                        .frame(width: 26, height: 26)
+                        .frame(width: 32, height: 32)
                 }
                 .buttonStyle(.borderless)
 
@@ -521,7 +521,7 @@ struct NowPlayingView: View {
                     lyricsVisibleLines = min(13, lyricsVisibleLines + 1)
                 } label: {
                     Image(systemName: "plus")
-                        .frame(width: 26, height: 26)
+                        .frame(width: 32, height: 32)
                 }
                 .buttonStyle(.borderless)
             }
@@ -581,7 +581,7 @@ struct NowPlayingView: View {
                     player.adjustLyricOffset(-0.2)
                 } label: {
                     Image(systemName: "minus")
-                        .frame(width: 26, height: 26)
+                        .frame(width: 32, height: 32)
                 }
                 .buttonStyle(.borderless)
                 .disabled(player.currentTrack == nil)
@@ -599,7 +599,7 @@ struct NowPlayingView: View {
                     player.adjustLyricOffset(0.2)
                 } label: {
                     Image(systemName: "plus")
-                        .frame(width: 26, height: 26)
+                        .frame(width: 32, height: 32)
                 }
                 .buttonStyle(.borderless)
                 .disabled(player.currentTrack == nil)
