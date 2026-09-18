@@ -1,18 +1,5 @@
 import SwiftUI
 
-/// 固定列宽用 width，nil 时退化为占满剩余空间（专辑/艺术家详情页的弹性布局）。
-private struct ColumnFrame: ViewModifier {
-    let width: CGFloat?
-
-    func body(content: Content) -> some View {
-        if let width {
-            content.frame(width: width, alignment: .leading)
-        } else {
-            content.frame(maxWidth: .infinity, alignment: .leading)
-        }
-    }
-}
-
 struct TrackListView: View {
     let tracks: [Track]
     var showsHeader = true
@@ -32,12 +19,6 @@ struct TrackListView: View {
     @State private var isSelectionMode = false
     @State private var selectedIDs: Set<UUID> = []
     @State private var showingCreatePlaylist = false
-
-    // 固定列宽（不可拖拽）
-    private static let titleColumnWidth: CGFloat = 500
-    private static let albumColumnWidth: CGFloat = 260
-    private static let durationColumnWidth: CGFloat = 48
-    private static let actionColumnWidth: CGFloat = 72
 
     @EnvironmentObject private var library: LibraryStore
     @EnvironmentObject private var player: AudioPlayer
@@ -71,8 +52,6 @@ struct TrackListView: View {
                                 isSelectionMode: isSelectionMode,
                                 isSelected: selectedIDs.contains(track.id),
                                 selectedCount: selectedIDs.count,
-                                titleWidth: Self.titleColumnWidth,
-                                albumWidth: Self.albumColumnWidth,
                                 onToggleSelection: {
                                     if selectedIDs.contains(track.id) {
                                         selectedIDs.remove(track.id)
@@ -127,21 +106,15 @@ struct TrackListView: View {
         }
     }
 
-    /// 可点击的列头：点击列名排序；固定列宽，仅在专辑/时长之间显示一条静态灰色短分隔线。
+    /// 可点击的列头：点击切换排序，激活列右侧显示升/降序小三角。
     private var header: some View {
-        HStack(spacing: 0) {
+        HStack(spacing: 12) {
             // 多选时行首出现 28pt 勾选框把行内容向右推，列头占位同步变为
             // 28(勾选框)+12(间距)+44(封面)=84，保证列头文字与行内容同向同幅右移并对齐。
             Color.clear.frame(width: isSelectionMode ? 84 : 44)
-            Color.clear.frame(width: 12)
-            sortHeaderButton("标题", column: .title, width: Self.titleColumnWidth)
-            Color.clear.frame(width: 12)
-            sortHeaderButton("专辑", column: .album, width: Self.albumColumnWidth)
-            columnGapWithDivider
-            sortHeaderButton("时长", column: .duration, width: Self.durationColumnWidth, alignment: .trailing)
-
-            // 专辑/时长固定列宽靠左，剩余空间让到右侧操作区之前
-            Spacer(minLength: 12)
+            sortHeaderButton("标题", column: .title, maxWidth: .infinity)
+            sortHeaderButton("专辑", column: .album, maxWidth: .infinity)
+            sortHeaderButton("时长", column: .duration, width: 48, alignment: .trailing)
 
             // 编辑入口 / 批量操作区：与行尾「爱心+更多」区同宽（72），
             // 入口图标中心对齐下方行内爱心（区内偏移 21）；
@@ -289,18 +262,6 @@ struct TrackListView: View {
         .accessibilityLabel("\(title)排序")
         .accessibilityAddTraits(.isButton)
     }
-
-    /// 专辑/时长两列 12pt 间隙中间的静态灰色短竖线（仅列头高度内，不可拖拽）。
-    private var columnGapWithDivider: some View {
-        Color.clear
-            .frame(width: 12, height: headerHeight)
-            .overlay {
-                Rectangle()
-                    .fill(Color.hpTextPrimary.opacity(0.16))
-                    .frame(width: 1, height: 13)
-                    .allowsHitTesting(false)
-            }
-    }
 }
 
 struct TrackRow: View {
@@ -318,9 +279,6 @@ struct TrackRow: View {
     var isSelectionMode = false
     var isSelected = false
     var selectedCount = 0
-    /// 固定列宽（由 TrackListView 列头统一下发）；nil 时保持弹性布局（播放页队列等无列头列表）。
-    var titleWidth: CGFloat? = nil
-    var albumWidth: CGFloat? = nil
     var onToggleSelection: (() -> Void)? = nil
     /// 多选时把全部选中歌曲批量加入歌单。
     var onBatchAddToPlaylist: ((UUID) -> Void)? = nil
@@ -377,23 +335,18 @@ struct TrackRow: View {
                         .lineLimit(1)
                 }
             }
-            .modifier(ColumnFrame(width: titleWidth))
+            .frame(maxWidth: .infinity, alignment: .leading)
 
             Text(track.displayAlbum)
                 .font(.system(size: 11))
                 .foregroundStyle(Color.hpTextPrimary.opacity(0.48))
                 .lineLimit(1)
-                .modifier(ColumnFrame(width: albumWidth))
+                .frame(maxWidth: .infinity, alignment: .leading)
 
             Text(track.formattedDuration)
                 .font(.system(size: 10, weight: .medium, design: .monospaced))
                 .foregroundStyle(Color.hpTextPrimary.opacity(0.48))
                 .frame(width: 48, alignment: .trailing)
-
-            // 固定列宽时剩余空间让到右侧；弹性列宽（详情页）时由标题列自行吸收
-            if titleWidth != nil {
-                Spacer(minLength: 12)
-            }
 
             HStack(spacing: 2) {
                 Button(action: toggleFavorite) {
