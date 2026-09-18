@@ -1,5 +1,4 @@
 import SwiftUI
-import AppKit
 
 /// 固定列宽用 width，nil 时退化为占满剩余空间（专辑/艺术家详情页的弹性布局）。
 private struct ColumnFrame: ViewModifier {
@@ -34,25 +33,15 @@ struct TrackListView: View {
     @State private var selectedIDs: Set<UUID> = []
     @State private var showingCreatePlaylist = false
 
-    // 可拖拽列宽（持久化，跨页面共享）
-    @AppStorage("hp.column.titleWidth") private var titleWidthValue: Double = 260
-    @AppStorage("hp.column.albumWidth") private var albumWidthValue: Double = 180
-    /// 当前悬停/拖拽的分隔线：1=标题|专辑，2=专辑|时长
-    @State private var activeDivider: Int?
-    @State private var draggingDivider: Int?
-    @State private var dragStartWidth: CGFloat = 0
-
-    private static let titleColumnMin: CGFloat = 160
-    private static let albumColumnMin: CGFloat = 120
+    // 固定列宽（不可拖拽）
+    private static let titleColumnWidth: CGFloat = 500
+    private static let albumColumnWidth: CGFloat = 260
     private static let durationColumnWidth: CGFloat = 48
     private static let actionColumnWidth: CGFloat = 72
 
     @EnvironmentObject private var library: LibraryStore
     @EnvironmentObject private var player: AudioPlayer
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
-    private var titleWidth: CGFloat { CGFloat(titleWidthValue) }
-    private var albumWidth: CGFloat { CGFloat(albumWidthValue) }
 
     private let headerHeight: CGFloat = 28
     private let headerDividerHeight: CGFloat = 1
@@ -61,7 +50,7 @@ struct TrackListView: View {
         GeometryReader { geometry in
             VStack(spacing: 0) {
                 if showsHeader {
-                    header(containerWidth: geometry.size.width)
+                    header
                         .frame(height: headerHeight)
                     Divider().opacity(0.18)
                 }
@@ -82,8 +71,8 @@ struct TrackListView: View {
                                 isSelectionMode: isSelectionMode,
                                 isSelected: selectedIDs.contains(track.id),
                                 selectedCount: selectedIDs.count,
-                                titleWidth: titleWidth,
-                                albumWidth: albumWidth,
+                                titleWidth: Self.titleColumnWidth,
+                                albumWidth: Self.albumColumnWidth,
                                 onToggleSelection: {
                                     if selectedIDs.contains(track.id) {
                                         selectedIDs.remove(track.id)
@@ -138,17 +127,17 @@ struct TrackListView: View {
         }
     }
 
-    /// 可点击的列头：点击列名排序；列名之间的分隔线可拖拽调整列宽。
-    private func header(containerWidth: CGFloat) -> some View {
+    /// 可点击的列头：点击列名排序；固定列宽，仅在专辑/时长之间显示一条静态灰色短分隔线。
+    private var header: some View {
         HStack(spacing: 0) {
             // 多选时行首出现 28pt 勾选框把行内容向右推，列头占位同步变为
             // 28(勾选框)+12(间距)+44(封面)=84，保证列头文字与行内容同向同幅右移并对齐。
             Color.clear.frame(width: isSelectionMode ? 84 : 44)
             Color.clear.frame(width: 12)
-            sortHeaderButton("标题", column: .title, width: titleWidth)
-            columnDivider(index: 1, containerWidth: containerWidth)
-            sortHeaderButton("专辑", column: .album, width: albumWidth)
-            columnDivider(index: 2, containerWidth: containerWidth)
+            sortHeaderButton("标题", column: .title, width: Self.titleColumnWidth)
+            Color.clear.frame(width: 12)
+            sortHeaderButton("专辑", column: .album, width: Self.albumColumnWidth)
+            columnGapWithDivider
             sortHeaderButton("时长", column: .duration, width: Self.durationColumnWidth, alignment: .trailing)
 
             // 专辑/时长固定列宽靠左，剩余空间让到右侧操作区之前
@@ -258,8 +247,6 @@ struct TrackListView: View {
                 }
             }
             .frame(width: 72, alignment: .leading)
-            // 多选时整体左移，给右侧滑出的批量操作按钮让出空间
-            .offset(x: isSelectionMode ? -16 : 0)
         }
         .font(.system(size: 10, weight: .semibold))
         .tracking(0.45)
@@ -303,58 +290,16 @@ struct TrackListView: View {
         .accessibilityAddTraits(.isButton)
     }
 
-    /// 列与列之间 12pt 间隙里的短灰线 + 拖拽热区；竖线只出现在列头高度内。
-    private func columnDivider(index: Int, containerWidth: CGFloat) -> some View {
+    /// 专辑/时长两列 12pt 间隙中间的静态灰色短竖线（仅列头高度内，不可拖拽）。
+    private var columnGapWithDivider: some View {
         Color.clear
             .frame(width: 12, height: headerHeight)
             .overlay {
                 Rectangle()
-                    .fill(Color.hpTextPrimary.opacity(draggingDivider == index ? 0.55 : (activeDivider == index ? 0.38 : 0.16)))
+                    .fill(Color.hpTextPrimary.opacity(0.16))
                     .frame(width: 1, height: 13)
                     .allowsHitTesting(false)
             }
-            .contentShape(Rectangle())
-            .onHover { hovering in
-                if hovering {
-                    activeDivider = index
-                    NSCursor.resizeLeftRight.push()
-                } else {
-                    if activeDivider == index && draggingDivider == nil {
-                        activeDivider = nil
-                    }
-                    NSCursor.pop()
-                }
-            }
-            .gesture(
-                DragGesture(minimumDistance: 1)
-                    .onChanged { value in
-                        if draggingDivider != index {
-                            draggingDivider = index
-                            activeDivider = index
-                            dragStartWidth = index == 1 ? titleWidth : albumWidth
-                        }
-                        let minWidth = index == 1 ? Self.titleColumnMin : Self.albumColumnMin
-                        let clamped = max(minWidth, min(maxColumnWidth(index, containerWidth: containerWidth),
-                                                        dragStartWidth + value.translation.width))
-                        if index == 1 {
-                            titleWidthValue = Double(clamped)
-                        } else {
-                            albumWidthValue = Double(clamped)
-                        }
-                    }
-                    .onEnded { _ in
-                        draggingDivider = nil
-                    }
-            )
-    }
-
-    /// 拖拽列宽上限：保证另一列最小宽、时长列与右侧操作区不被挤出窗口。
-    private func maxColumnWidth(_ index: Int, containerWidth width: CGFloat) -> CGFloat {
-        let fixed: CGFloat = 44 /*左右内边距*/ + 12 * 4 /*间隙*/ + Self.durationColumnWidth + Self.actionColumnWidth
-        if index == 1 {
-            return max(Self.titleColumnMin, width - fixed - Self.albumColumnMin)
-        }
-        return max(Self.albumColumnMin, width - fixed - Self.titleColumnMin)
     }
 }
 
@@ -373,7 +318,7 @@ struct TrackRow: View {
     var isSelectionMode = false
     var isSelected = false
     var selectedCount = 0
-    /// 固定列宽（由 TrackListView 列头拖拽控制）；nil 时保持弹性布局（专辑/艺术家详情页）。
+    /// 固定列宽（由 TrackListView 列头统一下发）；nil 时保持弹性布局（播放页队列等无列头列表）。
     var titleWidth: CGFloat? = nil
     var albumWidth: CGFloat? = nil
     var onToggleSelection: (() -> Void)? = nil
@@ -474,8 +419,6 @@ struct TrackRow: View {
                 .frame(width: 28)
             }
             .frame(width: 72)
-            // 多选时与列头选择图标一起左移，为批量操作展开按钮让位置
-            .offset(x: isSelectionMode ? -16 : 0)
         }
         .padding(.horizontal, 12)
         .frame(height: 61)
