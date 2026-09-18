@@ -292,7 +292,7 @@ struct SettingsView: View {
 
             // Dock 封面
             row(title: "Dock 显示专辑封面",
-                subtitle: "播放时用当前专辑封面替换 Dock 图标") {
+                subtitle: "播放时用当前专辑封面替换 Dock 图标，右下角显示播放状态") {
                 Toggle("", isOn: Binding(
                     get: { showDockArtwork },
                     set: { showDockArtwork = $0; player.refreshDockIcon() }
@@ -336,39 +336,10 @@ struct SettingsView: View {
     // MARK: - 资料库
 
     private var libraryPane: some View {
-        VStack(alignment: .leading, spacing: 28) {
+        VStack(alignment: .leading, spacing: 0) {
             sectionHeading("资料库")
 
-            // 添加音乐
-            row(title: "添加音乐",
-                subtitle: "从文件或文件夹导入本地音乐") {
-                Button {
-                    library.presentImportPanel()
-                } label: {
-                    HStack(spacing: 6) {
-                        if library.isImporting {
-                            ProgressView()
-                                .controlSize(.small)
-                        } else {
-                            Image(systemName: "plus")
-                                .font(.system(size: 11, weight: .bold))
-                        }
-                        Text(library.isImporting ? "正在导入…" : "添加文件或文件夹")
-                            .font(.system(size: 11, weight: .semibold))
-                    }
-                    .foregroundStyle(Color.hpAccent)
-                    .frame(height: 28)
-                    .padding(.horizontal, 12)
-                    .background(Color.hpAccent.opacity(0.09),
-                                in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-                }
-                .buttonStyle(.plain)
-                .disabled(!library.canEdit || library.isImporting)
-            }
-
-            Divider().opacity(0.08)
-
-            // 预加载
+            // 1. 预加载（第一个）
             row(title: "启动时预加载封面",
                 subtitle: "提前把封面读入缓存，浏览更快") {
                 Toggle("", isOn: Binding(
@@ -382,18 +353,144 @@ struct SettingsView: View {
 
             Divider().opacity(0.08)
 
-            // 资料库统计
-            VStack(alignment: .leading, spacing: 14) {
-                Text("资料库统计")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(Color.hpTextPrimary.opacity(0.7))
+            // 2. 不扫描短音频
+            row(title: "不扫描 60 秒以下的音频",
+                subtitle: "导入时自动过滤掉很短的音频片段") {
+                Toggle("", isOn: $library.filterShortAudio)
+                    .toggleStyle(.switch)
+                    .labelsHidden()
+            }
 
+            Divider().opacity(0.08)
+
+            // 3. 屏蔽文件夹
+            VStack(alignment: .leading, spacing: 10) {
+                HStack {
+                    Text("屏蔽文件夹")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(Color.hpTextPrimary)
+                    Spacer()
+                    Button {
+                        presentBlockFolderPanel()
+                    } label: {
+                        Label("添加", systemImage: "plus")
+                            .font(.system(size: 11, weight: .semibold))
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(Color.hpAccent)
+                }
+                .padding(.vertical, 10)
+
+                if library.blockedFolderPaths.isEmpty {
+                    Text("暂无屏蔽")
+                        .font(.system(size: 11))
+                        .foregroundStyle(Color.hpTextPrimary.opacity(0.38))
+                } else {
+                    VStack(spacing: 0) {
+                        ForEach(library.blockedFolderPaths, id: \.self) { path in
+                            HStack {
+                                Image(systemName: "folder.fill")
+                                    .font(.system(size: 12))
+                                    .foregroundStyle(Color.orange.opacity(0.8))
+                                Text(path)
+                                    .font(.system(size: 11))
+                                    .foregroundStyle(Color.hpTextPrimary.opacity(0.7))
+                                    .lineLimit(1)
+                                Spacer()
+                                Button {
+                                    library.removeBlockedFolder(path: path)
+                                } label: {
+                                    Image(systemName: "xmark.circle.fill")
+                                        .font(.system(size: 12))
+                                        .foregroundStyle(Color.hpTextPrimary.opacity(0.35))
+                                }
+                                .buttonStyle(.plain)
+                            }
+                            .padding(.vertical, 6)
+                        }
+                    }
+                }
+            }
+
+            Divider().opacity(0.08)
+
+            // 2. 添加音乐 + 来源列表 + 资料库统计
+            VStack(alignment: .leading, spacing: 18) {
+                // 添加音乐按钮
+                HStack {
+                    Text("添加音乐")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(Color.hpTextPrimary.opacity(0.7))
+                    Spacer()
+                    Button {
+                        library.presentImportPanel()
+                    } label: {
+                        HStack(spacing: 6) {
+                            if library.isImporting {
+                                ProgressView()
+                                    .controlSize(.small)
+                            } else {
+                                Image(systemName: "plus")
+                                    .font(.system(size: 11, weight: .bold))
+                            }
+                            Text(library.isImporting ? "正在导入…" : "添加文件或文件夹")
+                                .font(.system(size: 11, weight: .semibold))
+                        }
+                        .foregroundStyle(Color.hpAccent)
+                        .frame(height: 28)
+                        .padding(.horizontal, 12)
+                        .background(Color.hpAccent.opacity(0.09),
+                                    in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(!library.canEdit || library.isImporting)
+                }
+                .padding(.top, 6)
+
+                // 来源列表
+                if library.sources.isEmpty {
+                    Text("还没有添加任何文件夹或文件")
+                        .font(.system(size: 11))
+                        .foregroundStyle(Color.hpTextPrimary.opacity(0.38))
+                } else {
+                    VStack(spacing: 0) {
+                        ForEach(library.sources) { src in
+                            HStack {
+                                Image(systemName: src.isDirectory ? "folder.fill" : "music.note")
+                                    .font(.system(size: 13))
+                                    .foregroundStyle(Color.hpAccent.opacity(0.8))
+                                VStack(alignment: .leading, spacing: 1) {
+                                    Text(src.name)
+                                        .font(.system(size: 12, weight: .medium))
+                                        .foregroundStyle(Color.hpTextPrimary)
+                                    Text(src.path)
+                                        .font(.system(size: 10))
+                                        .foregroundStyle(Color.hpTextPrimary.opacity(0.35))
+                                        .lineLimit(1)
+                                }
+                                Spacer()
+                                Button {
+                                    library.removeLibrarySource(src)
+                                } label: {
+                                    Image(systemName: "minus.circle.fill")
+                                        .font(.system(size: 13))
+                                        .foregroundStyle(Color.red.opacity(0.7))
+                                }
+                                .buttonStyle(.plain)
+                            }
+                            .padding(.vertical, 8)
+                        }
+                    }
+                }
+
+                // 资料库统计
                 HStack(spacing: 10) {
                     statistic(value: "\(library.tracks.count)", title: "歌曲")
                     statistic(value: "\(Set(library.tracks.map(\.displayAlbum)).count)", title: "专辑")
                     statistic(value: "\(Set(library.tracks.map(\.displayArtist)).count)", title: "艺术家")
                 }
 
+                // 重新扫描
                 Button {
                     library.rescanLibrary()
                 } label: {
@@ -411,11 +508,32 @@ struct SettingsView: View {
                 .buttonStyle(.plain)
                 .disabled(!library.canEdit || library.isImporting)
             }
+            .padding(.top, 16)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     // MARK: - 通用：设置行（标题 + 可选副标题 + 右侧控件）
+
+    // MARK: - 辅助：打开文件夹选择面板加入屏蔽
+
+    private func presentBlockFolderPanel() {
+        let panel = NSOpenPanel()
+        panel.title = "选择要屏蔽的文件夹"
+        panel.prompt = "屏蔽"
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.allowsMultipleSelection = true
+        panel.canCreateDirectories = false
+        panel.allowedContentTypes = [.directory]
+        panel.level = .floating
+        panel.begin { [weak library] response in
+            guard response == .OK else { return }
+            for url in panel.urls {
+                library?.addBlockedFolder(path: url.path)
+            }
+        }
+    }
 
     private func row<Right: View>(
         title: String,

@@ -19,6 +19,9 @@ final class LibraryStore: ObservableObject {
     @Published private(set) var favoriteIDs: Set<UUID> = []
     @Published private(set) var playlists: [Playlist] = []
     @Published private(set) var history: [PlayHistoryEntry] = []
+    @Published private(set) var sources: [LibrarySource] = []
+    @Published private(set) var blockedFolderPaths: [String] = []
+    @Published var filterShortAudio: Bool = false
     @Published private(set) var isImporting = false
     @Published var importNotice: String?
 
@@ -76,6 +79,10 @@ final class LibraryStore: ObservableObject {
     /// against this set so a concurrent delete cannot resurrect a removed song.
     private var removedDuringImport: Set<String> = []
 
+    /// 在导入进行中被整体移除的来源路径（归一化）。在途枚举结果即使尚未落库，
+    /// 只要位于这些路径之下也必须丢弃，防止"先添加、扫描中立即移除"时歌曲复活。
+    private var removedSourcePathsDuringImport: Set<String> = []
+
     /// Increments on every `clearLibrary()`, even when the library is already empty.
     /// In-flight imports/rescans compare against it so a clear discards everything that
     /// was requested before it, not just the paths that happened to be known then.
@@ -123,6 +130,7 @@ final class LibraryStore: ObservableObject {
         isImporting = true
         importNotice = nil
         removedDuringImport.removeAll()
+        removedSourcePathsDuringImport.removeAll()
 
         let snapshotIDs = Set(snapshot.map(\.id))
         let snapshotGeneration = tracksGeneration
@@ -136,6 +144,7 @@ final class LibraryStore: ObservableObject {
             defer {
                 isImporting = false
                 removedDuringImport.removeAll()
+                removedSourcePathsDuringImport.removeAll()
                 clearNoticeAfterDelay()
             }
 
@@ -192,21 +201,36 @@ final class LibraryStore: ObservableObject {
         panel.canChooseDirectories = true
         panel.canChooseFiles = true
         panel.canCreateDirectories = false
-        panel.allowedContentTypes = AudioMetadataLoader.supportedExtensions.compactMap {
-            UTType(filenameExtension: $0)
-        }
+        panel.allowedContentTypes = {
+            var types = AudioMetadataLoader.supportedExtensions.compactMap {
+                UTType(filenameExtension: $0)
+            }
+            types.append(.directory)
+            return types
+        }()
 
         panel.begin { [weak self] response in
             guard response == .OK else { return }
             let urls = panel.urls
             Task { @MainActor in
-                self?.add(urls: urls)
+                guard let self else { return }
+                self.add(urls: urls)
             }
         }
     }
 
     func add(urls: [URL]) {
         guard !urls.isEmpty else { return }
+
+        // 先记录用户的来源（不被后续任何 guard return 跳过）
+        for url in urls {
+            let standardized = url.standardizedFileURL
+            guard !sources.contains(where: { $0.url == standardized }) else { continue }
+            sources.append(
+                LibrarySource(url: standardized, isDirectory: Self.resolvesAsDirectory(standardized))
+            )
+        }
+
         guard canEdit else {
             presentUnavailableNotice()
             return
@@ -215,6 +239,7 @@ final class LibraryStore: ObservableObject {
         isImporting = true
         importNotice = nil
         removedDuringImport.removeAll()
+        removedSourcePathsDuringImport.removeAll()
 
         let clear = clearGeneration
 
@@ -222,21 +247,21 @@ final class LibraryStore: ObservableObject {
             defer {
                 isImporting = false
                 removedDuringImport.removeAll()
+                removedSourcePathsDuringImport.removeAll()
                 clearNoticeAfterDelay()
             }
 
-            let expandedURLs = await Task.detached(priority: .userInitiated) {
-                Self.expandAndFilter(urls)
+            let expandedURLs = await Task.detached(priority: .userInitiated) { [blockedFolderPaths] in
+                Self.expandAndFilter(urls, blockedFolderPaths: blockedFolderPaths)
             }.value
 
             // A clear requested while this import was in flight discards all of it.
             guard clearGeneration == clear else { return }
 
-            let knownPaths = Set(tracks.map { $0.url.standardizedFileURL.path })
-            let removed = removedDuringImport
+            let knownPaths = Set(tracks.map { Self.normalizedPath($0.url) })
             let newURLs = expandedURLs.filter { url in
-                let path = url.standardizedFileURL.path
-                return !knownPaths.contains(path) && !removed.contains(path)
+                let path = Self.normalizedPath(url)
+                return !knownPaths.contains(path) && !self.isImportBlocked(path)
             }
 
             guard !newURLs.isEmpty else {
@@ -252,11 +277,15 @@ final class LibraryStore: ObservableObject {
 
             // Re-check against the live library right before committing: nothing that was
             // deleted (or already present) during the import may come back.
-            let livePaths = Set(tracks.map { $0.url.standardizedFileURL.path })
-            let blockedPaths = removedDuringImport
-            let accepted = imported.filter { track in
-                let path = track.url.standardizedFileURL.path
-                return !livePaths.contains(path) && !blockedPaths.contains(path)
+            let livePaths = Set(tracks.map { Self.normalizedPath($0.url) })
+            var accepted = imported.filter { track in
+                let path = Self.normalizedPath(track.url)
+                return !livePaths.contains(path) && !self.isImportBlocked(path)
+            }
+
+            // 过滤短音频
+            if filterShortAudio {
+                accepted = accepted.filter { $0.duration >= 60 }
             }
 
             guard !accepted.isEmpty else {
@@ -279,10 +308,11 @@ final class LibraryStore: ObservableObject {
             } else {
                 // The library moved while the cache was built: re-merge against the live
                 // value so the concurrent edit survives, and let the `didSet` rebuild.
-                let currentPaths = Set(tracks.map { $0.url.standardizedFileURL.path })
+                let currentPaths = Set(tracks.map { Self.normalizedPath($0.url) })
                 var reconciled = tracks
                 reconciled.append(contentsOf: accepted.filter {
-                    !currentPaths.contains($0.url.standardizedFileURL.path)
+                    let path = Self.normalizedPath($0.url)
+                    return !currentPaths.contains(path) && !self.isImportBlocked(path)
                 })
                 reconciled.sort { $0.dateAdded > $1.dateAdded }
                 tracks = reconciled
@@ -293,12 +323,24 @@ final class LibraryStore: ObservableObject {
         }
     }
 
+    /// 导入结果落库前的统一屏蔽判断：
+    /// - 精确命中导入进行中被单曲删除的路径；
+    /// - 位于导入进行中被整体移除的来源路径之下。
+    private func isImportBlocked(_ normalizedPath: String) -> Bool {
+        if removedDuringImport.contains(normalizedPath) { return true }
+        for root in removedSourcePathsDuringImport
+        where normalizedPath == root || normalizedPath.hasPrefix(root + "/") {
+            return true
+        }
+        return false
+    }
+
     func remove(_ track: Track) {
         guard canEdit else { return }
         guard tracks.contains(where: { $0.id == track.id }) else { return }
 
         if isImporting {
-            removedDuringImport.insert(track.url.standardizedFileURL.path)
+            removedDuringImport.insert(Self.normalizedPath(track.url))
         }
 
         tracks.removeAll { $0.id == track.id }
@@ -481,6 +523,8 @@ final class LibraryStore: ObservableObject {
             favoriteIDs = Set(payload.favoriteIDs)
             playlists = payload.playlists
             history = payload.history
+            sources = payload.sources
+            blockedFolderPaths = payload.blockedFolderPaths
             revision &+= 1
         case .failed(let message):
             // Never overwrite the unreadable original file.
@@ -503,7 +547,9 @@ final class LibraryStore: ObservableObject {
             tracks: tracks,
             favoriteIDs: Array(favoriteIDs),
             playlists: playlists,
-            history: history
+            history: history,
+            sources: sources,
+            blockedFolderPaths: blockedFolderPaths
         )
         pendingPayload = payload
         saveToken &+= 1
@@ -566,7 +612,9 @@ final class LibraryStore: ObservableObject {
                     tracks: sortedTracks,
                     favoriteIDs: payload.favoriteIDs,
                     playlists: payload.playlists,
-                    history: payload.history.sorted { $0.lastPlayedAt > $1.lastPlayedAt }
+                    history: payload.history.sorted { $0.lastPlayedAt > $1.lastPlayedAt },
+                    sources: payload.sources,
+                    blockedFolderPaths: payload.blockedFolderPaths
                 ),
                 TrackDerivedCache.make(from: sortedTracks)
             )
@@ -592,10 +640,11 @@ final class LibraryStore: ObservableObject {
         }
     }
 
-    nonisolated private static func expandAndFilter(_ urls: [URL]) -> [URL] {
+    nonisolated private static func expandAndFilter(_ urls: [URL], blockedFolderPaths: [String] = []) -> [URL] {
         let fileManager = FileManager.default
         var result: [URL] = []
         var visitedPaths = Set<String>()
+        let blocked = Set(blockedFolderPaths)
 
         for sourceURL in urls {
             let url = sourceURL.standardizedFileURL
@@ -603,6 +652,9 @@ final class LibraryStore: ObservableObject {
             guard fileManager.fileExists(atPath: url.path, isDirectory: &isDirectory) else { continue }
 
             if isDirectory.boolValue {
+                // 整个被屏蔽的来源文件夹直接跳过
+                if blocked.contains(url.path) { continue }
+
                 let keys: [URLResourceKey] = [.isRegularFileKey, .isDirectoryKey, .isHiddenKey]
                 guard let enumerator = fileManager.enumerator(
                     at: url,
@@ -611,11 +663,20 @@ final class LibraryStore: ObservableObject {
                 ) else { continue }
 
                 for case let child as URL in enumerator {
+                    let childPath = child.standardizedFileURL.path
+
+                    // 跳过被屏蔽的子文件夹
+                    if blocked.contains(childPath) {
+                        enumerator.skipDescendants()
+                        continue
+                    }
+
                     let values = try? child.resourceValues(forKeys: Set(keys))
+                    if values?.isDirectory == true { continue }
                     guard values?.isRegularFile == true else { continue }
                     guard AudioMetadataLoader.supportedExtensions.contains(child.pathExtension.lowercased()) else { continue }
-                    let path = child.standardizedFileURL.path
-                    if visitedPaths.insert(path).inserted {
+
+                    if visitedPaths.insert(childPath).inserted {
                         result.append(child.standardizedFileURL)
                     }
                 }
@@ -757,22 +818,125 @@ private struct TrackDerivedCache: Sendable {
     }
 }
 
+extension LibraryStore {
+    /// 统一的路径归一化：标准化 + 解析符号链接。
+    /// 来源 URL（面板/拖拽，可能是软链路径）与歌曲 URL（枚举产物）即使形态不同，
+    /// 只要指向磁盘上同一位置就会得到相同结果。
+    nonisolated static func normalizedPath(_ url: URL) -> String {
+        url.standardizedFileURL.resolvingSymlinksInPath().path
+    }
+
+    /// 路径是否解析为目录。与 `URLResourceValues.isDirectoryKey` 不同，
+    /// `FileManager.fileExists(isDirectory:)` 会跟随符号链接，
+    /// 指向目录的软链也应被当作文件夹来源。
+    nonisolated static func resolvesAsDirectory(_ url: URL) -> Bool {
+        var isDirectory: ObjCBool = false
+        let exists = FileManager.default.fileExists(
+            atPath: url.standardizedFileURL.path, isDirectory: &isDirectory
+        )
+        return exists && isDirectory.boolValue
+    }
+
+    func removeLibrarySource(_ source: LibrarySource) {
+        guard canEdit else {
+            presentUnavailableNotice()
+            return
+        }
+
+        sources.removeAll { $0 == source }
+
+        // 先算出属于该来源的曲目：文件夹来源匹配其下所有路径，单文件来源精确匹配。
+        let sourcePath = Self.normalizedPath(source.url)
+        var removedPaths: Set<String> = []
+        var removedIDs = Set<UUID>()
+        for track in tracks {
+            let trackPath = Self.normalizedPath(track.url)
+            let belongs: Bool
+            if source.isDirectory {
+                belongs = trackPath.hasPrefix(sourcePath + "/")
+            } else {
+                belongs = trackPath == sourcePath
+            }
+            guard belongs else { continue }
+            removedPaths.insert(trackPath)
+            removedIDs.insert(track.id)
+        }
+
+        // 导入进行中时必须登记：否则在途导入落库时会把刚删掉的歌重新合并回来。
+        // 来源前缀同时拦截"尚未落库、无法从现有曲目推导"的在途枚举结果。
+        if isImporting {
+            removedDuringImport.formUnion(removedPaths)
+            removedSourcePathsDuringImport.insert(sourcePath)
+        }
+
+        guard !removedIDs.isEmpty else {
+            // 即使没有命中歌曲，来源本身被移除也要落盘。
+            libraryContentDidChange()
+            return
+        }
+
+        tracks.removeAll { removedIDs.contains($0.id) }
+        favoriteIDs.subtract(removedIDs)
+        history.removeAll { removedIDs.contains($0.trackID) }
+        playlists = playlists.map { playlist in
+            var updated = playlist
+            updated.trackIDs.removeAll { removedIDs.contains($0) }
+            return updated
+        }
+        libraryContentDidChange()
+    }
+
+    func addBlockedFolder(path: String) {
+        let standardized = URL(fileURLWithPath: path).standardizedFileURL.path
+        guard !blockedFolderPaths.contains(standardized) else { return }
+        blockedFolderPaths.append(standardized)
+        libraryContentDidChange()
+    }
+
+    func removeBlockedFolder(path: String) {
+        guard blockedFolderPaths.contains(path) else { return }
+        blockedFolderPaths.removeAll { $0 == path }
+        libraryContentDidChange()
+    }
+}
+
+struct LibrarySource: Identifiable, Hashable, Codable, Sendable {
+    let url: URL
+    let isDirectory: Bool
+
+    var id: String { url.absoluteString }
+
+    var name: String {
+        url.lastPathComponent.isEmpty ? url.path : url.lastPathComponent
+    }
+
+    var path: String {
+        url.path
+    }
+}
+
 private struct PersistedLibrary: Codable, Sendable {
     let tracks: [Track]
     let favoriteIDs: [UUID]
     let playlists: [Playlist]
     let history: [PlayHistoryEntry]
+    let sources: [LibrarySource]
+    let blockedFolderPaths: [String]
 
     init(
         tracks: [Track],
         favoriteIDs: [UUID],
         playlists: [Playlist],
-        history: [PlayHistoryEntry]
+        history: [PlayHistoryEntry],
+        sources: [LibrarySource] = [],
+        blockedFolderPaths: [String] = []
     ) {
         self.tracks = tracks
         self.favoriteIDs = favoriteIDs
         self.playlists = playlists
         self.history = history
+        self.sources = sources
+        self.blockedFolderPaths = blockedFolderPaths
     }
 
     init(from decoder: Decoder) throws {
@@ -781,5 +945,9 @@ private struct PersistedLibrary: Codable, Sendable {
         favoriteIDs = try container.decodeIfPresent([UUID].self, forKey: .favoriteIDs) ?? []
         playlists = try container.decodeIfPresent([Playlist].self, forKey: .playlists) ?? []
         history = try container.decodeIfPresent([PlayHistoryEntry].self, forKey: .history) ?? []
+        // 旧版本库文件没有来源/屏蔽字段，缺省回退为空数组。
+        sources = try container.decodeIfPresent([LibrarySource].self, forKey: .sources) ?? []
+        blockedFolderPaths =
+            try container.decodeIfPresent([String].self, forKey: .blockedFolderPaths) ?? []
     }
 }
