@@ -44,82 +44,156 @@ struct SettingsView: View {
     @State private var selectedTab: SettingsTab = .appearance
 
     var body: some View {
-        VStack(spacing: 16) {
-            settingsTabs
+        HStack(spacing: 0) {
+            sidebarList
+                .frame(width: 180)
 
             ScrollView {
-                Group {
-                    switch selectedTab {
-                    case .appearance:
-                        appearanceSettings
-                    case .home:
-                        homeSettings
-                    case .playback:
-                        playbackSettings
-                    case .library:
-                        librarySettings
-                    }
-                }
-                .padding(.bottom, 10)
+                contentPane
+                    .padding(.horizontal, 28)
+                    .padding(.vertical, 20)
             }
         }
-        .padding(.horizontal, 28)
-        .padding(.vertical, 18)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    private var settingsTabs: some View {
-        HStack(spacing: 5) {
+    // MARK: - 侧边栏（纯文字列表 + 左侧蓝色竖线选中）
+
+    private var sidebarList: some View {
+        VStack(alignment: .leading, spacing: 2) {
             ForEach(SettingsTab.allCases) { tab in
-                Button {
-                    withAnimation(.easeOut(duration: 0.16)) {
-                        selectedTab = tab
-                    }
-                } label: {
-                    Label(tab.title, systemImage: tab.systemImage)
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(selectedTab == tab ? .white : Color.hpTextPrimary.opacity(0.58))
-                        .padding(.horizontal, 14)
-                        .frame(height: 32)
-                        .background {
-                            if selectedTab == tab {
-                                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                    .fill(LinearGradient.hpAccentFill)
-                            }
-                        }
-                }
-                .buttonStyle(HoverHighlightButtonStyle(cornerRadius: 8, hoverOpacity: 0.12))
+                sidebarRow(for: tab)
             }
+            Spacer()
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.top, 24)
+        .padding(.leading, 16)
+        .padding(.trailing, 8)
     }
 
-    private var appearanceSettings: some View {
-        VStack(spacing: 16) {
-            settingsCard(
-                title: "主题",
-                subtitle: "选择应用白天或夜间的外观"
-            ) {
-                HStack(spacing: 8) {
-                    ForEach(AppAppearance.allCases) { appearance in
-                        choiceButton(
-                            title: appearance.title,
-                            systemImage: appearance.systemImage,
-                            selected: theme.appearance == appearance
-                        ) {
+    private func sidebarRow(for tab: SettingsTab) -> some View {
+        let isSelected = selectedTab == tab
+        return Button {
+            withAnimation(.easeInOut(duration: 0.2)) {
+                selectedTab = tab
+            }
+        } label: {
+            HStack(spacing: 8) {
+                // 选中时的蓝色竖线
+                ZStack {
+                    if isSelected {
+                        RoundedRectangle(cornerRadius: 1.5, style: .continuous)
+                            .fill(LinearGradient.hpAccentFill)
+                    }
+                }
+                .frame(width: 3, height: 14)
+                .animation(.easeInOut(duration: 0.2), value: selectedTab)
+
+                Text(tab.title)
+                    .font(.system(size: 15, weight: isSelected ? .semibold : .medium))
+                    .foregroundStyle(
+                        isSelected
+                            ? Color.hpAccent
+                            : Color.hpTextPrimary.opacity(0.65)
+                    )
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.vertical, 9)
+        }
+        .buttonStyle(.plain)
+    }
+
+    // MARK: - 右侧内容
+
+    @ViewBuilder
+    private var contentPane: some View {
+        switch selectedTab {
+        case .appearance: appearancePane
+        case .home: homePane
+        case .playback: playbackPane
+        case .library: libraryPane
+        }
+    }
+
+    // MARK: - 通用组件：分组标题（带左侧蓝色竖线）
+
+    private func sectionHeading(_ text: String) -> some View {
+        HStack(spacing: 10) {
+            RoundedRectangle(cornerRadius: 1.5, style: .continuous)
+                .fill(LinearGradient.hpAccentFill)
+                .frame(width: 3, height: 16)
+            Text(text)
+                .font(.system(size: 15, weight: .bold, design: .rounded))
+                .foregroundStyle(Color.hpAccent)
+        }
+        .padding(.top, 4)
+        .padding(.bottom, 14)
+    }
+
+    // MARK: - 外观
+
+    private var appearancePane: some View {
+        VStack(alignment: .leading, spacing: 28) {
+            sectionHeading("外观")
+
+            // 外观预览
+            VStack(alignment: .leading, spacing: 12) {
+                Text("外观")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(Color.hpTextPrimary.opacity(0.7))
+
+                HStack(spacing: 14) {
+                    ForEach(AppAppearance.allCases) { mode in
+                        Button {
                             withAnimation(.easeInOut(duration: 0.25)) {
-                                theme.appearance = appearance
+                                theme.appearance = mode
+                            }
+                        } label: {
+                            VStack(spacing: 6) {
+                                ZStack {
+                                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                        .fill(mode.previewBackground)
+                                    Image(systemName: "play.fill")
+                                        .font(.system(size: 14))
+                                        .foregroundStyle(
+                                            mode == .light
+                                                ? Color.black.opacity(0.35)
+                                                : Color.white.opacity(0.55)
+                                        )
+                                }
+                                .frame(width: 70, height: 46)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                        .stroke(
+                                            theme.appearance == mode
+                                                ? Color.hpAccent
+                                                : Color.hpTextPrimary.opacity(0.12),
+                                            lineWidth: theme.appearance == mode ? 2 : 0.5
+                                        )
+                                )
+                                Text(mode.title)
+                                    .font(.system(size: 11, weight: .medium))
+                                    .foregroundStyle(
+                                        theme.appearance == mode
+                                            ? Color.hpAccent
+                                            : Color.hpTextPrimary.opacity(0.5)
+                                    )
                             }
                         }
+                        .buttonStyle(.plain)
                     }
                 }
             }
 
-            settingsCard(
-                title: "应用图标",
-                subtitle: "Dock 图标自动跟随主题，也可固定深色或浅色；左上角品牌图标始终跟随昼夜模式"
-            ) {
-                HStack(spacing: 20) {
+            Divider().opacity(0.08)
+
+            // 应用图标
+            VStack(alignment: .leading, spacing: 12) {
+                Text("应用图标")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(Color.hpTextPrimary.opacity(0.7))
+
+                HStack(spacing: 16) {
                     ForEach(AppIconStyle.allCases) { style in
                         Button {
                             appIconStyleRaw = style.rawValue
@@ -127,7 +201,7 @@ struct SettingsView: View {
                             player.refreshDockIcon()
                             AppIconStyleManager.apply()
                         } label: {
-                            VStack(spacing: 8) {
+                            VStack(spacing: 6) {
                                 if let image = AppIconStyleManager.image(
                                     for: style,
                                     colorScheme: colorScheme
@@ -135,230 +209,185 @@ struct SettingsView: View {
                                     Image(nsImage: image)
                                         .resizable()
                                         .interpolation(.high)
-                                        .frame(width: 58, height: 58)
+                                        .frame(width: 50, height: 50)
                                 }
 
                                 Text(style.title)
-                                    .font(.system(size: 11, weight: .semibold))
+                                    .font(.system(size: 11, weight: .medium))
                                     .foregroundStyle(
                                         appIconStyleRaw == style.rawValue
                                             ? Color.hpAccent
-                                            : Color.hpTextPrimary.opacity(0.48)
+                                            : Color.hpTextPrimary.opacity(0.5)
                                     )
                             }
-                            .padding(10)
+                            .padding(8)
                             .background(
                                 appIconStyleRaw == style.rawValue
                                     ? Color.hpAccent.opacity(0.10)
                                     : Color.clear,
-                                in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                in: RoundedRectangle(cornerRadius: 12, style: .continuous)
                             )
                         }
                         .buttonStyle(.plain)
                     }
                 }
-                .frame(maxWidth: .infinity, alignment: .center)
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private var homeSettings: some View {
-        VStack(spacing: 16) {
-            settingsCard(
-                title: "推荐切换频率",
-                subtitle: "控制首页推荐曲目什么时候更换；切换页面时推荐保持不变"
-            ) {
-                HStack(spacing: 8) {
-                    ForEach(RecommendationFrequency.allCases) { frequency in
-                        choiceButton(
-                            title: frequency.title,
-                            systemImage: frequency.systemImage,
-                            selected: recommendationFrequencyRaw == frequency.rawValue
-                        ) {
-                            recommendationFrequencyRaw = frequency.rawValue
+    // MARK: - 首页
+
+    private var homePane: some View {
+        VStack(alignment: .leading, spacing: 28) {
+            sectionHeading("首页推荐")
+
+            // 推荐频率
+            row(title: "推荐切换频率",
+                subtitle: "控制首页推荐曲目什么时候更换") {
+                HStack(spacing: 6) {
+                    ForEach(RecommendationFrequency.allCases) { f in
+                        Button {
+                            recommendationFrequencyRaw = f.rawValue
+                        } label: {
+                            Text(f.title)
+                                .font(.system(size: 11, weight: .semibold))
+                                .frame(height: 28)
+                                .padding(.horizontal, 12)
+                                .foregroundStyle(
+                                    recommendationFrequencyRaw == f.rawValue
+                                        ? .white
+                                        : Color.hpTextPrimary.opacity(0.6)
+                                )
+                                .background(
+                                    recommendationFrequencyRaw == f.rawValue
+                                        ? AnyShapeStyle(LinearGradient.hpAccentFill)
+                                        : AnyShapeStyle(Color.hpTextPrimary.opacity(0.05)),
+                                    in: RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                )
                         }
+                        .buttonStyle(.plain)
                     }
                 }
             }
 
-            settingsCard(
-                title: "播放同步",
-                subtitle: "控制推荐歌曲与当前播放队列的关系"
-            ) {
-                Toggle("推荐歌曲独立于上一首、下一首", isOn: $recommendationIsIndependent)
+            Divider().opacity(0.08)
+
+            // 独立于上下首
+            row(title: "独立于上一首 / 下一首",
+                subtitle: "开启后切歌不会改变首页推荐") {
+                Toggle("", isOn: $recommendationIsIndependent)
                     .toggleStyle(.switch)
-
-                Text("开启后，切歌、上一首和下一首都不会改变首页推荐歌曲。")
-                    .font(.caption)
-                    .foregroundStyle(Color.hpTextPrimary.opacity(0.42))
+                    .labelsHidden()
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private var playbackSettings: some View {
-        VStack(spacing: 16) {
-            settingsCard(
-                title: "Dock",
-                subtitle: "播放时用当前专辑封面替换 Dock 图标"
-            ) {
-                HStack(spacing: 14) {
-                    ZStack {
-                        Circle()
-                            .fill(LinearGradient.hpAccentFill.opacity(0.16))
-                            .frame(width: 38, height: 38)
-                        Image(systemName: "dock.rectangle")
-                            .font(.system(size: 16, weight: .semibold))
-                            .foregroundStyle(Color.hpAccent)
-                    }
+    // MARK: - 播放
 
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text("显示专辑封面")
-                            .font(.system(size: 12, weight: .semibold))
-                        Text("右下角会同步显示播放或暂停状态")
-                            .font(.system(size: 10))
-                            .foregroundStyle(Color.hpTextPrimary.opacity(0.42))
-                    }
+    private var playbackPane: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            sectionHeading("播放")
 
-                    Spacer()
-
-                    Toggle("", isOn: $showDockArtwork)
-                        .labelsHidden()
-                        .onChange(of: showDockArtwork) { _, _ in
-                            player.refreshDockIcon()
-                        }
-                }
+            // Dock 封面
+            row(title: "Dock 显示专辑封面",
+                subtitle: "播放时用当前专辑封面替换 Dock 图标") {
+                Toggle("", isOn: Binding(
+                    get: { showDockArtwork },
+                    set: { showDockArtwork = $0; player.refreshDockIcon() }
+                ))
+                .toggleStyle(.switch)
+                .labelsHidden()
             }
 
-            settingsCard(
-                title: "播放记忆",
-                subtitle: "下次打开时恢复上次的歌曲和进度"
-            ) {
-                HStack(spacing: 14) {
-                    ZStack {
-                        Circle()
-                            .fill(Color.hpAccent.opacity(0.12))
-                            .frame(width: 38, height: 38)
-                        Image(systemName: "clock.arrow.circlepath")
-                            .font(.system(size: 16, weight: .semibold))
-                            .foregroundStyle(Color.hpAccent)
-                    }
+            Divider().opacity(0.08)
 
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text("记住上次播放状态")
-                            .font(.system(size: 12, weight: .semibold))
-                        Text("重启后保持暂停，按空格从上次位置继续")
-                            .font(.system(size: 10))
-                            .foregroundStyle(Color.hpTextPrimary.opacity(0.42))
-                    }
-
-                    Spacer()
-
-                    Toggle("", isOn: $rememberPlaybackState)
-                        .labelsHidden()
-                        .onChange(of: rememberPlaybackState) { _, enabled in
-                            if !enabled {
-                                player.clearRememberedPlaybackState()
-                            }
-                        }
-                }
+            // 记忆状态
+            row(title: "记住上次播放状态",
+                subtitle: "下次打开时恢复上次的歌曲和进度") {
+                Toggle("", isOn: Binding(
+                    get: { rememberPlaybackState },
+                    set: { v in rememberPlaybackState = v; if !v { player.clearRememberedPlaybackState() } }
+                ))
+                .toggleStyle(.switch)
+                .labelsHidden()
             }
 
-            settingsCard(
-                title: "播放器状态",
-                subtitle: "当前播放与睡眠定时信息"
-            ) {
-                VStack(spacing: 10) {
-                    settingsRow(
-                        title: "当前输出",
-                        value: player.isPlaying ? "正在播放" : "已暂停",
-                        valueColor: player.isPlaying ? Color.hpAccent : Color.hpTextPrimary.opacity(0.46)
+            Divider().opacity(0.08)
+
+            // 当前状态
+            row(title: "当前状态") {
+                Text(player.isPlaying ? "播放中" : "已暂停")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(
+                        player.isPlaying ? Color.hpAccent : Color.hpTextPrimary.opacity(0.45)
                     )
-
-                    Divider().opacity(0.08)
-
-                    SleepTimerRow(clock: player.clock)
-                }
             }
+
+            Divider().opacity(0.08)
+
+            // 睡眠定时
+            SleepTimerRow(clock: player.clock)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private var librarySettings: some View {
-        VStack(spacing: 16) {
-            settingsCard(
-                title: "添加音乐",
-                subtitle: "从文件或文件夹导入本地音乐"
-            ) {
+    // MARK: - 资料库
+
+    private var libraryPane: some View {
+        VStack(alignment: .leading, spacing: 28) {
+            sectionHeading("资料库")
+
+            // 添加音乐
+            row(title: "添加音乐",
+                subtitle: "从文件或文件夹导入本地音乐") {
                 Button {
                     library.presentImportPanel()
                 } label: {
-                    HStack(spacing: 10) {
+                    HStack(spacing: 6) {
                         if library.isImporting {
                             ProgressView()
                                 .controlSize(.small)
                         } else {
-                            Image(systemName: "plus.circle.fill")
-                                .font(.system(size: 16, weight: .semibold))
+                            Image(systemName: "plus")
+                                .font(.system(size: 11, weight: .bold))
                         }
-
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(library.isImporting ? "正在导入…" : "添加音乐文件或文件夹")
-                                .font(.system(size: 12, weight: .semibold))
-                            Text("支持 MP3、FLAC、M4A、AAC、WAV、AIFF、CAF")
-                                .font(.system(size: 9))
-                                .foregroundStyle(Color.hpTextPrimary.opacity(0.38))
-                        }
-
-                        Spacer()
-                        Image(systemName: "chevron.right")
-                            .font(.system(size: 10, weight: .bold))
-                            .foregroundStyle(Color.hpTextPrimary.opacity(0.28))
+                        Text(library.isImporting ? "正在导入…" : "添加文件或文件夹")
+                            .font(.system(size: 11, weight: .semibold))
                     }
-                    .padding(.horizontal, 14)
-                    .frame(height: 54)
-                    .background(Color.hpAccent.opacity(0.08), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .foregroundStyle(Color.hpAccent)
+                    .frame(height: 28)
+                    .padding(.horizontal, 12)
+                    .background(Color.hpAccent.opacity(0.09),
+                                in: RoundedRectangle(cornerRadius: 8, style: .continuous))
                 }
                 .buttonStyle(.plain)
                 .disabled(!library.canEdit || library.isImporting)
             }
 
-            settingsCard(
-                title: "启动预加载",
-                subtitle: "打开软件后在后台提前加载封面，浏览各页面更快"
-            ) {
-                HStack(spacing: 14) {
-                    ZStack {
-                        Circle()
-                            .fill(Color.hpAccent.opacity(0.12))
-                            .frame(width: 38, height: 38)
-                        Image(systemName: "bolt.horizontal.fill")
-                            .font(.system(size: 16, weight: .semibold))
-                            .foregroundStyle(Color.hpAccent)
-                    }
+            Divider().opacity(0.08)
 
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text("启动时预加载封面")
-                            .font(.system(size: 12, weight: .semibold))
-                        Text("提前把歌曲列表与专辑网格的封面读入缓存；会多占用一些内存")
-                            .font(.system(size: 10))
-                            .foregroundStyle(Color.hpTextPrimary.opacity(0.42))
-                    }
-
-                    Spacer()
-
-                    Toggle("", isOn: $preloadArtwork)
-                        .labelsHidden()
-                        .onChange(of: preloadArtwork) { _, enabled in
-                            if enabled {
-                                ArtworkPreloader.shared.preloadIfNeeded(tracks: library.tracks)
-                            }
-                        }
-                }
+            // 预加载
+            row(title: "启动时预加载封面",
+                subtitle: "提前把封面读入缓存，浏览更快") {
+                Toggle("", isOn: Binding(
+                    get: { preloadArtwork },
+                    set: { v in preloadArtwork = v
+                           if v { ArtworkPreloader.shared.preloadIfNeeded(tracks: library.tracks) } }
+                ))
+                .toggleStyle(.switch)
+                .labelsHidden()
             }
 
-            settingsCard(
-                title: "本地资料库",
-                subtitle: "当前资料库内容统计"
-            ) {
+            Divider().opacity(0.08)
+
+            // 资料库统计
+            VStack(alignment: .leading, spacing: 14) {
+                Text("资料库统计")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(Color.hpTextPrimary.opacity(0.7))
+
                 HStack(spacing: 10) {
                     statistic(value: "\(library.tracks.count)", title: "歌曲")
                     statistic(value: "\(Set(library.tracks.map(\.displayAlbum)).count)", title: "专辑")
@@ -373,128 +402,89 @@ struct SettingsView: View {
                         systemImage: "arrow.clockwise"
                     )
                     .font(.system(size: 11, weight: .semibold))
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 36)
+                    .frame(height: 32)
+                    .padding(.horizontal, 14)
                     .foregroundStyle(Color.hpAccent)
-                    .background(Color.hpAccent.opacity(0.09), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .background(Color.hpAccent.opacity(0.09),
+                                in: RoundedRectangle(cornerRadius: 8, style: .continuous))
                 }
                 .buttonStyle(.plain)
                 .disabled(!library.canEdit || library.isImporting)
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private func settingsCard<Content: View>(
+    // MARK: - 通用：设置行（标题 + 可选副标题 + 右侧控件）
+
+    private func row<Right: View>(
         title: String,
-        subtitle: String,
-        @ViewBuilder content: () -> Content
+        subtitle: String? = nil,
+        @ViewBuilder right: () -> Right
     ) -> some View {
-        VStack(alignment: .leading, spacing: 15) {
-            VStack(alignment: .leading, spacing: 3) {
+        HStack(alignment: .center, spacing: 16) {
+            VStack(alignment: .leading, spacing: 2) {
                 Text(title)
-                    .font(.system(size: 16, weight: .bold, design: .rounded))
+                    .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(Color.hpTextPrimary)
-                Text(subtitle)
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundStyle(Color.hpTextPrimary.opacity(0.40))
-            }
-
-            content()
-        }
-        .padding(18)
-        .background {
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .fill(.ultraThinMaterial)
-                .overlay {
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .fill(
-                            LinearGradient(
-                                colors: colorScheme == .dark
-                                    ? [Color.hpAccent.opacity(0.08), Color.hpSurface.opacity(0.42)]
-                                    : [Color.white.opacity(0.58), Color.hpIce.opacity(0.34)],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                        )
+                if let subtitle {
+                    Text(subtitle)
+                        .font(.system(size: 10))
+                        .foregroundStyle(Color.hpTextPrimary.opacity(0.4))
+                        .lineLimit(1)
                 }
+            }
+            Spacer(minLength: 8)
+            right()
         }
-        .overlay {
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .stroke(Color.hpTextPrimary.opacity(0.07), lineWidth: 1)
-        }
-    }
-
-    private func choiceButton(
-        title: String,
-        systemImage: String,
-        selected: Bool,
-        action: @escaping () -> Void
-    ) -> some View {
-        Button(action: action) {
-            Label(title, systemImage: systemImage)
-                .font(.system(size: 11, weight: .semibold))
-                .frame(maxWidth: .infinity)
-                .frame(height: 34)
-                .foregroundStyle(selected ? .white : Color.hpTextPrimary.opacity(0.62))
-                .background(
-                    selected ? AnyShapeStyle(LinearGradient.hpAccentFill) : AnyShapeStyle(Color.hpTextPrimary.opacity(0.045)),
-                    in: RoundedRectangle(cornerRadius: 10, style: .continuous)
-                )
-        }
-        .buttonStyle(.plain)
-    }
-
-    private func settingsRow(
-        title: String,
-        value: String,
-        valueColor: Color
-    ) -> some View {
-        SettingsRowLabel(title: title, value: value, valueColor: valueColor)
+        .padding(.vertical, 12)
     }
 
     private func statistic(value: String, title: String) -> some View {
         VStack(spacing: 4) {
             Text(value)
-                .font(.system(size: 19, weight: .bold, design: .rounded))
+                .font(.system(size: 18, weight: .bold, design: .rounded))
                 .foregroundStyle(Color.hpTextPrimary)
             Text(title)
                 .font(.system(size: 9, weight: .medium))
-                .foregroundStyle(Color.hpTextPrimary.opacity(0.40))
+                .foregroundStyle(Color.hpTextPrimary.opacity(0.4))
         }
         .frame(maxWidth: .infinity)
-        .frame(height: 58)
-        .background(Color.hpTextPrimary.opacity(0.045), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .frame(height: 54)
+        .background(Color.hpTextPrimary.opacity(0.045),
+                    in: RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 }
 
-/// Countdown kept in its own clock-observing view: the once-per-second tick then
-/// invalidates this row only, not the whole settings screen.
+// MARK: - 睡眠定时（扁平行版本）
+
 private struct SleepTimerRow: View {
     @ObservedObject var clock: PlaybackClock
 
     var body: some View {
-        SettingsRowLabel(
-            title: "睡眠定时",
-            value: clock.sleepTimerRemaining.map { "剩余 \(Int(ceil($0 / 60))) 分钟" } ?? "未开启",
-            valueColor: Color.hpTextPrimary.opacity(0.46)
-        )
+        HStack(alignment: .center, spacing: 16) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("睡眠定时")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(Color.hpTextPrimary)
+            }
+            Spacer(minLength: 8)
+            Text(clock.sleepTimerRemaining.map { "剩余 \(Int(ceil($0 / 60))) 分钟" } ?? "未开启")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(Color.hpTextPrimary.opacity(0.45))
+        }
+        .padding(.vertical, 12)
     }
 }
 
-private struct SettingsRowLabel: View {
-    let title: String
-    let value: String
-    let valueColor: Color
+// MARK: - AppAppearance Preview
 
-    var body: some View {
-        HStack {
-            Text(title)
-                .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(Color.hpTextPrimary.opacity(0.58))
-            Spacer()
-            Text(value)
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(valueColor)
+private extension AppAppearance {
+    var previewBackground: Color {
+        switch self {
+        case .light: return Color(white: 0.95)
+        case .dark: return Color(white: 0.1)
+        case .system: return Color.gray.opacity(0.3)
         }
     }
 }
