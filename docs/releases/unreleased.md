@@ -18,6 +18,7 @@
 
 - 歌词预加载：资料库加载完成后后台逐项低优先级解析全部曲目的内嵌歌词与同名 LRC；播放期间每加载一首歌曲，也会提前发起队列接下来两曲的歌词读取。切换歌曲时歌词直接显示，不再先闪一段“暂无歌词/正在等待歌词”再跳成正文。
 - 歌词占位状态区分加载中与确认无歌词：正在读取时显示“正在载入歌词”；确认歌曲确实没有内嵌歌词或 LRC 文件时才显示“本歌曲暂无歌词 / 未在歌曲内嵌信息或同名 LRC 文件中找到歌词。”
+- 连续快速切歌时歌词区域增加 0.15 秒极短透明交叉过渡：极端情况下连续切 10 首以上，歌词列表反复重排的顿挫被淡入淡出盖住，看起来顺滑；仅透明度变化、不移动布局。
 
 ### 修复
 
@@ -31,6 +32,7 @@
 - `AudioPlayer`：新增 `@Published private(set) var lyricsResolved`；`load(_:)` 与 `restorePlaybackState` 中的歌词加载统一改为 `prepareLyrics(for:)`——先同步查 `LyricsCache`（命中则在当前主线程更新轮内直接赋值 `lyricLines` 并置 `lyricsResolved = true`），未命中才异步等待并在校验曲目 ID 后发布；新增 `prefetchUpcomingLyrics()` 预热队列顺序接下来两曲。
 - `MainView`：资料库加载完成（`onAppear` 未在加载 / `isLoading` 变为 false）时调用 `LyricsCache.shared.preload(library.tracks)`，不绑定“启动预加载封面”开关。
 - `HomeView` 首页推荐歌词改为经由 `LyricsCache.load(track:)` 获取，与预热/播放共用同一份缓存。
+- 歌词时间轴按 `player.currentTrack?.id` 作为 `.id`，切歌时旧树移除、新树插入，配合 `.transition(.opacity)` 与 `.animation(.easeInOut(duration: 0.15), value: track id)` 做极短透明交叉；仅透明度，遵循 Reduce Motion。
 - `MemoryPressureMonitor` 内存压力处理增加清空 `LyricsCache`。
 - 新增 `Tests/HarmonyPlayerTests/LyricsCacheTests.swift`（合成 FLAC 字节流：验证跳过前置 PICTURE 块读取歌词、无注释块返回 nil、同名 LRC 加载与同步命中、无歌词缓存为 .missing、removeAll 清空）。
 
