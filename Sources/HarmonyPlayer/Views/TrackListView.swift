@@ -142,7 +142,9 @@ struct TrackListView: View {
             }
             sortHeaderButton("标题", column: .title, maxWidth: .infinity)
             sortHeaderButton("专辑", column: .album, maxWidth: .infinity)
-            sortHeaderButton("时长", column: .duration, width: 48, alignment: .trailing)
+            // 时长列整体左移 6pt 并左对齐：列头文字与行内时间从同一位置起排。
+            sortHeaderButton("时长", column: .duration, width: 48, alignment: .leading)
+                .padding(.leading, -6)
 
             // 编辑入口 / 批量操作区：与行尾「爱心+更多」区同宽（72），
             // 入口图标中心对齐下方行内爱心（区内偏移 21）；
@@ -168,7 +170,7 @@ struct TrackListView: View {
 
                 // 子菜单：向右滑出（全选已移至列头最左侧；退出多选再点编辑图标即可）
                 if isSelectionMode {
-                    HStack(spacing: 0) {
+                    HStack(spacing: 7) {
                         // 批量添加到歌单
                         Menu {
                             ForEach(library.playlists) { playlist in
@@ -211,7 +213,7 @@ struct TrackListView: View {
                         .disabled(selectedIDs.isEmpty)
                         .help("删除所选")
                     }
-                    .offset(x: 28)
+                    .offset(x: 34)
                     .transition(.move(edge: .trailing).combined(with: .opacity))
                 }
             }
@@ -342,7 +344,8 @@ struct TrackRow: View {
             Text(track.formattedDuration)
                 .font(.system(size: 10, weight: .medium, design: .monospaced))
                 .foregroundStyle(Color.hpTextPrimary.opacity(0.48))
-                .frame(width: 48, alignment: .trailing)
+                .frame(width: 48, alignment: .leading)
+                .padding(.leading, -6)
 
             HStack(spacing: 2) {
                 Button(action: toggleFavorite) {
