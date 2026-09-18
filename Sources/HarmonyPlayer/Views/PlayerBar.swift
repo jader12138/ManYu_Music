@@ -132,7 +132,7 @@ struct PlayerBar: View {
                     Image(systemName: player.playbackMode.systemImage)
                         .font(.system(size: 13, weight: .medium))
                         .foregroundStyle(Color.hpTextPrimary.opacity(0.85))
-                        .frame(width: 26, height: 26)
+                        .frame(width: 32, height: 32)
                         .overlay(alignment: .bottom) {
                             Circle()
                                 .fill(Color.hpAccent)
