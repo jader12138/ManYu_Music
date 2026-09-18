@@ -27,11 +27,16 @@ final class LongSessionMemoryTests: XCTestCase {
             }
         }
 
-        // 生成 20 首极短的静音 WAV（0.3 秒、单声道、22.05kHz），循环切歌 300 次。
+        // 生成 20 首静音 WAV（4 秒、单声道、22.05kHz），循环切歌 300 次。
+        // 时长必须明显大于收尾 RunLoop 的 2 秒：快切修复后最新曲目会在停顿
+        // 0.4s 后恢复播放，0.3s 的旧短曲会在收尾期间播完并自动切到下一首，
+        // 使“当前曲目 = 最后一次切的歌曲”断言失效（旧断言其实是在依赖
+        // 快切滞后 bug）。
         let workspace = TempWorkspace()
         let audioDir = try workspace.makeDirectory("stress-audio")
         let sampleRate = 22050.0
-        let frameCount = Int(sampleRate * 0.3)
+        let clipDuration = 4.0
+        let frameCount = Int(sampleRate * clipDuration)
         var tracks: [Track] = []
         tracks.reserveCapacity(20)
         for index in 0..<20 {
@@ -39,7 +44,7 @@ final class LongSessionMemoryTests: XCTestCase {
             try Self.silentWAVData(frameCount: frameCount, sampleRate: sampleRate)
                 .write(to: url)
             tracks.append(
-                Track(url: url, title: "压力测试 \(index)", artist: "测试", album: "内存", duration: 0.3)
+                Track(url: url, title: "压力测试 \(index)", artist: "测试", album: "内存", duration: clipDuration)
             )
         }
 

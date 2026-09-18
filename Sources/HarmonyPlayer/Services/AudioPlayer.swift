@@ -228,6 +228,17 @@ final class AudioPlayer: ObservableObject {
     /// 写入一次真实位置。
     private var seekInFlight = false
 
+    /// 快速连切检测：相邻两次 load 间隔小于该窗口即判定为连续快切。
+    /// 慢速点歌（通常间隔 1 秒以上）不受影响，仍然立即播放。
+    private static let rapidSwitchWindow: TimeInterval = 0.7
+    /// 快切停止后静默该时长，确认不再有新切换，才开始播放最新曲目。
+    private static let rapidSwitchSettleDelay: TimeInterval = 0.4
+    private var lastLoadAt = Date.distantPast
+    /// 快切期间为 true：播放器保持暂停、周期时间观察器忽略旧曲目回报。
+    private var isRapidSwitching = false
+    /// 每次 load 自增的代数号：只有最后一次切换的延迟恢复任务会生效。
+    private var switchGeneration = 0
+
     func seek(to seconds: Double) {
         guard seconds.isFinite else { return }
         let upperBound = duration > 0 ? duration : max(0, seconds)
@@ -354,6 +365,12 @@ final class AudioPlayer: ObservableObject {
             return
         }
 
+        let now = Date()
+        let rapid = now.timeIntervalSince(lastLoadAt) < Self.rapidSwitchWindow
+        lastLoadAt = now
+        switchGeneration += 1
+        let generation = switchGeneration
+
         currentTrack = track
         currentTime = 0
         duration = track.duration
@@ -369,7 +386,17 @@ final class AudioPlayer: ObservableObject {
         item.preferredForwardBufferDuration = 45
         player.replaceCurrentItem(with: item)
         player.volume = Float(volume)
-        player.play()
+
+        if rapid || isRapidSwitching {
+            // 连续快切：replaceCurrentItem 是异步的，新条目就绪前旧曲目仍会
+            // 继续播放——不暂停就会出现“封面/名字/歌词已换、声音和进度条
+            // 还停在前两首”的错位。立即暂停，等切歌停顿 0.4s 后只播最新一首。
+            isRapidSwitching = true
+            player.pause()
+            scheduleRapidSwitchResume(generation: generation, trackID: track.id)
+        } else {
+            player.play()
+        }
 
         observeStatus(of: item)
         refreshDuration(for: track)
@@ -377,6 +404,19 @@ final class AudioPlayer: ObservableObject {
         persistPlaybackState(force: true)
         updateNowPlaying()
         scheduleMemoryRelease()
+    }
+
+    /// 快切停顿后的恢复：代数号保证只有最后一次切换的任务会执行，
+    /// 中间的恢复任务全部作废，连续暂停/恢复不会互相打架。
+    private func scheduleRapidSwitchResume(generation: Int, trackID: UUID) {
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(Self.rapidSwitchSettleDelay))
+            guard let self, generation == self.switchGeneration else { return }
+            self.isRapidSwitching = false
+            guard self.currentTrack?.id == trackID else { return }
+            self.player.play()
+            self.updateNowPlaying()
+        }
     }
 
     /// 切歌的封面解码、调色、背景模糊会产生大量一次性中间内存，任务结束后
@@ -409,6 +449,9 @@ final class AudioPlayer: ObservableObject {
                 guard seconds.isFinite else { return }
                 // seek 落位前观察器回报的仍是旧位置，直接丢弃。
                 if self.seekInFlight { return }
+                // 快切期间观察器可能回报前两曲的位置，丢弃：进度条
+                // 停在 0（load 已重置），等恢复播放后再走最新曲目的时间。
+                if self.isRapidSwitching { return }
                 self.currentTime = seconds
                 self.persistPlaybackState(force: false)
 

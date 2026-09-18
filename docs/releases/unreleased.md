@@ -19,6 +19,7 @@
 - 歌词预加载：资料库加载完成后后台逐项低优先级解析全部曲目的内嵌歌词与同名 LRC；播放期间每加载一首歌曲，也会提前发起队列接下来两曲的歌词读取。切换歌曲时歌词直接显示，不再先闪一段“暂无歌词/正在等待歌词”再跳成正文。
 - 歌词占位状态区分加载中与确认无歌词：正在读取时显示“正在载入歌词”；确认歌曲确实没有内嵌歌词或 LRC 文件时才显示“本歌曲暂无歌词 / 未在歌曲内嵌信息或同名 LRC 文件中找到歌词。”
 - 连续快速切歌时歌词面板做极轻“呼吸”：切歌瞬间整块歌词内容透明度下沉到 0.5，约 0.14 秒内恢复，盖住列表重排顿挫；歌词视图身份保持不变、不做销毁重建，只改合成层透明度，零布局开销。
+- 连续快速切歌时立即暂停播放：相邻两次切歌间隔小于 0.7 秒即判定为快切，快切期间保持暂停，切歌停顿 0.4 秒后只播放最后选定的最新一首。修复“切了很多首后，声音和进度条仍停在第一二首、直到切完才跳到最新”的错位；慢速点歌（间隔大于 0.7 秒）仍立即播放，行为不变。
 
 ### 修复
 
@@ -33,7 +34,9 @@
 - `MainView`：资料库加载完成（`onAppear` 未在加载 / `isLoading` 变为 false）时调用 `LyricsCache.shared.preload(library.tracks)`，不绑定“启动预加载封面”开关。
 - `HomeView` 首页推荐歌词改为经由 `LyricsCache.load(track:)` 获取，与预热/播放共用同一份缓存。
 - `NowPlayingView` 歌词面板新增“呼吸”：`@State lyricsDimmed/lyricsDimmerGeneration`，`onChange(of: currentTrack?.id)` 时置暗并用代数号合并连续切换（只有最后一次的恢复生效），`DispatchQueue.main.asyncAfter` 0.06s 后以 0.14s easeInOut 恢复；作用于 Group 的 `.opacity`，无 `.id`、无视图重建，Reduce Motion 时跳过。
+- `AudioPlayer` 新增快切暂停：`rapidSwitchWindow = 0.7s / rapidSwitchSettleDelay = 0.4s`，`lastLoadAt / isRapidSwitching / switchGeneration` 状态；`load(_:)` 开头计算与上次加载的间隔，处于快切（本次间隔小或已在快切中）时 `player.pause()` 并由 `scheduleRapidSwitchResume(generation:trackID:)` 延迟恢复——代数号保证只有最后一次切换的任务执行 `player.play()`；周期时间观察器在 `isRapidSwitching` 时丢弃回报，进度条不显示前两曲的旧位置。
 - `MemoryPressureMonitor` 内存压力处理增加清空 `LyricsCache`。
+- `LongSessionMemoryTests` 的合成曲目由 0.3s 调整为 4s：快切修复后最新曲目会在停顿后恢复播放，旧短曲会在收尾 2s RunLoop 内播完自动切歌，使“当前曲目 = 最后切换曲目”的断言失效（旧断言实际依赖快切滞后 bug）。
 - 新增 `Tests/HarmonyPlayerTests/LyricsCacheTests.swift`（合成 FLAC 字节流：验证跳过前置 PICTURE 块读取歌词、无注释块返回 nil、同名 LRC 加载与同步命中、无歌词缓存为 .missing、removeAll 清空）。
 
 ## 兼容性与迁移
