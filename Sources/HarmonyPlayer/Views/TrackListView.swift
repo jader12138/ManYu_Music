@@ -15,6 +15,10 @@ struct TrackListView: View {
     var removeTrackLabel = "从资料库移除"
     let onPlay: (Track) -> Void
 
+    // 多选模式（内部管理）
+    @State private var isSelectionMode = false
+    @State private var selectedIDs: Set<UUID> = []
+
     @EnvironmentObject private var library: LibraryStore
     @EnvironmentObject private var player: AudioPlayer
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -43,7 +47,16 @@ struct TrackListView: View {
                                 toggleFavorite: { library.toggleFavorite(track) },
                                 reveal: { library.reveal(track) },
                                 remove: { removeTrack(track) },
-                                removeLabel: removeTrackLabel
+                                removeLabel: removeTrackLabel,
+                                isSelectionMode: isSelectionMode,
+                                isSelected: selectedIDs.contains(track.id),
+                                onToggleSelection: {
+                                    if selectedIDs.contains(track.id) {
+                                        selectedIDs.remove(track.id)
+                                    } else {
+                                        selectedIDs.insert(track.id)
+                                    }
+                                }
                             )
                             .padding(.vertical, 1)
                             .padding(.horizontal, 10)
@@ -73,11 +86,77 @@ struct TrackListView: View {
     /// 可点击的列头：点击切换排序，激活列右侧显示升/降序小三角。
     private var header: some View {
         HStack(spacing: 12) {
-            Color.clear.frame(width: 44)
+            Color.clear.frame(width: isSelectionMode ? 28 : 44)
             sortHeaderButton("标题", column: .title, maxWidth: .infinity)
             sortHeaderButton("专辑", column: .album, maxWidth: .infinity)
             sortHeaderButton("时长", column: .duration, width: 48, alignment: .trailing)
-            Color.clear.frame(width: 72)
+
+            // 编辑按钮 / 批量操作区
+            if isSelectionMode {
+                // 全选 / 取消全选
+                Button {
+                    let allIDs = Set(tracks.map(\.id))
+                    if selectedIDs == allIDs && !tracks.isEmpty {
+                        selectedIDs.removeAll()
+                    } else {
+                        selectedIDs = allIDs
+                    }
+                } label: {
+                    Image(systemName: selectedIDs.count == tracks.count && !tracks.isEmpty ? "checkmark.circle.fill" : "checkmark.circle")
+                        .font(.system(size: 11, weight: .regular))
+                        .foregroundStyle(Color.hpAccent)
+                }
+                .buttonStyle(.plain)
+                .frame(width: 22)
+                .help(selectedIDs.count == tracks.count && !tracks.isEmpty ? "取消全选" : "全选")
+
+                // 批量删除
+                Button(role: .destructive) {
+                    let toRemove = tracks.filter { selectedIDs.contains($0.id) }
+                    for track in toRemove {
+                        removeTrack(track)
+                    }
+                    selectedIDs.removeAll()
+                    isSelectionMode = false
+                } label: {
+                    Image(systemName: "trash")
+                        .font(.system(size: 11, weight: .regular))
+                        .foregroundStyle(selectedIDs.isEmpty ? Color.hpTextPrimary.opacity(0.25) : Color.red.opacity(0.75))
+                }
+                .buttonStyle(.plain)
+                .frame(width: 22)
+                .disabled(selectedIDs.isEmpty)
+                .help("删除所选")
+
+                // 取消编辑
+                Button {
+                    isSelectionMode = false
+                    selectedIDs.removeAll()
+                } label: {
+                    Image(systemName: "xmark.circle")
+                        .font(.system(size: 11, weight: .regular))
+                        .foregroundStyle(Color.hpTextPrimary.opacity(0.4))
+                }
+                .buttonStyle(.plain)
+                .frame(width: 22)
+                .help("取消")
+            } else {
+                // 进入编辑模式（只显示图标）
+                Button {
+                    withAnimation(.easeInOut(duration: 0.16)) {
+                        isSelectionMode = true
+                    }
+                } label: {
+                    Image(systemName: "checkmark.circle")
+                        .font(.system(size: 11, weight: .regular))
+                        .foregroundStyle(Color.hpTextPrimary.opacity(0.35))
+                }
+                .buttonStyle(.plain)
+                .frame(width: 22)
+                .help("编辑")
+            }
+
+            Color.clear.frame(width: 50)
         }
         .font(.system(size: 10, weight: .semibold))
         .tracking(0.45)
@@ -133,6 +212,11 @@ struct TrackRow: View {
     let remove: () -> Void
     var removeLabel = "从资料库移除"
 
+    // 多选模式
+    var isSelectionMode = false
+    var isSelected = false
+    var onToggleSelection: (() -> Void)? = nil
+
     @EnvironmentObject private var libraryStore: LibraryStore
     @EnvironmentObject private var playerStore: AudioPlayer
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -141,6 +225,19 @@ struct TrackRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
+            // 多选勾选框
+            if isSelectionMode {
+                Button {
+                    onToggleSelection?()
+                } label: {
+                    Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                        .font(.system(size: 18, weight: .regular))
+                        .foregroundStyle(isSelected ? Color.hpAccent : Color.hpTextPrimary.opacity(0.35))
+                }
+                .buttonStyle(.plain)
+                .frame(width: 28, height: 44)
+            }
+
             ZStack(alignment: .bottomTrailing) {
                 LazyArtworkView(track: track, size: 44, cornerRadius: 9)
 
@@ -254,7 +351,13 @@ struct TrackRow: View {
             }
         }
         .contentShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
-        .onTapGesture(perform: play)
+        .onTapGesture {
+            if isSelectionMode {
+                onToggleSelection?()
+            } else {
+                play()
+            }
+        }
         .onHover { isHovering = $0 }
         .sheet(isPresented: $showingInfo) {
             TrackInfoView(track: track)
@@ -293,6 +396,9 @@ struct TrackRow: View {
     }
 
     private var rowBackground: AnyShapeStyle {
+        if isSelected {
+            return AnyShapeStyle(Color.hpAccent.opacity(0.12))
+        }
         if isCurrent {
             return AnyShapeStyle(LinearGradient.hpSelectedRow)
         }

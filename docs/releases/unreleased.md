@@ -17,6 +17,7 @@
 
 ### 改进
 
+- 歌曲列表多选入口位置调整：原顶部工具栏的「✓ 编辑」胶囊按钮移到歌曲列表列头「时长」右侧的独立区域，仅显示勾选圆图标（去掉「编辑」文字）；进入多选后该区域依次显示全选、删除所选、取消三个纯图标按钮，顶部搜索栏右侧不再有多选胶囊与批量操作条。
 - 随机播放、顺序播放、单曲循环三种模式融合为一个播放模式按钮：每点一下切换一个模式（顺序播放 → 单曲循环 → 随机播放 → 顺序播放），图标随模式 morph：顺序播放为灰色顺序箭头、单曲循环/随机播放时图标高亮。播放页与底部播放条两处同步。
 - 菜单栏「播放」菜单：原「循环模式」子菜单 + 「随机播放」开关合并为「播放模式」子菜单（顺序播放 / 单曲循环 / 随机播放，当前模式打勾）。
 - 首页快捷操作「随机播放」现在会正确同步三态播放模式状态。
@@ -41,6 +42,8 @@
 - `PlayerBar`：删除不再使用的 `QueuePickerMorphSymbol` 组件和 `isQueuePicker` / `onReturnToNowPlaying` 入参。
 - `QueuePanel.swift`：删除不再使用的 `QueuePickerView`。
 - `TrackListView`：新增 `onRemoveTrack` / `removeTrackLabel` 入参，宿主可覆盖行移除动作与菜单文案（默认仍为资料库移除）。
+- 多选状态从 `MainView` 下沉到 `TrackListView` 内部：`@State private var isSelectionMode / selectedIDs` 由列表自管，`TrackRow` 新增 `isSelectionMode / isSelected / onToggleSelection`（多选时行首显示勾选圆钮、点击行切换选中、选中行主题色底）；列头「时长」右侧新增独立编辑区（非编辑态单个 `checkmark.circle` 图标钮，编辑态显示全选/删除/取消三个纯图标钮）。
+- `MainView` 删除顶部工具栏的「编辑」胶囊与批量操作 HStack（已选数量/全选/删除/取消）、对应的 `isSelectionMode / selectedTrackIDs` 状态、`isTrackListSection` 计算属性与切换 destination 时的选择重置；`TrackListView` 调用点不再传多选参数。
 - `HarmonyPlayerApp`：播放菜单改为「播放模式」三态子菜单（`PlaybackMode.allCases`，当前模式打勾）。
 - `HomeView`：快捷「随机播放」改为 `setPlaybackMode(.shuffle)` 后随机点歌。
 - 新增 `Tests/HarmonyPlayerTests/PlaybackModeTests.swift`（3 个用例：三态循环顺序与底层状态同步、直接设置模式、`next` 顺序）。
@@ -67,6 +70,7 @@
 - `swift test`：35/35 通过（新增 3 个 PlaybackMode 用例 + 此前 32 个）。
 - Release 构建分支副本 `dist/漫域音乐-queue-picker-mode.app` 签名后实际运行，等待用户验证：播放页点列表钮整页跳到队列选歌页、图标 morph 成气泡；选歌页点歌立即播放，点气泡整页跳回播放页、图标 morph 回列表；播放模式钮按 顺序 → 单曲循环 → 随机 循环切换。
 - Release 构建分支副本 `dist/漫域音乐-lyrics-preload.app` 签名后实际运行（已并入本分支构建范围），等待用户验证：连续切换多首歌曲时歌词直接出现、不再先闪等待提示；无歌词歌曲显示“本歌曲暂无歌词”；快切期间进度条冻结不虚走，恢复后从 0 平滑起步。
+- `swift test` 全部通过；Release 构建分支副本 `dist/漫域音乐-multiselect-header.app` 签名后实际运行，等待用户验证：顶部工具栏不再有「编辑」胶囊；列头「时长」右侧显示纯勾选圆图标，点击进入多选，区域内切换为全选/删除/取消图标钮，勾选与批量删除行为正常。
 
 ## 已知问题与后续
 

@@ -17,6 +17,7 @@ struct MainView: View {
     @State private var headerSort: TrackSortOrder?
     @State private var headerAscending = true
     @State private var browse = LibraryBrowseSnapshot(request: nil)
+
     @StateObject private var backToTop = BackToTopController()
     /// 进入播放页的入口：决定大封面 matched geometry 用哪个来源（放大成长 vs 平移就位）。
     @State private var nowPlayingEntry: NowPlayingEntry = .playerBar
@@ -314,10 +315,11 @@ struct MainView: View {
                 tracks: sectionDisplayTracks,
                 sortColumn: headerSort,
                 sortAscending: headerAscending,
-                onSortTap: toggleHeaderSort
-            ) { track in
-                play(track, in: sectionDisplayTracks)
-            }
+                onSortTap: toggleHeaderSort,
+                onPlay: { track in
+                    play(track, in: sectionDisplayTracks)
+                }
+            )
         case .albums:
             AlbumGridView(albums: albumGroups) { album in
                 withAnimation(.easeOut(duration: 0.18)) {
