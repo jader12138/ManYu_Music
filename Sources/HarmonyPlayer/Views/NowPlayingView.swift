@@ -18,6 +18,10 @@ struct NowPlayingView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var showingLyricsStyle = false
     @State private var showsVolumeSlider = false
+    /// 歌词面板“呼吸”：连续快速切歌时歌词树原地不重建，只让整块歌词
+    /// 的透明度短暂下沉再恢复，用合成层淡出盖住重排顿挫。
+    @State private var lyricsDimmed = false
+    @State private var lyricsDimmerGeneration = 0
     /// 歌词视图延迟挂载：LyricTimelineView 首次要测量全部歌词行（几百行 Text 布局），
     /// 若与进入播放页的转场挤在同一帧会造成可感的卡顿；先占位等高，落位后再淡入。
     @State private var lyricsReady = false
@@ -574,37 +578,54 @@ struct NowPlayingView: View {
 
     private var lyricsPanel: some View {
         VStack(spacing: 8) {
-            if player.lyricLines.isEmpty {
-                VStack(alignment: .leading, spacing: 12) {
-                    Text(player.lyricsResolved ? "本歌曲暂无歌词" : "正在载入歌词")
-                        .font(.system(size: 21, weight: .semibold))
-                        .foregroundStyle(Color.hpTextPrimary.opacity(0.64))
-                    Text(
-                        player.lyricsResolved
-                            ? "未在歌曲内嵌信息或同名 LRC 文件中找到歌词。"
-                            : "正在读取歌曲的内嵌歌词或同名 LRC 文件…"
+            Group {
+                if player.lyricLines.isEmpty {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text(player.lyricsResolved ? "本歌曲暂无歌词" : "正在载入歌词")
+                            .font(.system(size: 21, weight: .semibold))
+                            .foregroundStyle(Color.hpTextPrimary.opacity(0.64))
+                        Text(
+                            player.lyricsResolved
+                                ? "未在歌曲内嵌信息或同名 LRC 文件中找到歌词。"
+                                : "正在读取歌曲的内嵌歌词或同名 LRC 文件…"
+                        )
+                            .font(.system(size: 11))
+                            .foregroundStyle(Color.hpTextPrimary.opacity(0.42))
+                            .lineSpacing(5)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+                } else if lyricsReady {
+                    LyricTimelineView(
+                        lines: player.lyricLines,
+                        clock: player.clock,
+                        seek: player.seek,
+                        baseFontSize: CGFloat(lyricsFontSize),
+                        fontDesign: lyricsFontDesign,
+                        textColor: lyricsTextColor,
+                        lineSpacingScale: CGFloat(lyricsLineSpacing),
+                        visibleLineCount: Int(lyricsVisibleLines),
+                        lyricOffset: player.lyricOffset
                     )
-                        .font(.system(size: 11))
-                        .foregroundStyle(Color.hpTextPrimary.opacity(0.42))
-                        .lineSpacing(5)
+                    .transition(.opacity)
+                } else {
+                    // 转场期间占住同样的空间，歌词落位后原位淡入，布局不跳动。
+                    Color.clear
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
-            } else if lyricsReady {
-                LyricTimelineView(
-                    lines: player.lyricLines,
-                    clock: player.clock,
-                    seek: player.seek,
-                    baseFontSize: CGFloat(lyricsFontSize),
-                    fontDesign: lyricsFontDesign,
-                    textColor: lyricsTextColor,
-                    lineSpacingScale: CGFloat(lyricsLineSpacing),
-                    visibleLineCount: Int(lyricsVisibleLines),
-                    lyricOffset: player.lyricOffset
-                )
-                .transition(.opacity)
-            } else {
-                // 转场期间占住同样的空间，歌词落位后原位淡入，布局不跳动。
-                Color.clear
+            }
+            // 切歌瞬间内容透明度下沉到 0.5，0.14s 内恢复：纯合成层操作，
+            // 歌词视图身份不变、零布局重建，连续切歌时用淡出盖住重排顿挫。
+            .opacity(lyricsDimmed ? 0.5 : 1)
+            .onChange(of: player.currentTrack?.id) {
+                guard !reduceMotion else { return }
+                lyricsDimmerGeneration += 1
+                let generation = lyricsDimmerGeneration
+                lyricsDimmed = true
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.06) {
+                    guard generation == lyricsDimmerGeneration else { return }
+                    withAnimation(.easeInOut(duration: 0.14)) {
+                        lyricsDimmed = false
+                    }
+                }
             }
 
             HStack(spacing: 8) {
