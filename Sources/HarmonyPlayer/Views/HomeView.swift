@@ -124,9 +124,10 @@ struct HomeView: View {
                 return
             }
 
-            let rawLyrics = await AudioMetadataLoader.lyrics(for: track)
+            // 复用启动预热/播放共用的歌词缓存，同一首歌不重复读盘。
+            let lines = await LyricsCache.shared.load(track: track).value
             guard !Task.isCancelled else { return }
-            loadedFeaturedLyrics = LyricsParser.parse(rawLyrics).map(\.text)
+            loadedFeaturedLyrics = (lines ?? []).map(\.text)
 
             // The player already averaged the cover for the current track: reuse its
             // palette instead of decoding and extracting the same artwork again.
