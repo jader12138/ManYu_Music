@@ -41,9 +41,12 @@
 
 ## 验证
 
-- `swift test --disable-sandbox`：42/42 通过。
-- Release 构建：CFBundleShortVersionString=3.13.0、CFBundleVersion=166、ManyuMusicReleaseName=3.13.0-beta1；`codesign --verify --deep --strict` 通过。
-- 待人工验收：短音频开关重启保持、窗口位置重启恢复、空库引导直出导入面板、关于页信息与 Issues 链接。
+- `swift test --disable-sandbox`：42/42 通过（合并结果 cdd851e 上复跑同样 42/42）。
+- Release 构建：CFBundleShortVersionString=3.13.0、CFBundleVersion=169、ManyuMusicReleaseName=3.13.0-beta1；`lipo -archs` = arm64；`codesign --verify --deep --strict` 通过。
+- DMG：`ManyuMusic-3.13.0-beta1.dmg`（8,762,229 字节，SHA-256 `84f8391eb41bbfd0cff0e198010062ab8f6bce852677970ceed32f8c18f820a0`），挂载校验含 app + Applications 软链、卷内 app 版本与签名通过；公开下载链接 HEAD 200、Content-Length 一致。
+- GitHub Release：id 391573124，https://github.com/jader12138/ManYu_Music/releases/tag/v3.13.0-beta1 ，prerelease、make_latest=false（不顶替 v3.12.0 稳定版）；资产 id 572876043。
+- v3.12.0 Release（id 391546007）正文已 PATCH 更正：仅 Apple 芯片（arm64），不支持 Intel。
+- 人工验收（主人 2026-09-18 确认 OK）：短音频开关重启保持、窗口位置重启恢复、关于页信息与 Issues 入口。
 
 ## 已知问题与后续
 
