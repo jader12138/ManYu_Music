@@ -13,7 +13,7 @@
 
 ### 新增
 
-- 歌曲列表支持自由调整列宽：标题列、专辑列改为固定宽度靠左排列，时长列后右侧让出空余区域；标题/专辑、专辑/时长之间各有一条隐形分隔线（悬停显示浅色高光线、拖拽中变主题色、全高贯穿列头与列表），按住左右拖动即可改变两列宽度，标题列最小 160pt、专辑列最小 120pt，最大宽度自动限制保证时长列与右侧爱心/更多操作区不被挤出窗口；列宽通过 `@AppStorage`（`hp.column.titleWidth` 默认 260、`hp.column.albumWidth` 默认 180）持久化，重启后保持，各歌曲列表页共享。专辑/艺术家详情页与播放页队列列表（无列头）保持原弹性布局不变。
+- 歌曲列表支持自由调整列宽：标题列、专辑列改为固定宽度靠左排列，时长列后右侧让出空余区域；标题/专辑、专辑/时长之间各有一条 13pt 高的灰色短竖线（只在列头高度内显示，常态浅灰、悬停加深、拖拽中最深），按住左右拖动即可改变两列宽度，标题列最小 160pt、专辑列最小 120pt，最大宽度自动限制保证时长列与右侧爱心/更多操作区不被挤出窗口；列宽通过 `@AppStorage`（`hp.column.titleWidth` 默认 260、`hp.column.albumWidth` 默认 180）持久化，重启后保持，各歌曲列表页共享。多选时列头选择图标与歌曲行的爱心/更多操作区整体左移 16pt，为右侧滑出的批量操作按钮让出空间。专辑/艺术家详情页与播放页队列列表（无列头）保持原弹性布局不变。
 - 新增播放页内部「列表 ⇄ 气泡」融合切换钮（位于原循环按钮位置，即上一首按钮左边）：在播放页点列表图标，封面+歌词区域整块切换为当前播放队列的选歌列表（不离开播放页），点任意歌曲立即切换播放，再点气泡图标切回封面+歌词，图标随状态 morph。队列列表行可右键「从队列移除」；队列为空时显示空状态提示。
 
 ### 改进
@@ -47,7 +47,7 @@
 - `MainView` 删除顶部工具栏的「编辑」胶囊与批量操作 HStack（已选数量/全选/删除/取消）、对应的 `isSelectionMode / selectedTrackIDs` 状态、`isTrackListSection` 计算属性与切换 destination 时的选择重置；`TrackListView` 调用点不再传多选参数。
 - `TrackListView` 新增 `addSelection(to:)`：把 `selectedIDs` 对应的全部曲目经 `LibraryStore.add(_:to:)` 批量加入歌单（逐曲去重）；列头子菜单新增 `folder.badge.plus` 图标 `Menu`（歌单列表 + 「新建歌单…」），未选时禁用；新增 `showingCreatePlaylist` 与 `PlaylistNameEditor` sheet，创建歌单后自动装入所选。
 - `TrackRow` 新增 `selectedCount / onBatchAddToPlaylist`；「⋯」菜单与右键菜单内容抽为共用 `@ViewBuilder rowActions`，多选时仅提供「添加到歌单（已选 N 首）」批量子菜单（无歌单时显示禁用占位项），非多选行为不变。
-- 可拖拽列宽：`TrackListView` 列头改为 `HStack(spacing: 0)` 显式固定布局（封面位 44/84 + 12 间隙 + 标题宽 + 12 分隔热区 + 专辑宽 + 12 分隔热区 + 时长 48 + Spacer + 操作区 72）；`@AppStorage` 持久化标题/专辑列宽（Double↔CGFloat），`columnDivider(index:containerWidth:)` 提供 12pt 隐形拖拽热区（`DragGesture` 实时改宽、min/max 钳制、`NSCursor.resizeLeftRight` 光标），高亮线由列表整体 `.overlay(alignment: .topLeading)` 按 `dividerX(_:)` 计算的位置全高绘制（悬停 0.28、拖拽 0.55 主题色）；新增 `ColumnFrame` ViewModifier，`TrackRow` 新增可选 `titleWidth / albumWidth`（nil 时退化为 maxWidth infinity + 无 Spacer 的原弹性布局，供专辑/艺术家详情页与队列列表复用）。
+- 可拖拽列宽：`TrackListView` 列头改为 `HStack(spacing: 0)` 显式固定布局（封面位 44/84 + 12 间隙 + 标题宽 + 12 分隔热区 + 专辑宽 + 12 分隔热区 + 时长 48 + Spacer + 操作区 72）；`@AppStorage` 持久化标题/专辑列宽（Double↔CGFloat），`columnDivider(index:containerWidth:)` 提供 12pt 隐形拖拽热区（`DragGesture` 实时改宽、min/max 钳制、`NSCursor.resizeLeftRight` 光标），列间隙热区内直接 overlay 一条 13pt 高灰色短竖线（仅列头高度内：常态 `hpTextPrimary` 0.16 透明度、悬停 0.38、拖拽 0.55，不再全高贯穿列表）；新增 `ColumnFrame` ViewModifier，`TrackRow` 新增可选 `titleWidth / albumWidth`（nil 时退化为 maxWidth infinity + 无 Spacer 的原弹性布局，供专辑/艺术家详情页与队列列表复用）；多选时列头操作 `ZStack` 与 `TrackRow` 右侧 72pt 操作区均 `offset(x: -16)` 左移，为滑出的批量按钮让出右侧空间。
 - `HarmonyPlayerApp`：播放菜单改为「播放模式」三态子菜单（`PlaybackMode.allCases`，当前模式打勾）。
 - `HomeView`：快捷「随机播放」改为 `setPlaybackMode(.shuffle)` 后随机点歌。
 - 新增 `Tests/HarmonyPlayerTests/PlaybackModeTests.swift`（3 个用例：三态循环顺序与底层状态同步、直接设置模式、`next` 顺序）。

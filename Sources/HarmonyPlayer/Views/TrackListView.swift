@@ -109,15 +109,6 @@ struct TrackListView: View {
                 .scrollBounceBehavior(.basedOnSize)
             }
             .frame(width: geometry.size.width, height: geometry.size.height, alignment: .top)
-            .overlay(alignment: .topLeading) {
-                if showsHeader, let activeDivider {
-                    Rectangle()
-                        .fill(Color.hpAccent.opacity(draggingDivider != nil ? 0.55 : 0.28))
-                        .frame(width: 1)
-                        .offset(x: dividerX(activeDivider))
-                        .allowsHitTesting(false)
-                }
-            }
         }
         .sheet(isPresented: $showingCreatePlaylist) {
             PlaylistNameEditor(
@@ -267,6 +258,8 @@ struct TrackListView: View {
                 }
             }
             .frame(width: 72, alignment: .leading)
+            // 多选时整体左移，给右侧滑出的批量操作按钮让出空间
+            .offset(x: isSelectionMode ? -16 : 0)
         }
         .font(.system(size: 10, weight: .semibold))
         .tracking(0.45)
@@ -310,10 +303,16 @@ struct TrackListView: View {
         .accessibilityAddTraits(.isButton)
     }
 
-    /// 列与列之间 12pt 间隙里的隐形拖拽热区；高亮线由列表整体 overlay 绘制。
+    /// 列与列之间 12pt 间隙里的短灰线 + 拖拽热区；竖线只出现在列头高度内。
     private func columnDivider(index: Int, containerWidth: CGFloat) -> some View {
         Color.clear
             .frame(width: 12, height: headerHeight)
+            .overlay {
+                Rectangle()
+                    .fill(Color.hpTextPrimary.opacity(draggingDivider == index ? 0.55 : (activeDivider == index ? 0.38 : 0.16)))
+                    .frame(width: 1, height: 13)
+                    .allowsHitTesting(false)
+            }
             .contentShape(Rectangle())
             .onHover { hovering in
                 if hovering {
@@ -347,15 +346,6 @@ struct TrackListView: View {
                         draggingDivider = nil
                     }
             )
-    }
-
-    /// 分隔线在列表坐标系中的 x 位置（与歌曲行的列间隙中心一致）。
-    private func dividerX(_ index: Int) -> CGFloat {
-        let base: CGFloat = 22 + (isSelectionMode ? 84 : 44) + 12
-        if index == 1 {
-            return base + titleWidth + 6
-        }
-        return base + titleWidth + 12 + albumWidth + 6
     }
 
     /// 拖拽列宽上限：保证另一列最小宽、时长列与右侧操作区不被挤出窗口。
@@ -484,6 +474,8 @@ struct TrackRow: View {
                 .frame(width: 28)
             }
             .frame(width: 72)
+            // 多选时与列头选择图标一起左移，为批量操作展开按钮让位置
+            .offset(x: isSelectionMode ? -16 : 0)
         }
         .padding(.horizontal, 12)
         .frame(height: 61)
