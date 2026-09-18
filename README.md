@@ -6,7 +6,7 @@
 
 ## 下载安装
 
-在 [GitHub Releases](https://github.com/jader12138/ManYu_Music/releases) 下载最新的 `漫域音乐-<版本>.dmg`，双击挂载后把「漫域音乐」拖入「应用程序」文件夹即可使用（需 macOS 14 或更高版本）。
+在 [GitHub Releases](https://github.com/jader12138/ManYu_Music/releases) 下载最新的 `ManyuMusic-<版本>.dmg`，双击挂载后把「漫域音乐」拖入「应用程序」文件夹即可使用（需 macOS 14 或更高版本）。
 
 应用目前为本地签名、未经过 Apple 公证：首次打开若系统提示「无法验证开发者」，请在应用图标上点右键 → 「打开」确认一次，或前往「系统设置 → 隐私与安全性」点击「仍要打开」。
 
