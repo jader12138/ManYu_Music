@@ -177,16 +177,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             offsetTrafficLights(of: window)
 
             let current = window.frame
-            let targetWidth = min(current.width, maxWidth)
-            let targetHeight = min(current.height, maxHeight)
+            // 存档可能来自老版本或被外部写坏：恢复后双向钳制——超屏收缩，
+            // 小于最小尺寸（840×520）则放大，避免播放条落入异常窄宽布局。
+            let targetWidth = min(max(current.width, 840), maxWidth)
+            let targetHeight = min(max(current.height, 520), maxHeight)
             guard targetWidth != current.width || targetHeight != current.height else { continue }
 
-            let target = NSRect(
-                x: visible.minX + (visible.width - targetWidth) / 2,
-                y: visible.minY + (visible.height - targetHeight) / 2,
-                width: targetWidth,
-                height: targetHeight
-            )
+            // 尺寸被钳制时（存档过小）整体居中；仅超屏收缩时保留原位置锚点。
+            let needsCentering = current.width < 840 || current.height < 520
+            let target: NSRect
+            if needsCentering {
+                target = NSRect(
+                    x: visible.minX + (visible.width - targetWidth) / 2,
+                    y: visible.minY + (visible.height - targetHeight) / 2,
+                    width: targetWidth,
+                    height: targetHeight
+                )
+            } else {
+                // NSRect 原点在左下：保持左上角不动，仅从右/下边收缩。
+                target = NSRect(
+                    x: current.minX,
+                    y: current.maxY - targetHeight,
+                    width: targetWidth,
+                    height: targetHeight
+                )
+            }
             window.setFrame(target, display: true, animate: false)
         }
 

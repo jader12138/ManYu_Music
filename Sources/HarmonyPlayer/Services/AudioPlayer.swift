@@ -85,8 +85,11 @@ final class AudioPlayer: ObservableObject {
     private var didAttemptPlaybackRestore = false
     private let volumeKey = "HarmonyPlayer.playbackVolume"
 
-    init() {
-        let savedVolume = UserDefaults.standard.object(forKey: volumeKey) as? Double
+    private let defaults: UserDefaults
+
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+        let savedVolume = defaults.object(forKey: volumeKey) as? Double
         volume = savedVolume ?? 0.78
         player.volume = Float(volume)
         player.automaticallyWaitsToMinimizeStalling = false
@@ -119,11 +122,14 @@ final class AudioPlayer: ObservableObject {
 
     func restorePlaybackState(from availableTracks: [Track]) {
         guard !didAttemptPlaybackRestore else { return }
+        // 歌库尚未加载完成（tracks 为空）时提前返回，不消耗恢复机会；
+        // 调用方会在 isLoading 变 false 后再次调用。
+        guard !availableTracks.isEmpty else { return }
         didAttemptPlaybackRestore = true
 
         guard rememberPlaybackState, currentTrack == nil else { return }
 
-        let defaults = UserDefaults.standard
+        let defaults = self.defaults
         guard let trackIDString = defaults.string(forKey: PlaybackStateKeys.trackID),
               let trackID = UUID(uuidString: trackIDString),
               let track = availableTracks.first(where: { $0.id == trackID }),
@@ -170,7 +176,7 @@ final class AudioPlayer: ObservableObject {
     }
 
     func clearRememberedPlaybackState() {
-        let defaults = UserDefaults.standard
+        let defaults = self.defaults
         defaults.removeObject(forKey: PlaybackStateKeys.trackID)
         defaults.removeObject(forKey: PlaybackStateKeys.queueIDs)
         defaults.removeObject(forKey: PlaybackStateKeys.currentIndex)
@@ -596,7 +602,6 @@ final class AudioPlayer: ObservableObject {
     }
 
     private var rememberPlaybackState: Bool {
-        let defaults = UserDefaults.standard
         if defaults.object(forKey: Self.rememberPlaybackKey) == nil {
             return true
         }
@@ -616,7 +621,6 @@ final class AudioPlayer: ObservableObject {
         }
 
         lastPersistedSecond = wholeSecond
-        let defaults = UserDefaults.standard
         defaults.set(currentTime, forKey: PlaybackStateKeys.currentTime)
 
         guard force else { return }
@@ -694,10 +698,10 @@ final class AudioPlayer: ObservableObject {
 
     private var lyricOffsetsStore: [String: Double] {
         get {
-            UserDefaults.standard.dictionary(forKey: Self.lyricOffsetsKey) as? [String: Double] ?? [:]
+            defaults.dictionary(forKey: Self.lyricOffsetsKey) as? [String: Double] ?? [:]
         }
         set {
-            UserDefaults.standard.set(newValue, forKey: Self.lyricOffsetsKey)
+            defaults.set(newValue, forKey: Self.lyricOffsetsKey)
         }
     }
 
@@ -843,7 +847,7 @@ final class AudioPlayer: ObservableObject {
     }
 
     private func saveVolume() {
-        UserDefaults.standard.set(volume, forKey: volumeKey)
+        defaults.set(volume, forKey: volumeKey)
     }
 }
 

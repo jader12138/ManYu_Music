@@ -141,6 +141,9 @@ struct MainView: View {
         }
         .onChange(of: library.isLoading) { _, loading in
             guard !loading else { return }
+            // 库从磁盘异步加载，onAppear 时 isLoading 通常仍为 true；
+            // 必须在加载完成这一刻恢复上次播放，否则队列/曲目永远为空。
+            player.restorePlaybackState(from: library.tracks)
             ArtworkPreloader.shared.preloadIfNeeded(tracks: library.tracks)
             LyricsCache.shared.preload(library.tracks)
         }
