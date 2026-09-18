@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 private enum SettingsTab: String, CaseIterable, Identifiable {
@@ -5,6 +6,7 @@ private enum SettingsTab: String, CaseIterable, Identifiable {
     case home
     case playback
     case library
+    case about
 
     var id: String { rawValue }
 
@@ -14,6 +16,7 @@ private enum SettingsTab: String, CaseIterable, Identifiable {
         case .home: "首页"
         case .playback: "播放"
         case .library: "资料库"
+        case .about: "关于"
         }
     }
 
@@ -23,6 +26,7 @@ private enum SettingsTab: String, CaseIterable, Identifiable {
         case .home: "house.fill"
         case .playback: "play.circle.fill"
         case .library: "music.note.list"
+        case .about: "info.circle.fill"
         }
     }
 }
@@ -112,6 +116,7 @@ struct SettingsView: View {
         case .home: homePane
         case .playback: playbackPane
         case .library: libraryPane
+        case .about: aboutPane
         }
     }
 
@@ -513,6 +518,86 @@ struct SettingsView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
+    // MARK: - 关于
+
+    private var aboutPane: some View {
+        VStack(alignment: .leading, spacing: 24) {
+            sectionHeading("关于")
+
+            HStack(spacing: 18) {
+                Image(nsImage: AppInfo.icon)
+                    .resizable()
+                    .interpolation(.high)
+                    .frame(width: 72, height: 72)
+                    .cornerRadius(16)
+                    .shadow(color: .black.opacity(0.18), radius: 10, y: 5)
+
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("漫域音乐")
+                        .font(.system(size: 20, weight: .bold, design: .rounded))
+                        .foregroundStyle(Color.hpTextPrimary)
+                    HStack(spacing: 8) {
+                        Text("版本 \(AppInfo.releaseName)（build \(AppInfo.buildNumber)）")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(Color.hpTextPrimary.opacity(0.55))
+                        if AppInfo.isPrerelease {
+                            Text("内部测试版")
+                                .font(.system(size: 9, weight: .bold))
+                                .foregroundStyle(Color.hpGold)
+                                .padding(.horizontal, 7)
+                                .padding(.vertical, 2)
+                                .background(Color.hpGold.opacity(0.15),
+                                            in: Capsule(style: .continuous))
+                        }
+                    }
+                }
+            }
+            .padding(.vertical, 6)
+
+            Divider().opacity(0.08)
+
+            if AppInfo.isPrerelease {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("这是内部测试版本，可能存在不稳定的情况。")
+                        .font(.system(size: 11))
+                        .foregroundStyle(Color.hpTextPrimary.opacity(0.6))
+                    Text("欢迎把遇到的问题和建议反馈给我们，正式版发布前会持续修复。")
+                        .font(.system(size: 11))
+                        .foregroundStyle(Color.hpTextPrimary.opacity(0.6))
+                }
+
+                Button {
+                    if let url = URL(string: "https://github.com/jader12138/ManYu_Music/issues") {
+                        NSWorkspace.shared.open(url)
+                    }
+                } label: {
+                    Label("在 GitHub 上反馈问题", systemImage: "ant.fill")
+                        .font(.system(size: 11, weight: .semibold))
+                        .frame(height: 30)
+                        .padding(.horizontal, 14)
+                        .foregroundStyle(Color.hpAccent)
+                        .background(Color.hpAccent.opacity(0.09),
+                                    in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                }
+                .buttonStyle(.plain)
+
+                Divider().opacity(0.08)
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("适用系统：macOS 14.0 及以上（Apple 芯片）")
+                    .font(.system(size: 11))
+                    .foregroundStyle(Color.hpTextPrimary.opacity(0.55))
+                if let copyright = AppInfo.copyright {
+                    Text(copyright)
+                        .font(.system(size: 10))
+                        .foregroundStyle(Color.hpTextPrimary.opacity(0.38))
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
     // MARK: - 通用：设置行（标题 + 可选副标题 + 右侧控件）
 
     // MARK: - 辅助：打开文件夹选择面板加入屏蔽
@@ -592,6 +677,37 @@ private struct SleepTimerRow: View {
                 .foregroundStyle(Color.hpTextPrimary.opacity(0.45))
         }
         .padding(.vertical, 12)
+    }
+}
+
+// MARK: - AppInfo
+
+/// 从 Bundle 读取版本/构建信息。`ManyuMusicReleaseName` 由构建脚本写入，
+/// 形如 `3.13.0` 或内测期的 `3.13.0-beta1`；带 "-" 后缀时视为预发布版本。
+enum AppInfo {
+    static var marketingVersion: String {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.0.0"
+    }
+
+    static var buildNumber: String {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "0"
+    }
+
+    static var releaseName: String {
+        Bundle.main.object(forInfoDictionaryKey: "ManyuMusicReleaseName") as? String
+            ?? marketingVersion
+    }
+
+    static var isPrerelease: Bool {
+        releaseName.contains("-")
+    }
+
+    static var copyright: String? {
+        Bundle.main.object(forInfoDictionaryKey: "NSHumanReadableCopyright") as? String
+    }
+
+    static var icon: NSImage {
+        NSImage(named: "AppIcon") ?? NSApplication.shared.applicationIconImage
     }
 }
 

@@ -168,6 +168,8 @@ enum PlaybackMode: String, CaseIterable, Sendable {
 extension Notification.Name {
     static let focusLibrarySearch = Notification.Name("HarmonyPlayer.focusLibrarySearch")
     static let openSettings = Notification.Name("HarmonyPlayer.openSettings")
+    /// 空库引导等入口：跳过设置页，直接弹出"添加文件或文件夹"面板。
+    static let openImportPanel = Notification.Name("HarmonyPlayer.openImportPanel")
 }
 
 

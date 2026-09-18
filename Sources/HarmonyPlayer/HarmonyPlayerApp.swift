@@ -169,6 +169,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 frameView.layer?.isOpaque = false
             }
             window.minSize = NSSize(width: 840, height: 520)
+            // 记住上次窗口大小与位置：有存档时先恢复，再做超屏收缩兜底；
+            // 无存档（首次启动）时 setFrameUsingName 返回 false，保留默认 1080x650。
+            // frameAutosaveName 在当前 SDK 是只读属性，用同名方法设置。
+            window.setFrameUsingName(Self.windowFrameAutosaveName)
+            window.setFrameAutosaveName(Self.windowFrameAutosaveName)
             offsetTrafficLights(of: window)
 
             let current = window.frame
@@ -189,6 +194,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             NSApp.windows.first(where: { $0.isVisible })?.makeFirstResponder(nil)
         }
     }
+
+    /// 窗口大小/位置存档名（NSWindow 自动在 UserDefaults 保存与恢复）。
+    private static let windowFrameAutosaveName = "ManyuMusic.mainWindow"
 
     /// 窗口尺寸变化后重新应用交通灯偏移（带 identifier 防止重复累加）。
     private static let trafficLightResizeObserver: Void = {

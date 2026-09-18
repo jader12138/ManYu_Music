@@ -163,6 +163,10 @@ struct MainView: View {
                 selectedArtist = nil
             }
         }
+        .onReceive(NotificationCenter.default.publisher(for: .openImportPanel)) { _ in
+            // 空库引导：直接弹导入面板，不必先跳设置页。
+            library.presentImportPanel()
+        }
         .onChange(of: destination) { _, _ in
             selectedAlbum = nil
             selectedArtist = nil

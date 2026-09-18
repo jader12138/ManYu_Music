@@ -38,7 +38,11 @@ struct HomeView: View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 22) {
                 hero
-                quickActions
+                // 空库时快捷操作全部是禁用态，藏起来避免首次打开看到一堆无响应按钮；
+                // 空库引导卡片本身已提供"添加音乐文件夹"入口。
+                if !tracks.isEmpty {
+                    quickActions
+                }
 
                 if !tracks.isEmpty {
                     mediaSection(
