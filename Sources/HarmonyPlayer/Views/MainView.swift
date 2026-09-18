@@ -90,6 +90,10 @@ struct MainView: View {
                     Color.clear
                         .frame(width: 238)
                     Color.hpNavy.opacity(0.28)
+                    if showQueue {
+                        Color.hpSurface.opacity(0.94)
+                            .frame(width: 276)
+                    }
                 }
                 .frame(height: 30)
                 .offset(y: -30)

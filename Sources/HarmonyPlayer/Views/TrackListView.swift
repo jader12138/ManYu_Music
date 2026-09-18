@@ -9,6 +9,10 @@ struct TrackListView: View {
     var sortAscending = true
     /// 点击列头回调（升/降序切换逻辑由宿主页处理）。
     var onSortTap: ((TrackSortOrder) -> Void)?
+    /// 自定义行移除动作（队列选歌页用于"从队列移除"）；nil 时走资料库移除。
+    var onRemoveTrack: ((Track) -> Void)?
+    /// 移除菜单项文案（随 onRemoveTrack 场景变化）。
+    var removeTrackLabel = "从资料库移除"
     let onPlay: (Track) -> Void
 
     @EnvironmentObject private var library: LibraryStore
@@ -38,7 +42,8 @@ struct TrackListView: View {
                                 play: { onPlay(track) },
                                 toggleFavorite: { library.toggleFavorite(track) },
                                 reveal: { library.reveal(track) },
-                                remove: { library.remove(track) }
+                                remove: { removeTrack(track) },
+                                removeLabel: removeTrackLabel
                             )
                             .padding(.vertical, 1)
                             .padding(.horizontal, 10)
@@ -57,12 +62,20 @@ struct TrackListView: View {
         }
     }
 
+    private func removeTrack(_ track: Track) {
+        if let onRemoveTrack {
+            onRemoveTrack(track)
+        } else {
+            library.remove(track)
+        }
+    }
+
     /// 可点击的列头：点击切换排序，激活列右侧显示升/降序小三角。
     private var header: some View {
         HStack(spacing: 12) {
             Color.clear.frame(width: 44)
             sortHeaderButton("标题", column: .title, maxWidth: .infinity)
-            sortHeaderButton("专辑", column: .album, width: 170)
+            sortHeaderButton("专辑", column: .album, maxWidth: .infinity)
             sortHeaderButton("时长", column: .duration, width: 48, alignment: .trailing)
             Color.clear.frame(width: 72)
         }
@@ -165,7 +178,7 @@ struct TrackRow: View {
                 .font(.system(size: 11))
                 .foregroundStyle(Color.hpTextPrimary.opacity(0.48))
                 .lineLimit(1)
-                .frame(width: 170, alignment: .leading)
+                .frame(maxWidth: .infinity, alignment: .leading)
 
             Text(track.formattedDuration)
                 .font(.system(size: 10, weight: .medium, design: .monospaced))

@@ -61,21 +61,19 @@ struct HarmonyPlayerApp: App {
 
                 Divider()
 
-                Menu("循环模式") {
-                    ForEach(RepeatMode.allCases, id: \.rawValue) { mode in
+                Menu("播放模式") {
+                    ForEach(PlaybackMode.allCases, id: \.rawValue) { mode in
                         Button {
-                            player.repeatMode = mode
+                            player.setPlaybackMode(mode)
                         } label: {
-                            if player.repeatMode == mode {
-                                Label(mode.title, systemImage: "checkmark")
+                            if player.playbackMode == mode {
+                                Label(mode.helpText, systemImage: "checkmark")
                             } else {
-                                Text(mode.title)
+                                Text(mode.helpText)
                             }
                         }
                     }
                 }
-
-                Toggle("随机播放", isOn: $player.isShuffle)
             }
         }
     }

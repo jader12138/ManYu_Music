@@ -115,11 +115,52 @@ enum RepeatMode: String, Codable, CaseIterable, Sendable {
 
     var isActive: Bool { self != .off }
 
+    var helpText: String {
+        switch self {
+        case .off: "开启列表循环"
+        case .all: "切换为单曲循环"
+        case .one: "关闭循环"
+        }
+    }
+
     mutating func advance() {
         switch self {
         case .off: self = .all
         case .all: self = .one
         case .one: self = .off
+        }
+    }
+}
+
+/// 三态合一的播放模式：顺序播放 → 单曲循环 → 随机播放，点击一个按钮循环切换。
+/// 底层播放推进仍由 AudioPlayer 的 isShuffle / repeatMode 执行。
+enum PlaybackMode: String, CaseIterable, Sendable {
+    case sequential
+    case singleRepeat
+    case shuffle
+
+    var systemImage: String {
+        switch self {
+        case .sequential: "repeat"
+        case .singleRepeat: "repeat.1"
+        case .shuffle: "shuffle"
+        }
+    }
+
+    var helpText: String {
+        switch self {
+        case .sequential: "顺序播放"
+        case .singleRepeat: "单曲循环"
+        case .shuffle: "随机播放"
+        }
+    }
+
+    /// 当前模式下再点一次进入的模式：顺序 → 单曲循环 → 随机 → 顺序。
+    var next: PlaybackMode {
+        switch self {
+        case .sequential: .singleRepeat
+        case .singleRepeat: .shuffle
+        case .shuffle: .sequential
         }
     }
 }
