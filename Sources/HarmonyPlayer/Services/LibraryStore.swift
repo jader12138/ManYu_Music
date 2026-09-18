@@ -21,7 +21,15 @@ final class LibraryStore: ObservableObject {
     @Published private(set) var history: [PlayHistoryEntry] = []
     @Published private(set) var sources: [LibrarySource] = []
     @Published private(set) var blockedFolderPaths: [String] = []
-    @Published var filterShortAudio: Bool = false
+    /// 「不扫描 60 秒以下音频」偏好。属于用户设置而非曲库数据，存 UserDefaults，
+    /// 重启后保持；首次使用（无记录）默认关闭。
+    @Published var filterShortAudio: Bool = UserDefaults.standard.bool(
+        forKey: "ManyuMusic.filterShortAudio"
+    ) {
+        didSet {
+            UserDefaults.standard.set(filterShortAudio, forKey: "ManyuMusic.filterShortAudio")
+        }
+    }
     @Published private(set) var isImporting = false
     @Published var importNotice: String?
 

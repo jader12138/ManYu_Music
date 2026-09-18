@@ -844,9 +844,9 @@ struct EmptyLibraryView: View {
 
             if !isSearching {
                 Button {
-                    NotificationCenter.default.post(name: .openSettings, object: nil)
+                    NotificationCenter.default.post(name: .openImportPanel, object: nil)
                 } label: {
-                    Label("前往设置添加音乐", systemImage: "gearshape.fill")
+                    Label("添加音乐文件夹", systemImage: "folder.badge.plus")
                         .font(.system(size: 12, weight: .semibold))
                         .padding(.horizontal, 18)
                         .padding(.vertical, 10)
@@ -854,7 +854,7 @@ struct EmptyLibraryView: View {
                 }
                 .buttonStyle(AccentFillButtonStyle())
 
-                Text("也可以在设置中导入文件夹")
+                Text("也可以把音乐文件直接拖进窗口")
                     .font(.system(size: 10))
                     .foregroundStyle(Color.hpTextPrimary.opacity(0.32))
             }
