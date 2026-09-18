@@ -17,6 +17,7 @@
 
 ### 改进
 
+- Dock 播放状态图标重做：播放/暂停期间 Dock 图标不再渲染「玻璃底板 + 专辑封面 + 右下角 94pt 小徽标」，改为直接显示一个放满 Dock 图标位的大号蓝白状态图标——蓝色圆底（直径 432/512，近实色的轻微竖向蓝色渐变 + 顶部微弱高光）、外缘内侧 13pt 白色圆描边、中央白色播放状态符号（播放中为两根全圆角暂停竖条：宽 13%、高 38.5%、间距 12.5%；暂停时为白色播放三角），带轻微投影。未载入歌曲或关闭开关时仍恢复深/浅色默认应用图标；设置 → 播放中的开关由「Dock 显示专辑封面」改名为「Dock 显示播放状态图标」。
 - 歌曲列表多选入口位置调整：原顶部工具栏的「✓ 编辑」胶囊按钮移到歌曲列表列头「时长」右侧，图标中心与下方歌曲行的爱心按钮居中对齐，仅显示勾选圆图标（去掉「编辑」文字）；点击图标后，全选、删除所选、取消三个纯图标按钮像子菜单一样从图标右侧滑出（浮层，不挤占列宽），图标自身变为实心高亮，再点一次即完成退出，顶部搜索栏右侧不再有多选胶囊与批量操作条。多选时新增批量「添加到歌单」：列头操作区的文件夹＋图标弹出歌单菜单（含「新建歌单…」，新建后自动把所选歌曲装入新歌单），歌曲行右键/「⋯」菜单在多选时也变为「添加到歌单（已选 N 首）」，一次性加入全部选中歌曲、歌单内自动去重。
 - 随机播放、顺序播放、单曲循环三种模式融合为一个播放模式按钮：每点一下切换一个模式（顺序播放 → 单曲循环 → 随机播放 → 顺序播放），图标随模式 morph：顺序播放为灰色顺序箭头、单曲循环/随机播放时图标高亮。播放页与底部播放条两处同步。
 - 菜单栏「播放」菜单：原「循环模式」子菜单 + 「随机播放」开关合并为「播放模式」子菜单（顺序播放 / 单曲循环 / 随机播放，当前模式打勾）。
@@ -36,6 +37,8 @@
 
 ## 技术变更
 
+- `DockArtworkController` 重写：移除封面底板/阴影渐变、`ArtworkPaletteExtractor` 调色板提取、封面 aspectFill 绘制、后台串行渲染队列与代数号（渲染只剩几条矢量路径，毫秒级，直接在主线程完成）；`makeDockIcon(isPlaying:)` 改为 512px 画布上绘制 432pt 蓝色圆底（`NSGradient` angle -90，顶部 sRGB(0.20,0.52,0.96) → 底部 (0.12,0.41,0.90)）、顶部 6% 白椭圆高光、13pt 白色内缩圆描边、白色暂停双竖条/播放三角（尺寸均按圆直径比例）；`update(artwork:isPlaying:)` 签名保留但 artwork 仅用于判断是否处于播放会话（nil 时恢复默认图标），去重缓存只保留 `renderedPlayingState`，换歌不再触发 Dock 重绘。
+- `SettingsView`：播放设置中开关文案「Dock 显示专辑封面 / 播放时用当前专辑封面替换 Dock 图标」改为「Dock 显示播放状态图标 / 播放时用蓝白播放状态图标替换 Dock 图标」；`showsArtworkKey`（`ManyuMusic.dockArtwork`）与 AppIconStyle 迁移逻辑保持不变。
 - 新增 `PlaybackMode`（`Models.swift`）：`sequential / singleRepeat / shuffle` 三态枚举，提供 `systemImage`（顺序=`arrow.right.to.line`、单曲=`repeat.1`、随机=`shuffle`）、`helpText` 与 `next`（顺序→单曲→随机→顺序）。
 - `AudioPlayer`：新增 `@Published private(set) var playbackMode` 与 `setPlaybackMode(_:)` / `cyclePlaybackMode()`；切换模式时同步底层 `isShuffle` 与 `repeatMode`（顺序=shuffle false/.off，单曲=shuffle false/.one，随机=shuffle true/.off），播放推进、收尾与随机选曲逻辑沿用原有实现。
 - `LyricTimelineView`：`centerActive(in:animated:)` 新增 `leadCompensation` —— 当前行 `activeIndex <= 4` 时对 `baseTarget` 叠加向上偏移（`max(0, 4 - activeIndex) * 9`，activeIndex=0 → 36pt、activeIndex=4 → 0pt），前几句歌词上移避免「上方空一大块」；补偿随着逐行推进自然衰减，叠在原有 0.7s easeInOut 动画上，过渡平滑。
@@ -73,6 +76,7 @@
 - Release 构建分支副本 `dist/漫域音乐-queue-picker-mode.app` 签名后实际运行，等待用户验证：播放页点列表钮整页跳到队列选歌页、图标 morph 成气泡；选歌页点歌立即播放，点气泡整页跳回播放页、图标 morph 回列表；播放模式钮按 顺序 → 单曲循环 → 随机 循环切换。
 - Release 构建分支副本 `dist/漫域音乐-lyrics-preload.app` 签名后实际运行（已并入本分支构建范围），等待用户验证：连续切换多首歌曲时歌词直接出现、不再先闪等待提示；无歌词歌曲显示“本歌曲暂无歌词”；快切期间进度条冻结不虚走，恢复后从 0 平滑起步。
 - `swift test` 全部通过；Release 构建分支副本 `dist/漫域音乐-multiselect-header.app` 签名后实际运行，等待用户验证：顶部工具栏不再有「编辑」胶囊；列头「时长」右侧显示纯勾选圆图标，点击进入多选：全选圆钮出现在列头最左、行勾选框正上方，编辑图标右侧滑出添加到歌单/删除钮，无取消叉；勾选、全选与批量删除行为正常。
+- `swift test` 全部通过；Release 构建分支副本 `dist/漫域音乐-dock-badge.app` 签名后实际运行，等待用户验证：播放歌曲时 Dock 图标为放满图标位的蓝色圆底白边 + 白色暂停双竖条，暂停变播放三角，停止播放/关闭开关恢复默认应用图标。
 
 ## 已知问题与后续
 
