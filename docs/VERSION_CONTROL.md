@@ -19,17 +19,16 @@ git pull --ff-only
 git switch -c codex/feature-name
 ```
 
-完成代码和文档后：
+开发期间只做本地提交，功能分支不要推送到 GitHub：
 
 ```bash
 git status
 git diff --check
 git add <changed-files>
 git commit -m "feat: concise description"
-git push -u origin codex/feature-name
 ```
 
-不要直接在 `main` 上开发，也不要在未获批时合并功能分支。
+不要直接在 `main` 上开发，也不要在未获批时合并功能分支。功能分支在开发期间一律不推送 GitHub；只有主人明确说"上传"时，才推送分支，并在同一步完成合并（流程见下节）。
 
 ## 文档更新要求
 
@@ -70,19 +69,20 @@ git push -u origin codex/feature-name
 - `CHANGELOG.md`、README 或相关文档已更新
 - 较大更新已写入 `docs/releases/unreleased.md`
 
-合并时保留功能分支历史：
+主人明确说"上传"（即合并批准）时，先推送功能分支到 GitHub，再合并并保留分支历史：
 
 ```bash
+git push -u origin codex/feature-name
 git switch main
 git pull --ff-only
 git merge --no-ff codex/feature-name
 ```
 
-推送并验证：
+推送主线并验证：
 
 ```bash
 git push origin main
-git ls-remote origin refs/heads/main
+git ls-remote origin refs/heads/main refs/heads/codex/feature-name
 ```
 
 合并完成后立即删除已经用完的功能分支：

@@ -7,7 +7,8 @@ These instructions are mandatory for every coding task in this repository.
 - Never develop features directly on `main`.
 - Before making changes, fetch the latest `origin` and create a branch from `main` using the `codex/<short-feature-name>` naming pattern.
 - Create a new `codex/*` branch for each feature, fix, or documentation update.
-- Commit and push the feature branch to GitHub when a coherent milestone is complete.
+- During development, commit locally only. Do not push the feature branch to GitHub at every milestone.
+- Push the feature branch only when the user explicitly says to upload it. That upload request is also the merge approval: in the same step push the branch, merge it into `main`, push `main`, and delete the branch both locally and on the remote.
 - Do not merge into `main` until the user explicitly approves the merge.
 - Do not create a release tag or publish a release until the user explicitly approves publication.
 - After the branch is merged into `main` or its changes are otherwise incorporated, delete the local and remote branch.
@@ -46,7 +47,7 @@ Before asking for merge approval:
 
 After explicit approval only:
 
-1. Merge the approved `codex/*` branch into `main`.
+1. Push the approved `codex/*` branch to GitHub, then merge it into `main`.
 2. Update `VERSION`, `CHANGELOG.md`, `docs/releases/unreleased.md`, and create `docs/releases/vX.Y.Z.md`.
 3. Update the release index without deleting any earlier version record.
 4. Build and verify the release.
