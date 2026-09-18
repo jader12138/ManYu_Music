@@ -18,6 +18,14 @@ enum EmbeddedMetadataReader {
         }
     }
 
+    /// 只读歌词的轻量路径：FLAC 规范只允许一个 VORBIS_COMMENT 块，
+    /// 解析到该块即可结束遍历；封面（PICTURE）等大块一律 seek 跳过，
+    /// 不把几 MB 的图片数据读进内存。供启动批量预热歌词使用。
+    static func readLyrics(from url: URL) -> String? {
+        guard url.pathExtension.lowercased() == "flac" else { return nil }
+        return readFLACLyrics(from: url)
+    }
+
     private static func readFLAC(from url: URL) -> EmbeddedAudioMetadata? {
         guard let handle = try? FileHandle(forReadingFrom: url) else { return nil }
         defer { try? handle.close() }
@@ -56,6 +64,44 @@ enum EmbeddedMetadataReader {
         }
 
         return result
+    }
+
+    private static func readFLACLyrics(from url: URL) -> String? {
+        guard let handle = try? FileHandle(forReadingFrom: url) else { return nil }
+        defer { try? handle.close() }
+
+        guard let signature = try? readExactly(handle, count: 4),
+              signature == Data("fLaC".utf8) else {
+            return nil
+        }
+
+        var reachedLastBlock = false
+
+        while !reachedLastBlock {
+            guard let header = try? readExactly(handle, count: 4), header.count == 4 else {
+                break
+            }
+
+            let blockType = header[0] & 0x7f
+            reachedLastBlock = (header[0] & 0x80) != 0
+            let length = Int(header[1]) << 16 | Int(header[2]) << 8 | Int(header[3])
+
+            guard length >= 0, length < 256 * 1024 * 1024 else { break }
+
+            switch blockType {
+            case 4:
+                // 唯一的 VORBIS_COMMENT 块：取出歌词即可结束，无需再遍历后续封面块。
+                guard let payload = try? readExactly(handle, count: length) else { return nil }
+                var metadata = EmbeddedAudioMetadata()
+                parseVorbisComments(payload, into: &metadata)
+                return metadata.lyrics
+            default:
+                // 封面等其他块只移动文件偏移，不读取内容。
+                guard (try? skip(handle, count: length)) != nil else { return nil }
+            }
+        }
+
+        return nil
     }
 
     private static func parseVorbisComments(

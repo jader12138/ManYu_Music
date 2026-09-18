@@ -54,10 +54,11 @@ enum AudioMetadataLoader {
             return lrc
         }
 
+        // 歌词只读路径：跳过 FLAC 封面块等 MB 级负载，批量预热全曲库时不读图片数据。
         let embedded = await Task.detached(priority: .utility) {
-            EmbeddedMetadataReader.read(from: track.url)
+            EmbeddedMetadataReader.readLyrics(from: track.url)
         }.value
-        if let lyrics = embedded?.lyrics,
+        if let lyrics = embedded,
            !lyrics.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             return lyrics
         }

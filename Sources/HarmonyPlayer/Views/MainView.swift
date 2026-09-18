@@ -126,6 +126,8 @@ struct MainView: View {
             if !library.isLoading {
                 player.restorePlaybackState(from: library.tracks)
                 ArtworkPreloader.shared.preloadIfNeeded(tracks: library.tracks)
+                // 歌词预热不绑封面开关：纯文本开销小，提前解析后切歌不再闪占位。
+                LyricsCache.shared.preload(library.tracks)
             }
             updateWindowBackground()
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
@@ -135,6 +137,7 @@ struct MainView: View {
         .onChange(of: library.isLoading) { _, loading in
             guard !loading else { return }
             ArtworkPreloader.shared.preloadIfNeeded(tracks: library.tracks)
+            LyricsCache.shared.preload(library.tracks)
         }
         .task(id: browseRequest) {
             await refreshBrowseSnapshot()

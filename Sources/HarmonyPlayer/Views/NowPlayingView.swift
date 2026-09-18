@@ -576,10 +576,14 @@ struct NowPlayingView: View {
         VStack(spacing: 8) {
             if player.lyricLines.isEmpty {
                 VStack(alignment: .leading, spacing: 12) {
-                    Text("暂无可显示的歌词")
+                    Text(player.lyricsResolved ? "本歌曲暂无歌词" : "正在载入歌词")
                         .font(.system(size: 21, weight: .semibold))
                         .foregroundStyle(Color.hpTextPrimary.opacity(0.64))
-                    Text("正在等待歌曲的内嵌歌词或同名 LRC 文件。")
+                    Text(
+                        player.lyricsResolved
+                            ? "未在歌曲内嵌信息或同名 LRC 文件中找到歌词。"
+                            : "正在读取歌曲的内嵌歌词或同名 LRC 文件…"
+                    )
                         .font(.system(size: 11))
                         .foregroundStyle(Color.hpTextPrimary.opacity(0.42))
                         .lineSpacing(5)

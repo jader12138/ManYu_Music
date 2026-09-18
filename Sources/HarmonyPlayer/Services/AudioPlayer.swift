@@ -29,6 +29,9 @@ final class AudioPlayer: ObservableObject {
     @Published private(set) var orbPrimaryImage: NSImage?
     @Published private(set) var orbSecondaryImage: NSImage?
     @Published private(set) var lyricLines: [LyricLine] = []
+    /// 当前歌曲的歌词读取是否已落定（有歌词或确认无歌词）。
+    /// 未落定时播放页显示“正在等待歌词”，落定且为空才显示“暂无歌词”。
+    @Published private(set) var lyricsResolved = false
     @Published private(set) var queue: [Track] = []
     @Published private(set) var currentIndex: Int?
     @Published private(set) var sleepTimerEnd: Date?
@@ -151,7 +154,9 @@ final class AudioPlayer: ObservableObject {
         observeStatus(of: item)
         refreshDuration(for: track)
         loadArtwork(for: track)
-        loadLyrics(for: track)
+        lyricLines = []
+        lyricsResolved = false
+        prepareLyrics(for: track)
         updateNowPlaying()
     }
 
@@ -353,6 +358,8 @@ final class AudioPlayer: ObservableObject {
         currentTime = 0
         duration = track.duration
         lyricLines = []
+        lyricsResolved = false
+        prepareLyrics(for: track)
 
         // Keep the previous artwork and Dock icon visible until the next
         // track's artwork has loaded. This removes the one-frame Dock flicker.
@@ -367,7 +374,6 @@ final class AudioPlayer: ObservableObject {
         observeStatus(of: item)
         refreshDuration(for: track)
         loadArtwork(for: track)
-        loadLyrics(for: track)
         persistPlaybackState(force: true)
         updateNowPlaying()
         scheduleMemoryRelease()
@@ -557,12 +563,37 @@ final class AudioPlayer: ObservableObject {
             .filter { !$0.isEmpty }
     }
 
-    private func loadLyrics(for track: Track) {
+    /// 歌词在切歌的同一轮状态更新中尽量同步落位（启动预热/上一首时已提前
+    /// 解析进缓存），未命中才异步读取——避免先闪“正在等待歌词”再换正文。
+    private func prepareLyrics(for track: Track) {
         restoreLyricOffset(for: track)
-        Task {
-            let lyrics = await AudioMetadataLoader.lyrics(for: track)
-            guard self.currentTrack?.id == track.id else { return }
-            self.lyricLines = LyricsParser.parse(lyrics)
+
+        if let immediate = LyricsCache.shared.immediateResult(for: track.id) {
+            lyricLines = immediate.lines
+            lyricsResolved = true
+        } else {
+            let loading = LyricsCache.shared.load(track: track)
+            Task { @MainActor [weak self] in
+                let lines = await loading.value
+                guard let self, self.currentTrack?.id == track.id else { return }
+                self.lyricLines = lines ?? []
+                self.lyricsResolved = true
+            }
+        }
+
+        prefetchUpcomingLyrics()
+    }
+
+    /// 顺序播放时队列接下来的两首最可能被切到，提前发起读取；
+    /// 随机模式的下一首不可预测，由启动时的全库预热兜底。
+    private func prefetchUpcomingLyrics() {
+        guard let currentIndex, !queue.isEmpty else { return }
+        let picks = (1...2).compactMap { step -> Track? in
+            let index = currentIndex + step
+            return queue.indices.contains(index) ? queue[index] : nil
+        }
+        if !picks.isEmpty {
+            LyricsCache.shared.preloadNext(picks)
         }
     }
 
