@@ -86,7 +86,9 @@ struct TrackListView: View {
     /// 可点击的列头：点击切换排序，激活列右侧显示升/降序小三角。
     private var header: some View {
         HStack(spacing: 12) {
-            Color.clear.frame(width: isSelectionMode ? 28 : 44)
+            // 多选时行首出现 28pt 勾选框把行内容向右推，列头占位同步变为
+            // 28(勾选框)+12(间距)+44(封面)=84，保证列头文字与行内容同向同幅右移并对齐。
+            Color.clear.frame(width: isSelectionMode ? 84 : 44)
             sortHeaderButton("标题", column: .title, maxWidth: .infinity)
             sortHeaderButton("专辑", column: .album, maxWidth: .infinity)
             sortHeaderButton("时长", column: .duration, width: 48, alignment: .trailing)

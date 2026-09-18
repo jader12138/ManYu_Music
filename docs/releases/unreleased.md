@@ -42,7 +42,7 @@
 - `PlayerBar`：删除不再使用的 `QueuePickerMorphSymbol` 组件和 `isQueuePicker` / `onReturnToNowPlaying` 入参。
 - `QueuePanel.swift`：删除不再使用的 `QueuePickerView`。
 - `TrackListView`：新增 `onRemoveTrack` / `removeTrackLabel` 入参，宿主可覆盖行移除动作与菜单文案（默认仍为资料库移除）。
-- 多选状态从 `MainView` 下沉到 `TrackListView` 内部：`@State private var isSelectionMode / selectedIDs` 由列表自管，`TrackRow` 新增 `isSelectionMode / isSelected / onToggleSelection`（多选时行首显示勾选圆钮、点击行切换选中、选中行主题色底）；列头「时长」右侧新增固定 72pt 宽 `ZStack` 编辑区（与行尾爱心+更多区同宽）：入口 `checkmark.circle` 图标钮 `offset(x: 10)` 与下方爱心中心对齐，编辑态变实心高亮且再点退出；全选/删除/取消三个 18pt 宽图标钮作为浮层 `offset(x: 32)` 从右侧以 `.move(edge: .trailing) + opacity` 滑出，不参与 HStack 布局、不挤占列宽。
+- 多选状态从 `MainView` 下沉到 `TrackListView` 内部：`@State private var isSelectionMode / selectedIDs` 由列表自管，`TrackRow` 新增 `isSelectionMode / isSelected / onToggleSelection`（多选时行首显示勾选圆钮、点击行切换选中、选中行主题色底）；列头首列占位在多选时由 44pt 变为 84pt（28 勾选框 + 12 间距 + 44 封面），使列头文字与歌曲行内容同向同幅右移 40pt 并保持列对齐，不再向左收缩；列头「时长」右侧新增固定 72pt 宽 `ZStack` 编辑区（与行尾爱心+更多区同宽）：入口 `checkmark.circle` 图标钮 `offset(x: 10)` 与下方爱心中心对齐，编辑态变实心高亮且再点退出；全选/删除/取消三个 18pt 宽图标钮作为浮层 `offset(x: 32)` 从右侧以 `.move(edge: .trailing) + opacity` 滑出，不参与 HStack 布局、不挤占列宽。
 - `MainView` 删除顶部工具栏的「编辑」胶囊与批量操作 HStack（已选数量/全选/删除/取消）、对应的 `isSelectionMode / selectedTrackIDs` 状态、`isTrackListSection` 计算属性与切换 destination 时的选择重置；`TrackListView` 调用点不再传多选参数。
 - `HarmonyPlayerApp`：播放菜单改为「播放模式」三态子菜单（`PlaybackMode.allCases`，当前模式打勾）。
 - `HomeView`：快捷「随机播放」改为 `setPlaybackMode(.shuffle)` 后随机点歌。
