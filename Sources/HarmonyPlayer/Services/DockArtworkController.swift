@@ -1,22 +1,22 @@
 import AppKit
 
-/// 播放中把 Dock 图标替换为大号蓝白播放状态图标（蓝色圆底 + 白色描边 +
-/// 白色暂停双竖条/播放三角），停止播放或关闭开关时恢复默认应用图标。
 @MainActor
 final class DockArtworkController {
     static let shared = DockArtworkController()
 
     static let showsArtworkKey = "ManyuMusic.dockArtwork"
 
+    private var renderedArtwork: NSImage?
     private var renderedPlayingState: Bool?
     private var renderedForSetting = false
 
+    /// 图标渲染（512px 画布 + 阴影 + 渐变 + 封面主色提取）是重活，放到后台串行
+    /// 队列执行；回主线程只做最终赋值。代数号用于丢弃过期的在途渲染。
+    private let renderQueue = DispatchQueue(label: "ManyuMusic.dockArtworkRender", qos: .userInitiated)
+    private var renderGeneration = 0
+
     private init() {}
 
-    /// - Parameters:
-    ///   - artwork: 当前曲目封面。新图标不再使用封面，仅用于判断是否处于播放会话
-    ///     （没有载入歌曲时恢复默认应用图标）。
-    ///   - isPlaying: true 显示暂停双竖条，false 显示播放三角。
     func update(artwork: NSImage?, isPlaying: Bool) {
         let enabled: Bool
         if UserDefaults.standard.object(forKey: Self.showsArtworkKey) == nil {
@@ -25,35 +25,55 @@ final class DockArtworkController {
             enabled = UserDefaults.standard.bool(forKey: Self.showsArtworkKey)
         }
 
-        guard enabled, artwork != nil else {
+        guard enabled else {
             restoreDefaultIcon()
             return
         }
 
-        guard renderedPlayingState != isPlaying || !renderedForSetting else {
+        guard let artwork else {
+            restoreDefaultIcon()
             return
         }
 
+        guard renderedArtwork !== artwork
+                || renderedPlayingState != isPlaying
+                || !renderedForSetting else {
+            return
+        }
+
+        renderedArtwork = artwork
         renderedPlayingState = isPlaying
         renderedForSetting = true
 
-        let icon = Self.makeDockIcon(isPlaying: isPlaying)
-        NSApplication.shared.applicationIconImage = icon
-        NSApplication.shared.dockTile.display()
+        renderGeneration += 1
+        let generation = renderGeneration
+        let source = artwork
+        renderQueue.async {
+            let icon = Self.makeDockIcon(artwork: source, isPlaying: isPlaying)
+            DispatchQueue.main.async {
+                guard generation == self.renderGeneration else { return }
+                NSApplication.shared.applicationIconImage = icon
+                NSApplication.shared.dockTile.display()
+            }
+        }
     }
 
     func refreshSetting() {
-        renderedPlayingState = nil
+        renderGeneration += 1
         renderedForSetting = false
+        renderedArtwork = nil
+        renderedPlayingState = nil
     }
 
     private func restoreDefaultIcon() {
+        renderGeneration += 1
         AppIconStyleManager.apply()
+        renderedArtwork = nil
         renderedPlayingState = nil
         renderedForSetting = false
     }
 
-    private static func makeDockIcon(isPlaying: Bool) -> NSImage {
+    private static func makeDockIcon(artwork: NSImage, isPlaying: Bool) -> NSImage {
         let size = NSSize(width: 512, height: 512)
         let icon = NSImage(size: size)
         icon.lockFocus()
@@ -61,90 +81,107 @@ final class DockArtworkController {
         NSGraphicsContext.current?.imageInterpolation = .high
 
         let canvas = NSRect(origin: .zero, size: size)
-        // 圆底占满绝大部分画布，只留一圈投影空间。
-        let circleRect = canvas.insetBy(dx: 40, dy: 40)
-        let circlePath = NSBezierPath(ovalIn: circleRect)
+        let plateRect = canvas.insetBy(dx: 16, dy: 16)
+        let artworkPadding: CGFloat = 30
+        let artworkRect = plateRect.insetBy(dx: artworkPadding, dy: artworkPadding)
 
-        // 投影
+        let palette = ArtworkPaletteExtractor.palette(from: artwork)
+        let platePrimary = palette.primary.blended(withFraction: 0.38, of: .white) ?? palette.primary
+        let plateSecondary = palette.secondary.blended(withFraction: 0.30, of: .white) ?? palette.secondary
+
+        let platePath = NSBezierPath(roundedRect: plateRect, xRadius: 108, yRadius: 108)
         NSGraphicsContext.saveGraphicsState()
-        let shadow = NSShadow()
-        shadow.shadowColor = NSColor.black.withAlphaComponent(0.22)
-        shadow.shadowBlurRadius = 20
-        shadow.shadowOffset = NSSize(width: 0, height: -7)
-        shadow.set()
-        NSColor.black.withAlphaComponent(0.001).setFill()
-        circlePath.fill()
+        let plateShadow = NSShadow()
+        plateShadow.shadowColor = NSColor.black.withAlphaComponent(0.20)
+        plateShadow.shadowBlurRadius = 18
+        plateShadow.shadowOffset = NSSize(width: 0, height: -5)
+        plateShadow.set()
+        NSColor.white.withAlphaComponent(0.24).setFill()
+        platePath.fill()
         NSGraphicsContext.restoreGraphicsState()
 
-        // 蓝色圆底（接近实色、带极轻微的竖向深浅过渡）
-        let blueTop = NSColor(srgbRed: 0.20, green: 0.52, blue: 0.96, alpha: 1)
-        let blueBottom = NSColor(srgbRed: 0.12, green: 0.41, blue: 0.90, alpha: 1)
-        NSGradient(colors: [blueTop, blueBottom])?.draw(in: circlePath, angle: -90)
-
-        // 顶部微弱高光，增加一点立体感
         NSGraphicsContext.saveGraphicsState()
-        circlePath.addClip()
-        let sheenRect = NSRect(
-            x: circleRect.minX + circleRect.width * 0.12,
-            y: circleRect.midY,
-            width: circleRect.width * 0.76,
-            height: circleRect.height * 0.46
-        )
-        let sheen = NSBezierPath(ovalIn: sheenRect)
-        NSColor.white.withAlphaComponent(0.06).setFill()
-        sheen.fill()
+        platePath.addClip()
+        NSGradient(
+            colors: [
+                platePrimary.withAlphaComponent(0.30),
+                plateSecondary.withAlphaComponent(0.20),
+                NSColor.white.withAlphaComponent(0.16)
+            ]
+        )?.draw(in: plateRect, angle: -35)
         NSGraphicsContext.restoreGraphicsState()
 
-        // 白色圆描边（位于圆底外缘内侧）
-        let ringWidth: CGFloat = 13
-        let ringPath = NSBezierPath(
-            ovalIn: circleRect.insetBy(dx: ringWidth / 2, dy: ringWidth / 2)
+        platePath.lineWidth = 1.5
+        NSColor.white.withAlphaComponent(0.28).setStroke()
+        platePath.stroke()
+
+        let artworkPath = NSBezierPath(roundedRect: artworkRect, xRadius: 88, yRadius: 88)
+        NSGraphicsContext.saveGraphicsState()
+        artworkPath.addClip()
+        let targetAspect = artworkRect.width / artworkRect.height
+        let sourceRect = aspectFillRect(for: artwork.size, targetAspect: targetAspect)
+        artwork.draw(
+            in: artworkRect,
+            from: sourceRect,
+            operation: .sourceOver,
+            fraction: 1
         )
-        ringPath.lineWidth = ringWidth
+        NSGraphicsContext.restoreGraphicsState()
+
+        // 右下角大号播放状态徽标：纯蓝圆底 + 白色描边 + 白色暂停/播放符号。
+        let badgeSize: CGFloat = 140
+        let badgeRect = NSRect(
+            x: plateRect.maxX - badgeSize - 16,
+            y: plateRect.minY + 6,
+            width: badgeSize,
+            height: badgeSize
+        )
+        let badgePath = NSBezierPath(ovalIn: badgeRect)
+
+        NSGraphicsContext.saveGraphicsState()
+        let badgeShadow = NSShadow()
+        badgeShadow.shadowColor = NSColor.black.withAlphaComponent(0.28)
+        badgeShadow.shadowBlurRadius = 16
+        badgeShadow.shadowOffset = NSSize(width: 0, height: -4)
+        badgeShadow.set()
+        let badgeBlueTop = NSColor(srgbRed: 0.22, green: 0.52, blue: 0.97, alpha: 1)
+        let badgeBlueBottom = NSColor(srgbRed: 0.14, green: 0.43, blue: 0.92, alpha: 1)
+        NSGradient(colors: [badgeBlueTop, badgeBlueBottom])?.draw(in: badgePath, angle: -90)
+        NSGraphicsContext.restoreGraphicsState()
+
+        // 白色圆描边
+        let badgeRingWidth: CGFloat = 10
+        let badgeRing = NSBezierPath(
+            ovalIn: badgeRect.insetBy(dx: badgeRingWidth / 2, dy: badgeRingWidth / 2)
+        )
+        badgeRing.lineWidth = badgeRingWidth
         NSColor.white.setStroke()
-        ringPath.stroke()
+        badgeRing.stroke()
 
-        // 白色播放状态符号
         NSColor.white.setFill()
         if isPlaying {
-            let diameter = circleRect.width
-            let barWidth = diameter * 0.130
-            let barHeight = diameter * 0.385
-            let spacing = diameter * 0.125
+            let barWidth = badgeSize * 0.135
+            let barHeight = badgeSize * 0.40
+            let spacing = badgeSize * 0.12
             let totalWidth = barWidth * 2 + spacing
-            let leftX = circleRect.midX - totalWidth / 2
-            let barY = circleRect.midY - barHeight / 2
+            let leftX = badgeRect.midX - totalWidth / 2
+            let barY = badgeRect.midY - barHeight / 2
             NSBezierPath(
                 roundedRect: NSRect(x: leftX, y: barY, width: barWidth, height: barHeight),
                 xRadius: barWidth / 2,
                 yRadius: barWidth / 2
             ).fill()
             NSBezierPath(
-                roundedRect: NSRect(
-                    x: leftX + barWidth + spacing,
-                    y: barY,
-                    width: barWidth,
-                    height: barHeight
-                ),
+                roundedRect: NSRect(x: leftX + barWidth + spacing, y: barY, width: barWidth, height: barHeight),
                 xRadius: barWidth / 2,
                 yRadius: barWidth / 2
             ).fill()
         } else {
-            // 播放三角：左缘留视觉补偿，整体略向右移。
-            let scale = circleRect.width / 94
+            let scale = badgeSize / 94
             let path = NSBezierPath()
-            path.move(to: NSPoint(
-                x: circleRect.midX - 12 * scale,
-                y: circleRect.midY - 19 * scale
-            ))
-            path.line(to: NSPoint(
-                x: circleRect.midX + 21 * scale,
-                y: circleRect.midY
-            ))
-            path.line(to: NSPoint(
-                x: circleRect.midX - 12 * scale,
-                y: circleRect.midY + 19 * scale
-            ))
+            path.move(to: NSPoint(x: badgeRect.midX - 12 * scale, y: badgeRect.midY - 19 * scale))
+            path.line(to: NSPoint(x: badgeRect.midX + 21 * scale, y: badgeRect.midY))
+            path.line(to: NSPoint(x: badgeRect.midX - 12 * scale, y: badgeRect.midY + 19 * scale))
             path.close()
             path.fill()
         }
@@ -152,5 +189,30 @@ final class DockArtworkController {
         icon.unlockFocus()
         icon.isTemplate = false
         return icon
+    }
+
+    private static func aspectFillRect(for sourceSize: NSSize, targetAspect: CGFloat) -> NSRect {
+        guard sourceSize.width > 0, sourceSize.height > 0 else {
+            return NSRect(origin: .zero, size: sourceSize)
+        }
+
+        let sourceAspect = sourceSize.width / sourceSize.height
+        if sourceAspect > targetAspect {
+            let width = sourceSize.height * targetAspect
+            return NSRect(
+                x: (sourceSize.width - width) / 2,
+                y: 0,
+                width: width,
+                height: sourceSize.height
+            )
+        } else {
+            let height = sourceSize.width / targetAspect
+            return NSRect(
+                x: 0,
+                y: (sourceSize.height - height) / 2,
+                width: sourceSize.width,
+                height: height
+            )
+        }
     }
 }

@@ -290,9 +290,9 @@ struct SettingsView: View {
         VStack(alignment: .leading, spacing: 0) {
             sectionHeading("播放")
 
-            // Dock 播放状态图标
-            row(title: "Dock 显示播放状态图标",
-                subtitle: "播放时用蓝白播放状态图标替换 Dock 图标") {
+            // Dock 封面
+            row(title: "Dock 显示专辑封面",
+                subtitle: "播放时用当前专辑封面替换 Dock 图标，右下角显示播放状态") {
                 Toggle("", isOn: Binding(
                     get: { showDockArtwork },
                     set: { showDockArtwork = $0; player.refreshDockIcon() }
