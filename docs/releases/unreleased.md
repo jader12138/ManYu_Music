@@ -32,11 +32,25 @@
 
 ### 修复
 
+- 修复设置中移除音乐文件夹（来源）后歌曲数量不减少的问题：来源清单此前只存在于内存，重新添加文件夹会触发扫描，而扫描进行中移除来源时在途导入落库会把刚删掉的歌曲全部合并回来。现在来源会持久化显示，移除来源立即删除其下歌曲，并同步清理收藏/播放历史/歌单引用；扫描进行中移除也有来源前缀级屏蔽，歌曲不会复活；路径统一标准化并解析符号链接，软链/别名形式选中的文件夹同样生效。
 - 修复每切换一首歌曲歌词区域都先显示等待提示、几百毫秒后再替换为歌词造成跳动的问题（大部分歌曲本来就有歌词）。
 - 修复快速连切时播放条虚走、恢复播放后跳回 0 的问题：切歌耗时不再计入播放进度。
 
+### 资料库来源管理（本次新上线）
+
+- 设置 → 资料库新增「音乐来源」清单：面板导入与拖入添加的文件夹/文件都会记录并显示名称、完整路径与类型图标，可逐项点「−」移除（连带删除其下歌曲）。
+- 新增「不扫描短音频」开关：开启后导入自动过滤时长不足 60 秒的音频。
+- 新增「屏蔽文件夹」清单：导入扫描时跳过指定子目录，可随时取消屏蔽。
+
 ## 技术变更
 
+- `LibraryStore` 修复移除来源不删歌：
+  - `PersistedLibrary` 新增 `sources: [LibrarySource]` 与 `blockedFolderPaths: [String]`，均为 `decodeIfPresent ?? []`，旧库文件无损兼容；`scheduleSave` / `readLibrary` / `apply(.loaded)` 全链路往返。
+  - `LibrarySource` 增加 `Codable, Sendable`。
+  - 新增 `normalizedPath(_:)`（`standardizedFileURL.resolvingSymlinksInPath().path`），导入去重、在途复活检查、单曲删除、来源移除四处比较全部改用归一化路径；新增 `resolvesAsDirectory(_:)`（`FileManager.fileExists(isDirectory:)`，跟随软链）修正软链目录被误判成单曲来源。
+  - `removeLibrarySource(_:)` 重写：校验 `canEdit`、按归一化前缀/精确匹配收集 `removedIDs`，一次性清理 `tracks / favoriteIDs / history / playlists.trackIDs`；导入进行中除登记单曲路径外，再向 `removedSourcePathsDuringImport` 登记来源前缀，在途枚举结果在三个落库检查点（newURLs 过滤、accepted 过滤、generation 冲突合并）统一经 `isImportBlocked(_:)` 拦截。
+  - `addBlockedFolder` / `removeBlockedFolder` 变更后调用 `libraryContentDidChange()` 持久化；删除遗留调试 `print`。
+- 新增 `Tests/HarmonyPlayerTests/LibrarySourceRemovalTests.swift`（7 个用例：文件夹来源移除删歌、多来源互不株连、来源重启持久化、旧库曲目在重新添加来源后再移除、软链路径来源移除、导入进行中移除不复活并落盘、移除时清理收藏/历史/歌单；测试内现场生成合法 PCM WAV，不读取用户音乐目录）。
 - `DockArtworkController.makeDockIcon` 封面底板、调色板提取、后台串行渲染队列与代数号全部保留；仅替换右下角徽标绘制段：徽标直径 94 → 140pt，位置由 `(maxX-94-14, minY+14)` 改为 `(maxX-140-16, minY+6)`；删除封面色 `primary/secondary/accent` 三色渐变、玻璃高光盘与左上白色弧线，改为固定蓝色 `NSGradient`（angle -90）+ 10pt 白色内缩圆描边；暂停双竖条由固定 11×36/间距 13 改为按徽标直径比例（13.5%/40%/12%，全圆角），播放三角按 `badgeSize/94` 等比放大。
 - `SettingsView`：播放设置中「Dock 显示专辑封面」开关副标题补充「右下角显示播放状态」；`showsArtworkKey`（`ManyuMusic.dockArtwork`）与其他逻辑不变。
 - 新增 `PlaybackMode`（`Models.swift`）：`sequential / singleRepeat / shuffle` 三态枚举，提供 `systemImage`（顺序=`arrow.right.to.line`、单曲=`repeat.1`、随机=`shuffle`）、`helpText` 与 `next`（顺序→单曲→随机→顺序）。
@@ -68,7 +82,8 @@
 
 ## 兼容性与迁移
 
-- 暂无数据格式或配置迁移；歌词缓存为会话内存缓存，`library.json` 格式不变。
+- `library.json` 新增 `sources` 与 `blockedFolderPaths` 两个字段；读取端对旧文件 `decodeIfPresent` 回退空数组，旧版本库可直接打开，不产生迁移。由旧版本升级后，来源清单首次为空，重新添加一次文件夹即可恢复显示（不会重复导入已有歌曲）。
+- 歌词缓存为会话内存缓存，格式不变。
 
 ## 验证
 
@@ -77,6 +92,7 @@
 - Release 构建分支副本 `dist/漫域音乐-lyrics-preload.app` 签名后实际运行（已并入本分支构建范围），等待用户验证：连续切换多首歌曲时歌词直接出现、不再先闪等待提示；无歌词歌曲显示“本歌曲暂无歌词”；快切期间进度条冻结不虚走，恢复后从 0 平滑起步。
 - `swift test` 全部通过；Release 构建分支副本 `dist/漫域音乐-multiselect-header.app` 签名后实际运行，等待用户验证：顶部工具栏不再有「编辑」胶囊；列头「时长」右侧显示纯勾选圆图标，点击进入多选：全选圆钮出现在列头最左、行勾选框正上方，编辑图标右侧滑出添加到歌单/删除钮，无取消叉；勾选、全选与批量删除行为正常。
 - `swift test` 全部通过；Release 构建分支副本 `dist/漫域音乐-dock-badge.app` 签名后实际运行，等待用户验证：专辑封面底板保持不变，右下角徽标放大为蓝圆白边 + 白色暂停双竖条，暂停变播放三角。
+- 来源移除修复：`swift test` 42/42 通过（新增 `LibrarySourceRemovalTests` 7 个用例，覆盖正常移除、多来源互不株连、旧库曲目移除、软链来源、重启持久化、导入中移除竞态、关联数据清理）；Release 构建分支副本 `dist/漫域音乐-dock-badge.app` 等待用户验证：设置 → 资料库可见持久化的来源清单，点「−」移除文件夹后歌曲统计立即减少，重启后来源仍在、移除不复活。
 
 ## 已知问题与后续
 
