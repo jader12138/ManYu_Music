@@ -601,12 +601,7 @@ struct NowPlayingView: View {
                     visibleLineCount: Int(lyricsVisibleLines),
                     lyricOffset: player.lyricOffset
                 )
-                // 连续快速切歌时，旧歌词树与新歌词树各存在 0.15s 做透明交叉，
-                // 极短淡入淡出让列表重排的顿挫看起来顺滑；仅透明度变化，
-                // 不移动布局，也符合“减弱动态效果”。
-                .id(player.currentTrack?.id)
                 .transition(.opacity)
-                .animation(.easeInOut(duration: 0.15), value: player.currentTrack?.id)
             } else {
                 // 转场期间占住同样的空间，歌词落位后原位淡入，布局不跳动。
                 Color.clear
