@@ -136,12 +136,12 @@ struct PlayerBar: View {
         VStack(spacing: 5) {
             HStack(spacing: 15) {
                 IconButton(
-                    systemName: "shuffle",
-                    isActive: player.isShuffle,
-                    help: player.isShuffle ? "关闭随机播放" : "随机播放",
+                    systemName: player.playbackMode.systemImage,
+                    isActive: player.playbackMode != .sequential,
+                    help: player.playbackMode.helpText,
                     size: 13
                 ) {
-                    player.isShuffle.toggle()
+                    player.cyclePlaybackMode()
                 }
 
                 IconButton(systemName: "backward.fill", help: "上一首", size: 15) {
@@ -170,15 +170,6 @@ struct PlayerBar: View {
                     player.next()
                 }
                 .disabled(player.queue.isEmpty)
-
-                IconButton(
-                    systemName: player.repeatMode.systemImage,
-                    isActive: player.repeatMode.isActive,
-                    help: repeatHelp,
-                    size: 13
-                ) {
-                    player.repeatMode.advance()
-                }
             }
 
             PlaybackProgressRow(
@@ -289,14 +280,6 @@ struct PlayerBar: View {
                 NSApp.keyWindow?.makeFirstResponder(nil)
                 isPlaybackControlFocused = true
             }
-        }
-    }
-
-    private var repeatHelp: String {
-        switch player.repeatMode {
-        case .off: "开启列表循环"
-        case .all: "切换为单曲循环"
-        case .one: "关闭循环"
         }
     }
 }

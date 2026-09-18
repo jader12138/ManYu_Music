@@ -6,15 +6,21 @@
 
 ## 摘要
 
-修复切换歌曲时播放页歌词先显示“正在等待歌词”占位、歌词到达后再跳一下的问题：新增会话级歌词缓存，资料库加载完成后在后台批量预热全部曲目的内嵌歌词/LRC；播放每首歌曲时再提前读取队列接下来两首。切歌时若缓存已就绪，歌词在同一轮状态更新中同步落位，占位不再出现；只有确认没有歌词的歌曲才显示“本歌曲暂无歌词”。
+- 播放模式三合一与整页队列选歌：播放页原来的随机/循环两个按钮融合为「三态播放模式钮 + 列表⇄气泡切换钮」，点列表图标整页跳转到播放队列选歌页，点气泡跳回播放页。
+- 修复切换歌曲时播放页歌词先显示“正在等待歌词”占位、歌词到达后再跳一下的问题：新增会话级歌词缓存，资料库加载完成后在后台批量预热全部曲目的内嵌歌词/LRC；播放每首歌曲时再提前读取队列接下来两首。切歌时若缓存已就绪，歌词在同一轮状态更新中同步落位，占位不再出现；只有确认没有歌词的歌曲才显示“本歌曲暂无歌词”。
 
 ## 用户可见更新
 
 ### 新增
 
-- 暂无
+- 新增播放页内部「列表 ⇄ 气泡」融合切换钮（位于原循环按钮位置，即上一首按钮左边）：在播放页点列表图标，封面+歌词区域整块切换为当前播放队列的选歌列表（不离开播放页），点任意歌曲立即切换播放，再点气泡图标切回封面+歌词，图标随状态 morph。队列列表行可右键「从队列移除」；队列为空时显示空状态提示。
 
 ### 改进
+
+- 随机播放、顺序播放、单曲循环三种模式融合为一个播放模式按钮：每点一下切换一个模式（顺序播放 → 单曲循环 → 随机播放 → 顺序播放），图标随模式 morph：顺序播放为灰色顺序箭头、单曲循环/随机播放时图标高亮。播放页与底部播放条两处同步。
+- 菜单栏「播放」菜单：原「循环模式」子菜单 + 「随机播放」开关合并为「播放模式」子菜单（顺序播放 / 单曲循环 / 随机播放，当前模式打勾）。
+- 首页快捷操作「随机播放」现在会正确同步三态播放模式状态。
+- 歌词居中补偿：刚播放到前几句时，当前行被居中会导致上方空一大块（前面没有歌词）。LyricTimelineView 的 `centerActive` 在计算 scrollTo 目标 offset 时增加「leadCompensation」补偿——activeIndex=0 往上推 36pt，activeIndex=4 时归零，线性衰减。因为叠在原逐行动画上，切换过渡自然圆滑，不额外引入新动画。
 
 - 歌词预加载：资料库加载完成后后台逐项低优先级解析全部曲目的内嵌歌词与同名 LRC；播放期间每加载一首歌曲，也会提前发起队列接下来两曲的歌词读取。切换歌曲时歌词直接显示，不再先闪一段“暂无歌词/正在等待歌词”再跳成正文。
 - 歌词占位状态区分加载中与确认无歌词：正在读取时显示“正在载入歌词”；确认歌曲确实没有内嵌歌词或 LRC 文件时才显示“本歌曲暂无歌词 / 未在歌曲内嵌信息或同名 LRC 文件中找到歌词。”
@@ -29,6 +35,15 @@
 
 ## 技术变更
 
+- 新增 `PlaybackMode`（`Models.swift`）：`sequential / singleRepeat / shuffle` 三态枚举，提供 `systemImage`（顺序=`arrow.right.to.line`、单曲=`repeat.1`、随机=`shuffle`）、`helpText` 与 `next`（顺序→单曲→随机→顺序）。
+- `AudioPlayer`：新增 `@Published private(set) var playbackMode` 与 `setPlaybackMode(_:)` / `cyclePlaybackMode()`；切换模式时同步底层 `isShuffle` 与 `repeatMode`（顺序=shuffle false/.off，单曲=shuffle false/.one，随机=shuffle true/.off），播放推进、收尾与随机选曲逻辑沿用原有实现。
+- `LyricTimelineView`：`centerActive(in:animated:)` 新增 `leadCompensation` —— 当前行 `activeIndex <= 4` 时对 `baseTarget` 叠加向上偏移（`max(0, 4 - activeIndex) * 9`，activeIndex=0 → 36pt、activeIndex=4 → 0pt），前几句歌词上移避免「上方空一大块」；补偿随着逐行推进自然衰减，叠在原有 0.7s easeInOut 动画上，过渡平滑。
+- `PlayerBar`：删除不再使用的 `QueuePickerMorphSymbol` 组件和 `isQueuePicker` / `onReturnToNowPlaying` 入参。
+- `QueuePanel.swift`：删除不再使用的 `QueuePickerView`。
+- `TrackListView`：新增 `onRemoveTrack` / `removeTrackLabel` 入参，宿主可覆盖行移除动作与菜单文案（默认仍为资料库移除）。
+- `HarmonyPlayerApp`：播放菜单改为「播放模式」三态子菜单（`PlaybackMode.allCases`，当前模式打勾）。
+- `HomeView`：快捷「随机播放」改为 `setPlaybackMode(.shuffle)` 后随机点歌。
+- 新增 `Tests/HarmonyPlayerTests/PlaybackModeTests.swift`（3 个用例：三态循环顺序与底层状态同步、直接设置模式、`next` 顺序）。
 - 新增 `LyricsCache`（`Sources/HarmonyPlayer/Services/LyricsCache.swift`）：`@unchecked Sendable` 会话缓存，NSLock 保护已解析歌词字典、无歌词 ID 集合与在途任务字典；`immediateResult(for:)` 提供主线程同步读取（`.ready([LyricLine]) / .missing`），`load(track:)` 返回合并去重的 `Task<[LyricLine]?, Never>`（同一首歌只允许一次磁盘 IO，解析为空按无歌词缓存）；`preload(_:)` 逐项 utility 优先级预热并微让步，`preloadNext(_:)` 为队列邻近曲目即时发起读取，`removeAll()` 在内存压力时清空。
 - `EmbeddedMetadataReader` 新增 `readLyrics(from:)` 轻量路径：FLAC 遍历元数据块时只解析唯一的 VORBIS_COMMENT（块类型 4），解析到即返回；PICTURE（块类型 6）等其他块一律 `skip` seek 跳过、不读取 MB 级内容。
 - `AudioMetadataLoader.lyrics(for:)` 的 FLAC 内嵌歌词读取由全量 `read(from:)` 改为 `readLyrics(from:)`。
@@ -49,8 +64,9 @@
 
 ## 验证
 
-- `swift test`：32/32 通过（新增 5 个 LyricsCache 用例）。
-- Release 构建分支副本 `dist/漫域音乐-lyrics-preload.app` 签名后实际运行，等待用户验证：连续切换多首歌曲时歌词直接出现、不再先闪等待提示；无歌词歌曲显示“本歌曲暂无歌词”；快切期间进度条冻结不虚走，恢复后从 0 平滑起步。
+- `swift test`：35/35 通过（新增 3 个 PlaybackMode 用例 + 此前 32 个）。
+- Release 构建分支副本 `dist/漫域音乐-queue-picker-mode.app` 签名后实际运行，等待用户验证：播放页点列表钮整页跳到队列选歌页、图标 morph 成气泡；选歌页点歌立即播放，点气泡整页跳回播放页、图标 morph 回列表；播放模式钮按 顺序 → 单曲循环 → 随机 循环切换。
+- Release 构建分支副本 `dist/漫域音乐-lyrics-preload.app` 签名后实际运行（已并入本分支构建范围），等待用户验证：连续切换多首歌曲时歌词直接出现、不再先闪等待提示；无歌词歌曲显示“本歌曲暂无歌词”；快切期间进度条冻结不虚走，恢复后从 0 平滑起步。
 
 ## 已知问题与后续
 

@@ -266,7 +266,7 @@ struct HomeView: View {
             .disabled(tracks.isEmpty)
 
             quickActionButton("随机播放", systemImage: "shuffle") {
-                player.isShuffle = true
+                player.setPlaybackMode(.shuffle)
                 if let random = tracks.randomElement() {
                     play(random, in: tracks)
                 }

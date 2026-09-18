@@ -124,6 +124,39 @@ enum RepeatMode: String, Codable, CaseIterable, Sendable {
     }
 }
 
+/// 三态合一的播放模式：顺序播放 → 单曲循环 → 随机播放，点击一个按钮循环切换。
+/// 底层播放推进仍由 AudioPlayer 的 isShuffle / repeatMode 执行。
+enum PlaybackMode: String, CaseIterable, Sendable {
+    case sequential
+    case singleRepeat
+    case shuffle
+
+    var systemImage: String {
+        switch self {
+        case .sequential: "arrow.right.to.line"
+        case .singleRepeat: "repeat.1"
+        case .shuffle: "shuffle"
+        }
+    }
+
+    var helpText: String {
+        switch self {
+        case .sequential: "顺序播放"
+        case .singleRepeat: "单曲循环"
+        case .shuffle: "随机播放"
+        }
+    }
+
+    /// 当前模式下再点一次进入的模式：顺序 → 单曲循环 → 随机 → 顺序。
+    var next: PlaybackMode {
+        switch self {
+        case .sequential: .singleRepeat
+        case .singleRepeat: .shuffle
+        case .shuffle: .sequential
+        }
+    }
+}
+
 extension Notification.Name {
     static let focusLibrarySearch = Notification.Name("HarmonyPlayer.focusLibrarySearch")
     static let openSettings = Notification.Name("HarmonyPlayer.openSettings")

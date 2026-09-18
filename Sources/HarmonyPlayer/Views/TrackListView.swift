@@ -9,6 +9,10 @@ struct TrackListView: View {
     var sortAscending = true
     /// 点击列头回调（升/降序切换逻辑由宿主页处理）。
     var onSortTap: ((TrackSortOrder) -> Void)?
+    /// 自定义行移除动作（队列选歌页用于"从队列移除"）；nil 时走资料库移除。
+    var onRemoveTrack: ((Track) -> Void)?
+    /// 移除菜单项文案（随 onRemoveTrack 场景变化）。
+    var removeTrackLabel = "从资料库移除"
     let onPlay: (Track) -> Void
 
     @EnvironmentObject private var library: LibraryStore
@@ -38,7 +42,8 @@ struct TrackListView: View {
                                 play: { onPlay(track) },
                                 toggleFavorite: { library.toggleFavorite(track) },
                                 reveal: { library.reveal(track) },
-                                remove: { library.remove(track) }
+                                remove: { removeTrack(track) },
+                                removeLabel: removeTrackLabel
                             )
                             .padding(.vertical, 1)
                             .padding(.horizontal, 10)
@@ -54,6 +59,14 @@ struct TrackListView: View {
                 .scrollBounceBehavior(.basedOnSize)
             }
             .frame(width: geometry.size.width, height: geometry.size.height, alignment: .top)
+        }
+    }
+
+    private func removeTrack(_ track: Track) {
+        if let onRemoveTrack {
+            onRemoveTrack(track)
+        } else {
+            library.remove(track)
         }
     }
 

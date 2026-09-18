@@ -112,12 +112,18 @@ struct LyricTimelineView: View {
 
     /// 把当前行滑到视口中心。长距离跳转与逐行推进都用同一条原生缓动，
     /// 区别只在时长：跳转 1.5 秒从容滑到，逐行 0.7 秒缓冲跟进。
+    /// 前几句歌词的「上方留白」补偿：当前行越靠前，centerY - height/2 被
+    /// clamp 到 0 后上方越空；这里在目标 offset 上叠一个负偏移把整段往上推，
+    /// 随着 activeIndex 增加线性衰减到 0，自然过渡回居中。
     private func centerActive(in height: CGFloat, animated: Bool) {
         guard lines.indices.contains(activeIndex) else { return }
         guard let centers = lineCenters(viewportH: height) else { return }
         let centerY = centers[activeIndex]
         let maxOffset = max(0, contentHeight(in: height) - height)
-        let target = min(max(centerY - height / 2, 0), maxOffset)
+        let baseTarget = min(max(centerY - height / 2, 0), maxOffset)
+        // 前 4 行补偿：activeIndex=0 时推上去 ~36pt，activeIndex=4 时补偿归零。
+        let leadCompensation = max(0, CGFloat(4 - activeIndex)) * 9
+        let target = max(0, baseTarget - leadCompensation)
         guard animated, !reduceMotion else {
             currentOffset = target
             return

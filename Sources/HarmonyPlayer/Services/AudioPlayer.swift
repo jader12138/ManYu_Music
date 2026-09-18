@@ -43,6 +43,9 @@ final class AudioPlayer: ObservableObject {
     }
     @Published var isShuffle = false
     @Published var repeatMode: RepeatMode = .off
+    /// 三态合一的播放模式（顺序 → 单曲循环 → 随机）。点击循环钮时切换，
+    /// 底层仍同步设置 isShuffle / repeatMode 驱动实际播放推进。
+    @Published private(set) var playbackMode: PlaybackMode = .sequential
     @Published var playbackError: String?
     /// 当前歌曲的歌词时间轴偏移（秒）。正 = 歌词延后显示，负 = 提前显示。
     @Published private(set) var lyricOffset: Double = 0
@@ -220,6 +223,27 @@ final class AudioPlayer: ObservableObject {
             return
         }
         move(by: -1, manual: true)
+    }
+
+    /// 三态播放模式循环：顺序播放 → 单曲循环 → 随机播放 → 顺序播放。
+    func cyclePlaybackMode() {
+        setPlaybackMode(playbackMode.next)
+    }
+
+    /// 直接设置播放模式（首页「随机播放」、菜单栏等入口使用）。
+    func setPlaybackMode(_ mode: PlaybackMode) {
+        playbackMode = mode
+        switch mode {
+        case .sequential:
+            isShuffle = false
+            repeatMode = .off
+        case .singleRepeat:
+            isShuffle = false
+            repeatMode = .one
+        case .shuffle:
+            isShuffle = true
+            repeatMode = .off
+        }
     }
 
     /// 进行中的 seek。AVPlayer 落位前，0.25s 观察器仍会回调旧位置；
