@@ -115,34 +115,36 @@ struct PlayerBar: View {
                 }
                 .contentShape(Rectangle())
             }
+            .help("打开播放页")
             .buttonStyle(.plain)
             .disabled(player.currentTrack == nil)
-
-            if let track = player.currentTrack {
-                Button {
-                    library.toggleFavorite(track)
-                } label: {
-                    Image(systemName: library.isFavorite(track) ? "heart.fill" : "heart")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(library.isFavorite(track) ? Color.hpPink : Color.hpTextPrimary.opacity(0.42))
-                        .frame(width: 26, height: 26)
-                }
-                .buttonStyle(.plain)
-            }
         }
     }
 
     private var controls: some View {
         VStack(spacing: 5) {
             HStack(spacing: 15) {
-                IconButton(
-                    systemName: player.playbackMode.systemImage,
-                    isActive: player.playbackMode != .sequential,
-                    help: player.playbackMode.helpText,
-                    size: 13
-                ) {
+                // 三态播放模式按钮（与播放页一致：顺序→单曲循环→随机，循环切换，
+                // 当前模式在图标下方显示主题色小点——所有模式都显示，方便恢复时识别）。
+                Button {
                     player.cyclePlaybackMode()
+                } label: {
+                    Image(systemName: player.playbackMode.systemImage)
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(Color.hpTextPrimary.opacity(0.85))
+                        .frame(width: 26, height: 26)
+                        .overlay(alignment: .bottom) {
+                            Circle()
+                                .fill(Color.hpAccent)
+                                .frame(width: 3.5, height: 3.5)
+                                .offset(y: 2.5)
+                        }
+                        .contentTransition(reduceMotion ? .identity : .symbolEffect(.replace))
+                        .animation(reduceMotion ? nil : .easeInOut(duration: 0.18),
+                                   value: player.playbackMode)
                 }
+                .buttonStyle(.plain)
+                .help(player.playbackMode.helpText)
 
                 IconButton(systemName: "backward.fill", help: "上一首", size: 15) {
                     player.previous()
@@ -165,11 +167,24 @@ struct PlayerBar: View {
                 .focused($isPlaybackControlFocused)
                 .focusEffectDisabled()
                 .disabled(player.currentTrack == nil)
+                .help(player.isPlaying ? "暂停" : "播放")
 
                 IconButton(systemName: "forward.fill", help: "下一首", size: 15) {
                     player.next()
                 }
                 .disabled(player.queue.isEmpty)
+
+                IconButton(
+                    systemName: (player.currentTrack.flatMap { library.isFavorite($0) } ?? false) ? "heart.fill" : "heart",
+                    isActive: (player.currentTrack.flatMap { library.isFavorite($0) } ?? false),
+                    help: (player.currentTrack.flatMap { library.isFavorite($0) } ?? false) ? "取消收藏" : "收藏",
+                    size: 13
+                ) {
+                    if let track = player.currentTrack {
+                        library.toggleFavorite(track)
+                    }
+                }
+                .disabled(player.currentTrack == nil)
             }
 
             PlaybackProgressRow(
@@ -218,20 +233,25 @@ struct PlayerBar: View {
         HStack(spacing: 2) {
             sleepTimerMenu
 
-            Menu {
-                Button("静音") { player.volume = 0 }
-                ForEach([0.25, 0.5, 0.75, 1.0], id: \.self) { value in
-                    Button("\(Int(value * 100))%") { player.volume = value }
-                }
-            } label: {
+            // 简化版音量控件：喇叭 + 下方数字（不带%）+ 悬停滚轮调音量。
+            ZStack {
                 Image(systemName: player.volume == 0 ? "speaker.slash.fill" : "speaker.wave.2.fill")
                     .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(Color.hpTextPrimary.opacity(0.48))
                     .frame(width: 28, height: 28)
+
+                Text("\(Int((player.volume * 100).rounded()))")
+                    .font(.system(size: 7, weight: .medium))
+                    .foregroundStyle(Color.hpTextPrimary.opacity(0.42))
+                    .offset(y: 5)
+
+                VolumeScrollCatcher { delta in
+                    let clamped = min(0.15, max(-0.15, delta))
+                    player.volume = min(1, max(0, player.volume + clamped))
+                }
             }
-            .menuStyle(.borderlessButton)
-            .menuIndicator(.hidden)
             .frame(width: 28)
+            .help("悬停滚轮调整音量")
 
             IconButton(
                 systemName: "list.bullet",

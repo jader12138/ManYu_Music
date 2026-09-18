@@ -142,6 +142,12 @@ final class AudioPlayer: ObservableObject {
         currentTrack = track
         duration = track.duration
 
+        // 恢复播放模式（三态合一）。
+        if let savedModeRaw = defaults.string(forKey: PlaybackStateKeys.playbackMode),
+           let savedMode = PlaybackMode(rawValue: savedModeRaw) {
+            setPlaybackMode(savedMode)
+        }
+
         let savedTime = defaults.double(forKey: PlaybackStateKeys.currentTime)
         currentTime = max(0, min(savedTime, track.duration > 0 ? track.duration : savedTime))
 
@@ -243,7 +249,19 @@ final class AudioPlayer: ObservableObject {
         case .shuffle:
             isShuffle = true
             repeatMode = .off
+            // 进入随机模式时打乱剩余曲目（保留当前播放的不动）。
+            shuffleRemainingQueue()
         }
+    }
+
+    /// 打乱当前 queue 中 currentIndex 之后的曲目；前面已播过的保持原序。
+    /// 每次随机切到下一首后调用，让下一批候选重新洗牌。
+    private func shuffleRemainingQueue() {
+        guard queue.count > 1 else { return }
+        let base = (currentIndex ?? 0) + 1
+        guard base < queue.count else { return }
+        let remaining = Array(queue[base...]).shuffled()
+        queue.replaceSubrange(base..., with: remaining)
     }
 
     /// 进行中的 seek。AVPlayer 落位前，0.25s 观察器仍会回调旧位置；
@@ -606,6 +624,7 @@ final class AudioPlayer: ObservableObject {
         defaults.set(currentTrack.id.uuidString, forKey: PlaybackStateKeys.trackID)
         defaults.set(queue.map { $0.id.uuidString }, forKey: PlaybackStateKeys.queueIDs)
         defaults.set(currentIndex ?? 0, forKey: PlaybackStateKeys.currentIndex)
+        defaults.set(playbackMode.rawValue, forKey: PlaybackStateKeys.playbackMode)
     }
 
     var currentLyricText: String? {
@@ -717,6 +736,8 @@ final class AudioPlayer: ObservableObject {
             guard let target = alternatives.randomElement() else { return }
             currentIndex = target
             load(queue[target])
+            // 随机切到一首后，把剩余未播放的重新洗牌，保证列表里顺序会变。
+            shuffleRemainingQueue()
             return
         }
 
@@ -831,6 +852,7 @@ private enum PlaybackStateKeys {
     static let queueIDs = "ManyuMusic.playback.queueIDs"
     static let currentIndex = "ManyuMusic.playback.currentIndex"
     static let currentTime = "ManyuMusic.playback.currentTime"
+    static let playbackMode = "ManyuMusic.playback.mode"
 }
 
 /// 预渲染播放页背景的模糊封面：换歌时在后台算一次，

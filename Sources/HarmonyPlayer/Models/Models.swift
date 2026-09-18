@@ -115,6 +115,14 @@ enum RepeatMode: String, Codable, CaseIterable, Sendable {
 
     var isActive: Bool { self != .off }
 
+    var helpText: String {
+        switch self {
+        case .off: "开启列表循环"
+        case .all: "切换为单曲循环"
+        case .one: "关闭循环"
+        }
+    }
+
     mutating func advance() {
         switch self {
         case .off: self = .all
@@ -133,7 +141,7 @@ enum PlaybackMode: String, CaseIterable, Sendable {
 
     var systemImage: String {
         switch self {
-        case .sequential: "arrow.right.to.line"
+        case .sequential: "repeat"
         case .singleRepeat: "repeat.1"
         case .shuffle: "shuffle"
         }

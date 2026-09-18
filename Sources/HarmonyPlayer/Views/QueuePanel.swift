@@ -41,8 +41,15 @@ struct QueuePanel: View {
             } else {
                 ScrollView {
                     LazyVStack(spacing: 2) {
-                        ForEach(Array(player.queue.enumerated()), id: \.element.id) { index, track in
-                            queueRow(track: track, index: index)
+                        // 把 queue 旋转：当前播放的放最上，后面依次是接下来要播的。
+                        // 点击"下一首"或随机挑一首后 currentIndex 自然后移，列表顺序跟着转。
+                        let queue = player.queue
+                        let base = player.currentIndex ?? 0
+                        let rotated = Array(queue[base...]) + Array(queue[..<base])
+                        ForEach(Array(rotated.enumerated()), id: \.element.id) { offset, track in
+                            // rotated[0] 是当前正在播的，它在 queue 里的原索引才是 currentIndex。
+                            let originalIndex = (base + offset) % queue.count
+                            queueRow(track: track, index: originalIndex, displayOffset: offset)
                         }
                     }
                     .padding(8)
@@ -50,10 +57,10 @@ struct QueuePanel: View {
             }
         }
         .frame(width: 276)
-        .background(.ultraThinMaterial)
+        .background(Color.hpSurface.opacity(0.94))
     }
 
-    private func queueRow(track: Track, index: Int) -> some View {
+    private func queueRow(track: Track, index: Int, displayOffset: Int) -> some View {
         let isCurrent = player.currentIndex == index
         return Button {
             player.playFromQueue(at: index)
@@ -64,7 +71,8 @@ struct QueuePanel: View {
                         Image(systemName: player.isPlaying ? "waveform" : "pause.fill")
                             .foregroundStyle(Color.hpAccent)
                     } else {
-                        Text("\(index + 1)")
+                        // 序号按旋转后的显示顺序：当前在 0 位，下一首显示 1，依次递增。
+                        Text("\(displayOffset + 1)")
                             .font(.system(size: 9, weight: .medium, design: .monospaced))
                             .foregroundStyle(.tertiary)
                     }

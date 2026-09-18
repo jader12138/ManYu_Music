@@ -232,6 +232,7 @@ struct NowPlayingView: View {
                 }
                 .buttonStyle(PlaybackPressButtonStyle(reduceMotion: reduceMotion))
                 .disabled(player.currentTrack == nil)
+                .help(player.isPlaying ? "暂停" : "播放")
 
                 IconButton(systemName: "forward.fill", help: "下一首", size: 14) {
                     player.next()
@@ -257,46 +258,53 @@ struct NowPlayingView: View {
         .padding(.vertical, 6)
     }
 
-    /// 播放模式按钮：选中时按钮本身不亮，改为在图标下方显示一个主题色小点。
+    /// 播放模式按钮：三态合一，循环切换，所有模式在图标下方都显示主题色小点
+    /// （包括顺序播放——便于启动时一眼识别上次退出时的模式）。
     private func modeButton(
         systemName: String,
         isActive: Bool,
         help: String,
         action: @escaping () -> Void
     ) -> some View {
-        Image(systemName: systemName)
-            .font(.system(size: 14, weight: .medium))
-            .foregroundStyle(Color.hpTextPrimary.opacity(isActive ? 0.85 : 0.55))
-            .frame(width: 26, height: 26)
-            .overlay(alignment: .bottom) {
-                Circle()
-                    .fill(Color.hpAccent)
-                    .frame(width: 3.5, height: 3.5)
-                    .offset(y: 6)
-                    .opacity(isActive ? 1 : 0)
-            }
-            .contentShape(Rectangle())
-            .onTapGesture(perform: action)
-            .help(help)
+        Button(action: action) {
+            Image(systemName: systemName)
+                .font(.system(size: 14, weight: .medium))
+                .foregroundStyle(Color.hpTextPrimary.opacity(0.85))
+                .frame(width: 26, height: 26)
+                .overlay(alignment: .bottom) {
+                    Circle()
+                        .fill(Color.hpAccent)
+                        .frame(width: 3.5, height: 3.5)
+                        .offset(y: 2.5)
+                }
+                .contentTransition(reduceMotion ? .identity : .symbolEffect(.replace))
+                .animation(reduceMotion ? nil : .easeInOut(duration: 0.18),
+                           value: player.playbackMode)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help(help)
     }
 
     /// 列表 ⇄ 气泡融合切换钮：在播放页内部切换封面歌词 ↔ 队列选歌列表。
     /// 封面歌词模式显示列表图标，队列列表模式显示对白气泡，点击 morph 切换。
     private var queuePickerMorphButton: some View {
-        Image(systemName: showQueueList ? "quote.bubble.fill" : "list.bullet")
-            .font(.system(size: 14, weight: .medium))
-            .foregroundStyle(Color.hpTextPrimary.opacity(0.55))
-            .frame(width: 26, height: 26)
-            .contentTransition(reduceMotion ? .identity : .symbolEffect(.replace))
-            .animation(reduceMotion ? nil : .easeInOut(duration: 0.18),
-                       value: showQueueList)
-            .contentShape(Rectangle())
-            .onTapGesture {
-                withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.24)) {
-                    showQueueList.toggle()
-                }
+        Button {
+            withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.24)) {
+                showQueueList.toggle()
             }
-            .help(showQueueList ? "回到播放页" : "选择播放歌曲")
+        } label: {
+            Image(systemName: showQueueList ? "quote.bubble.fill" : "list.bullet")
+                .font(.system(size: 14, weight: .medium))
+                .foregroundStyle(Color.hpTextPrimary.opacity(0.55))
+                .frame(width: 26, height: 26)
+                .contentTransition(reduceMotion ? .identity : .symbolEffect(.replace))
+                .animation(reduceMotion ? nil : .easeInOut(duration: 0.18),
+                           value: showQueueList)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help(showQueueList ? "回到播放页" : "选择播放歌曲")
     }
 
     /// 队列选歌列表：只显示接下来要播的歌曲（currentIndex 之后的曲目）。
@@ -720,7 +728,7 @@ struct NowPlayingView: View {
 }
 
 /// 横向音量滑块：点击轨道跳转、按住拖动均可调整（右侧为最大音量）。
-private struct HorizontalVolumeSlider: View {
+struct HorizontalVolumeSlider: View {
     @Binding var value: Double
 
     var body: some View {
@@ -759,7 +767,7 @@ private struct HorizontalVolumeSlider: View {
 }
 
 /// 上报所在位置的窗口坐标（AppKit 坐标系），供"点击热区外收起滑块"的判断使用。
-private struct VolumeFrameReporter: NSViewRepresentable {
+struct VolumeFrameReporter: NSViewRepresentable {
     let onFrame: (CGRect?) -> Void
 
     func makeNSView(context: Context) -> FrameReporterView {
@@ -798,7 +806,7 @@ private struct VolumeFrameReporter: NSViewRepresentable {
 
 /// 捕获悬停区域内的滚轮与点击：滚轮调音量、点击展开滑块（收起状态专用，
 /// 滑块展开后该层整体移除，避免拦截滑块的拖动手势）。
-private struct VolumeScrollCatcher: NSViewRepresentable {
+struct VolumeScrollCatcher: NSViewRepresentable {
     let onScroll: (Double) -> Void
     var onClick: (() -> Void)?
 

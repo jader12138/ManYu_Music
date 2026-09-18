@@ -75,7 +75,7 @@ struct TrackListView: View {
         HStack(spacing: 12) {
             Color.clear.frame(width: 44)
             sortHeaderButton("标题", column: .title, maxWidth: .infinity)
-            sortHeaderButton("专辑", column: .album, width: 170)
+            sortHeaderButton("专辑", column: .album, maxWidth: .infinity)
             sortHeaderButton("时长", column: .duration, width: 48, alignment: .trailing)
             Color.clear.frame(width: 72)
         }
@@ -178,7 +178,7 @@ struct TrackRow: View {
                 .font(.system(size: 11))
                 .foregroundStyle(Color.hpTextPrimary.opacity(0.48))
                 .lineLimit(1)
-                .frame(width: 170, alignment: .leading)
+                .frame(maxWidth: .infinity, alignment: .leading)
 
             Text(track.formattedDuration)
                 .font(.system(size: 10, weight: .medium, design: .monospaced))
