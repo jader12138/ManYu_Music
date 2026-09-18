@@ -958,14 +958,10 @@ struct NowPlayingHeaderControls: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            Button(action: close) {
-                Image(systemName: "chevron.down")
-                    .font(.system(size: 18, weight: .heavy, design: .rounded))
-                    .foregroundStyle(Color.hpTextPrimary.opacity(0.34))
-                    .frame(width: 38, height: 38)
-            }
-            .buttonStyle(.plain)
-            .help("返回资料库")
+            Image(systemName: "chevron.down")
+                .font(.system(size: 18, weight: .heavy, design: .rounded))
+                .foregroundStyle(Color.hpTextPrimary.opacity(0.34))
+                .frame(width: 44, height: 44)
 
             VStack(alignment: .leading, spacing: 1) {
                 Text("正在播放")
@@ -976,5 +972,8 @@ struct NowPlayingHeaderControls: View {
                     .foregroundStyle(Color.hpTextPrimary.opacity(0.36))
             }
         }
+        .contentShape(Rectangle())
+        .onTapGesture(perform: close)
+        .help("返回资料库")
     }
 }
