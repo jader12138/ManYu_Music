@@ -15,6 +15,11 @@ struct TrackListView: View {
     var removeTrackLabel = "从资料库移除"
     let onPlay: (Track) -> Void
 
+    // 多选模式（内部管理）
+    @State private var isSelectionMode = false
+    @State private var selectedIDs: Set<UUID> = []
+    @State private var showingCreatePlaylist = false
+
     @EnvironmentObject private var library: LibraryStore
     @EnvironmentObject private var player: AudioPlayer
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -43,7 +48,20 @@ struct TrackListView: View {
                                 toggleFavorite: { library.toggleFavorite(track) },
                                 reveal: { library.reveal(track) },
                                 remove: { removeTrack(track) },
-                                removeLabel: removeTrackLabel
+                                removeLabel: removeTrackLabel,
+                                isSelectionMode: isSelectionMode,
+                                isSelected: selectedIDs.contains(track.id),
+                                selectedCount: selectedIDs.count,
+                                onToggleSelection: {
+                                    if selectedIDs.contains(track.id) {
+                                        selectedIDs.remove(track.id)
+                                    } else {
+                                        selectedIDs.insert(track.id)
+                                    }
+                                },
+                                onBatchAddToPlaylist: { playlistID in
+                                    addSelection(to: playlistID)
+                                }
                             )
                             .padding(.vertical, 1)
                             .padding(.horizontal, 10)
@@ -60,6 +78,16 @@ struct TrackListView: View {
             }
             .frame(width: geometry.size.width, height: geometry.size.height, alignment: .top)
         }
+        .sheet(isPresented: $showingCreatePlaylist) {
+            PlaylistNameEditor(
+                title: "新建歌单",
+                placeholder: "歌单名称",
+                initialName: ""
+            ) { name in
+                let playlist = library.createPlaylist(named: name)
+                addSelection(to: playlist.id)
+            }
+        }
     }
 
     private func removeTrack(_ track: Track) {
@@ -70,14 +98,126 @@ struct TrackListView: View {
         }
     }
 
+    /// 把当前全部选中歌曲批量加入指定歌单（库内已自动去重）。
+    private func addSelection(to playlistID: UUID) {
+        let toAdd = tracks.filter { selectedIDs.contains($0.id) }
+        for track in toAdd {
+            library.add(track, to: playlistID)
+        }
+    }
+
+    private var isAllSelected: Bool {
+        !tracks.isEmpty && selectedIDs == Set(tracks.map(\.id))
+    }
+
+    /// 列头最左侧的全选钮：位于每一行勾选框列的正上方。
+    private var selectAllButton: some View {
+        Button {
+            if isAllSelected {
+                selectedIDs.removeAll()
+            } else {
+                selectedIDs = Set(tracks.map(\.id))
+            }
+        } label: {
+            Image(systemName: isAllSelected ? "checkmark.circle.fill" : "circle")
+                .font(.system(size: 18, weight: .regular))
+                .foregroundStyle(isAllSelected ? Color.hpAccent : Color.hpTextPrimary.opacity(0.35))
+        }
+        .buttonStyle(.plain)
+        .help(isAllSelected ? "取消全选" : "全选")
+        .transition(.opacity)
+    }
+
     /// 可点击的列头：点击切换排序，激活列右侧显示升/降序小三角。
     private var header: some View {
         HStack(spacing: 12) {
-            Color.clear.frame(width: 44)
+            // 多选时行首出现 28pt 勾选框把行内容向右推；列头同一位置放「全选」钮，
+            // 再留 44pt 封面占位，使列头文字与行内容右移幅度一致并对齐。
+            if isSelectionMode {
+                selectAllButton
+                    .frame(width: 28)
+                Color.clear.frame(width: 44)
+            } else {
+                Color.clear.frame(width: 44)
+            }
             sortHeaderButton("标题", column: .title, maxWidth: .infinity)
             sortHeaderButton("专辑", column: .album, maxWidth: .infinity)
-            sortHeaderButton("时长", column: .duration, width: 48, alignment: .trailing)
-            Color.clear.frame(width: 72)
+            // 时长列整体左移 6pt 并左对齐：列头文字与行内时间从同一位置起排。
+            sortHeaderButton("时长", column: .duration, width: 48, alignment: .leading)
+                .padding(.leading, -6)
+
+            // 编辑入口 / 批量操作区：与行尾「爱心+更多」区同宽（72），
+            // 入口图标中心对齐下方行内爱心（区内偏移 21）；
+            // 进入多选后，全选/删除/取消作为子菜单从图标右侧滑出，不挤压列宽。
+            ZStack(alignment: .leading) {
+                // 编辑入口（位置固定，选中态高亮；点击可退出多选）
+                Button {
+                    withAnimation(.easeInOut(duration: 0.16)) {
+                        isSelectionMode.toggle()
+                        if !isSelectionMode {
+                            selectedIDs.removeAll()
+                        }
+                    }
+                } label: {
+                    Image(systemName: isSelectionMode ? "checkmark.circle.fill" : "checkmark.circle")
+                        .font(.system(size: 11, weight: .regular))
+                        .foregroundStyle(isSelectionMode ? Color.hpAccent : Color.hpTextPrimary.opacity(0.35))
+                }
+                .buttonStyle(.plain)
+                .frame(width: 22)
+                .offset(x: 10)
+                .help(isSelectionMode ? "完成" : "编辑")
+
+                // 子菜单：向右滑出（全选已移至列头最左侧；退出多选再点编辑图标即可）
+                if isSelectionMode {
+                    HStack(spacing: 7) {
+                        // 批量添加到歌单
+                        Menu {
+                            ForEach(library.playlists) { playlist in
+                                Button(playlist.name) {
+                                    addSelection(to: playlist.id)
+                                }
+                            }
+                            Divider()
+                            Button("新建歌单…") {
+                                showingCreatePlaylist = true
+                            }
+                        } label: {
+                            Image(systemName: "folder.badge.plus")
+                                .font(.system(size: 11, weight: .regular))
+                                .foregroundStyle(selectedIDs.isEmpty ? Color.hpTextPrimary.opacity(0.25) : Color.hpTextPrimary.opacity(0.55))
+                        }
+                        .menuStyle(.borderlessButton)
+                        .menuIndicator(.hidden)
+                        .frame(width: 15)
+                        .disabled(selectedIDs.isEmpty)
+                        .help("添加所选到歌单")
+
+                        // 批量删除
+                        Button(role: .destructive) {
+                            let toRemove = tracks.filter { selectedIDs.contains($0.id) }
+                            for track in toRemove {
+                                removeTrack(track)
+                            }
+                            selectedIDs.removeAll()
+                            withAnimation(.easeInOut(duration: 0.16)) {
+                                isSelectionMode = false
+                            }
+                        } label: {
+                            Image(systemName: "trash")
+                                .font(.system(size: 11, weight: .regular))
+                                .foregroundStyle(selectedIDs.isEmpty ? Color.hpTextPrimary.opacity(0.25) : Color.red.opacity(0.75))
+                        }
+                        .buttonStyle(.plain)
+                        .frame(width: 15)
+                        .disabled(selectedIDs.isEmpty)
+                        .help("删除所选")
+                    }
+                    .offset(x: 34)
+                    .transition(.move(edge: .trailing).combined(with: .opacity))
+                }
+            }
+            .frame(width: 72, alignment: .leading)
         }
         .font(.system(size: 10, weight: .semibold))
         .tracking(0.45)
@@ -133,6 +273,14 @@ struct TrackRow: View {
     let remove: () -> Void
     var removeLabel = "从资料库移除"
 
+    // 多选模式
+    var isSelectionMode = false
+    var isSelected = false
+    var selectedCount = 0
+    var onToggleSelection: (() -> Void)? = nil
+    /// 多选时把全部选中歌曲批量加入歌单。
+    var onBatchAddToPlaylist: ((UUID) -> Void)? = nil
+
     @EnvironmentObject private var libraryStore: LibraryStore
     @EnvironmentObject private var playerStore: AudioPlayer
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -141,6 +289,19 @@ struct TrackRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
+            // 多选勾选框
+            if isSelectionMode {
+                Button {
+                    onToggleSelection?()
+                } label: {
+                    Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                        .font(.system(size: 18, weight: .regular))
+                        .foregroundStyle(isSelected ? Color.hpAccent : Color.hpTextPrimary.opacity(0.35))
+                }
+                .buttonStyle(.plain)
+                .frame(width: 28, height: 44)
+            }
+
             ZStack(alignment: .bottomTrailing) {
                 LazyArtworkView(track: track, size: 44, cornerRadius: 9)
 
@@ -183,7 +344,8 @@ struct TrackRow: View {
             Text(track.formattedDuration)
                 .font(.system(size: 10, weight: .medium, design: .monospaced))
                 .foregroundStyle(Color.hpTextPrimary.opacity(0.48))
-                .frame(width: 48, alignment: .trailing)
+                .frame(width: 48, alignment: .leading)
+                .padding(.leading, -6)
 
             HStack(spacing: 2) {
                 Button(action: toggleFavorite) {
@@ -197,34 +359,7 @@ struct TrackRow: View {
                 .buttonStyle(.plain)
 
                 Menu {
-                    Button("播放", action: play)
-                    Button(isFavorite ? "取消收藏" : "收藏", action: toggleFavorite)
-                    Button("下一首播放") {
-                        playerStore.playNext(track)
-                    }
-                    Button("添加到播放队列") {
-                        playerStore.addToQueue(track)
-                    }
-
-                    if !libraryStore.playlists.isEmpty {
-                        Menu("添加到歌单") {
-                            ForEach(libraryStore.playlists) { playlist in
-                                Button(playlist.name) {
-                                    libraryStore.add(track, to: playlist.id)
-                                }
-                            }
-                        }
-                    }
-
-                    Button("显示歌曲信息") {
-                        showingInfo = true
-                    }
-
-                    Button("在访达中显示", action: reveal)
-                    Divider()
-                    Button(role: .destructive, action: remove) {
-                        Label(removeLabel, systemImage: "trash")
-                    }
+                    rowActions
                 } label: {
                     Image(systemName: "ellipsis")
                         .font(.system(size: 12, weight: .semibold))
@@ -254,13 +389,39 @@ struct TrackRow: View {
             }
         }
         .contentShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
-        .onTapGesture(perform: play)
+        .onTapGesture {
+            if isSelectionMode {
+                onToggleSelection?()
+            } else {
+                play()
+            }
+        }
         .onHover { isHovering = $0 }
         .sheet(isPresented: $showingInfo) {
             TrackInfoView(track: track)
                 .environmentObject(libraryStore)
         }
         .contextMenu {
+            rowActions
+        }
+    }
+
+    /// 行操作菜单（「⋯」菜单与右键菜单共用）：多选时「添加到歌单」作用于全部选中歌曲。
+    @ViewBuilder
+    private var rowActions: some View {
+        if isSelectionMode {
+            if libraryStore.playlists.isEmpty {
+                Button("暂无歌单") { }.disabled(true)
+            } else {
+                Menu("添加到歌单（已选 \(selectedCount) 首）") {
+                    ForEach(libraryStore.playlists) { playlist in
+                        Button(playlist.name) {
+                            onBatchAddToPlaylist?(playlist.id)
+                        }
+                    }
+                }
+            }
+        } else {
             Button("播放", action: play)
             Button(isFavorite ? "取消收藏" : "收藏", action: toggleFavorite)
             Button("下一首播放") {
@@ -293,6 +454,9 @@ struct TrackRow: View {
     }
 
     private var rowBackground: AnyShapeStyle {
+        if isSelected {
+            return AnyShapeStyle(Color.hpAccent.opacity(0.12))
+        }
         if isCurrent {
             return AnyShapeStyle(LinearGradient.hpSelectedRow)
         }
