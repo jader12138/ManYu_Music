@@ -106,12 +106,40 @@ struct TrackListView: View {
         }
     }
 
+    private var isAllSelected: Bool {
+        !tracks.isEmpty && selectedIDs == Set(tracks.map(\.id))
+    }
+
+    /// 列头最左侧的全选钮：位于每一行勾选框列的正上方。
+    private var selectAllButton: some View {
+        Button {
+            if isAllSelected {
+                selectedIDs.removeAll()
+            } else {
+                selectedIDs = Set(tracks.map(\.id))
+            }
+        } label: {
+            Image(systemName: isAllSelected ? "checkmark.circle.fill" : "circle")
+                .font(.system(size: 18, weight: .regular))
+                .foregroundStyle(isAllSelected ? Color.hpAccent : Color.hpTextPrimary.opacity(0.35))
+        }
+        .buttonStyle(.plain)
+        .help(isAllSelected ? "取消全选" : "全选")
+        .transition(.opacity)
+    }
+
     /// 可点击的列头：点击切换排序，激活列右侧显示升/降序小三角。
     private var header: some View {
         HStack(spacing: 12) {
-            // 多选时行首出现 28pt 勾选框把行内容向右推，列头占位同步变为
-            // 28(勾选框)+12(间距)+44(封面)=84，保证列头文字与行内容同向同幅右移并对齐。
-            Color.clear.frame(width: isSelectionMode ? 84 : 44)
+            // 多选时行首出现 28pt 勾选框把行内容向右推；列头同一位置放「全选」钮，
+            // 再留 44pt 封面占位，使列头文字与行内容右移幅度一致并对齐。
+            if isSelectionMode {
+                selectAllButton
+                    .frame(width: 28)
+                Color.clear.frame(width: 44)
+            } else {
+                Color.clear.frame(width: 44)
+            }
             sortHeaderButton("标题", column: .title, maxWidth: .infinity)
             sortHeaderButton("专辑", column: .album, maxWidth: .infinity)
             sortHeaderButton("时长", column: .duration, width: 48, alignment: .trailing)
@@ -138,26 +166,9 @@ struct TrackListView: View {
                 .offset(x: 10)
                 .help(isSelectionMode ? "完成" : "编辑")
 
-                // 子菜单：向右滑出
+                // 子菜单：向右滑出（全选已移至列头最左侧；退出多选再点编辑图标即可）
                 if isSelectionMode {
                     HStack(spacing: 0) {
-                        // 全选 / 取消全选
-                        Button {
-                            let allIDs = Set(tracks.map(\.id))
-                            if selectedIDs == allIDs && !tracks.isEmpty {
-                                selectedIDs.removeAll()
-                            } else {
-                                selectedIDs = allIDs
-                            }
-                        } label: {
-                            Image(systemName: selectedIDs.count == tracks.count && !tracks.isEmpty ? "checkmark.circle.fill" : "checkmark.circle")
-                                .font(.system(size: 11, weight: .regular))
-                                .foregroundStyle(Color.hpAccent)
-                        }
-                        .buttonStyle(.plain)
-                        .frame(width: 15)
-                        .help(selectedIDs.count == tracks.count && !tracks.isEmpty ? "取消全选" : "全选")
-
                         // 批量添加到歌单
                         Menu {
                             ForEach(library.playlists) { playlist in
@@ -199,21 +210,6 @@ struct TrackListView: View {
                         .frame(width: 15)
                         .disabled(selectedIDs.isEmpty)
                         .help("删除所选")
-
-                        // 取消编辑
-                        Button {
-                            withAnimation(.easeInOut(duration: 0.16)) {
-                                isSelectionMode = false
-                                selectedIDs.removeAll()
-                            }
-                        } label: {
-                            Image(systemName: "xmark.circle")
-                                .font(.system(size: 11, weight: .regular))
-                                .foregroundStyle(Color.hpTextPrimary.opacity(0.4))
-                        }
-                        .buttonStyle(.plain)
-                        .frame(width: 15)
-                        .help("取消")
                     }
                     .offset(x: 28)
                     .transition(.move(edge: .trailing).combined(with: .opacity))

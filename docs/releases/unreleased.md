@@ -42,7 +42,7 @@
 - `PlayerBar`：删除不再使用的 `QueuePickerMorphSymbol` 组件和 `isQueuePicker` / `onReturnToNowPlaying` 入参。
 - `QueuePanel.swift`：删除不再使用的 `QueuePickerView`。
 - `TrackListView`：新增 `onRemoveTrack` / `removeTrackLabel` 入参，宿主可覆盖行移除动作与菜单文案（默认仍为资料库移除）。
-- 多选状态从 `MainView` 下沉到 `TrackListView` 内部：`@State private var isSelectionMode / selectedIDs` 由列表自管，`TrackRow` 新增 `isSelectionMode / isSelected / onToggleSelection`（多选时行首显示勾选圆钮、点击行切换选中、选中行主题色底）；列头首列占位在多选时由 44pt 变为 84pt（28 勾选框 + 12 间距 + 44 封面），使列头文字与歌曲行内容同向同幅右移 40pt 并保持列对齐，不再向左收缩；列头「时长」右侧新增固定 72pt 宽 `ZStack` 编辑区（与行尾爱心+更多区同宽）：入口 `checkmark.circle` 图标钮 `offset(x: 10)` 与下方爱心中心对齐，编辑态变实心高亮且再点退出；全选/添加到歌单/删除/取消四个 15pt 宽图标钮作为浮层 `offset(x: 28)` 从右侧以 `.move(edge: .trailing) + opacity` 滑出，不参与 HStack 布局、不挤占列宽。
+- 多选状态从 `MainView` 下沉到 `TrackListView` 内部：`@State private var isSelectionMode / selectedIDs` 由列表自管，`TrackRow` 新增 `isSelectionMode / isSelected / onToggleSelection`（多选时行首显示勾选圆钮、点击行切换选中、选中行主题色底）；列头首列在多选时变为 28pt 全选钮 + 12 间距 + 44 封面占位（非多选为 44 封面占位）：新增 `selectAllButton`（18pt `circle`/`checkmark.circle.fill`，与行勾选框同款同位，位于所有行勾选框正上方；`isAllSelected` 判定全选态，点击全选/取消全选），使列头文字与歌曲行内容同向同幅右移 40pt 并保持列对齐，不再向左收缩；列头「时长」右侧新增固定 72pt 宽 `ZStack` 编辑区（与行尾爱心+更多区同宽）：入口 `checkmark.circle` 图标钮 `offset(x: 10)` 与下方爱心中心对齐，编辑态变实心高亮且再点退出；多选子菜单仅保留添加到歌单/删除两个 15pt 宽图标钮，作为浮层 `offset(x: 28)` 从右侧以 `.move(edge: .trailing) + opacity` 滑出（不参与 HStack 布局、不挤占列宽），不再有单独的取消叉钮。
 - `MainView` 删除顶部工具栏的「编辑」胶囊与批量操作 HStack（已选数量/全选/删除/取消）、对应的 `isSelectionMode / selectedTrackIDs` 状态、`isTrackListSection` 计算属性与切换 destination 时的选择重置；`TrackListView` 调用点不再传多选参数。
 - `TrackListView` 新增 `addSelection(to:)`：把 `selectedIDs` 对应的全部曲目经 `LibraryStore.add(_:to:)` 批量加入歌单（逐曲去重）；列头子菜单新增 `folder.badge.plus` 图标 `Menu`（歌单列表 + 「新建歌单…」），未选时禁用；新增 `showingCreatePlaylist` 与 `PlaylistNameEditor` sheet，创建歌单后自动装入所选。
 - `TrackRow` 新增 `selectedCount / onBatchAddToPlaylist`；「⋯」菜单与右键菜单内容抽为共用 `@ViewBuilder rowActions`，多选时仅提供「添加到歌单（已选 N 首）」批量子菜单（无歌单时显示禁用占位项），非多选行为不变。
@@ -72,7 +72,7 @@
 - `swift test`：35/35 通过（新增 3 个 PlaybackMode 用例 + 此前 32 个）。
 - Release 构建分支副本 `dist/漫域音乐-queue-picker-mode.app` 签名后实际运行，等待用户验证：播放页点列表钮整页跳到队列选歌页、图标 morph 成气泡；选歌页点歌立即播放，点气泡整页跳回播放页、图标 morph 回列表；播放模式钮按 顺序 → 单曲循环 → 随机 循环切换。
 - Release 构建分支副本 `dist/漫域音乐-lyrics-preload.app` 签名后实际运行（已并入本分支构建范围），等待用户验证：连续切换多首歌曲时歌词直接出现、不再先闪等待提示；无歌词歌曲显示“本歌曲暂无歌词”；快切期间进度条冻结不虚走，恢复后从 0 平滑起步。
-- `swift test` 全部通过；Release 构建分支副本 `dist/漫域音乐-multiselect-header.app` 签名后实际运行，等待用户验证：顶部工具栏不再有「编辑」胶囊；列头「时长」右侧显示纯勾选圆图标，点击进入多选，区域内切换为全选/删除/取消图标钮，勾选与批量删除行为正常。
+- `swift test` 全部通过；Release 构建分支副本 `dist/漫域音乐-multiselect-header.app` 签名后实际运行，等待用户验证：顶部工具栏不再有「编辑」胶囊；列头「时长」右侧显示纯勾选圆图标，点击进入多选：全选圆钮出现在列头最左、行勾选框正上方，编辑图标右侧滑出添加到歌单/删除钮，无取消叉；勾选、全选与批量删除行为正常。
 
 ## 已知问题与后续
 
