@@ -272,11 +272,10 @@ struct PlayerBar: View {
             showEQPopover.toggle()
         }
         .popover(isPresented: $showEQPopover, arrowEdge: .bottom) {
-            EqualizerPanelView(showsEnableToggle: true, showsHint: false)
-                .frame(width: 380)
-                .padding(.horizontal, 16)
-                .padding(.top, 14)
-                .padding(.bottom, 16)
+            EqualizerPanelView(
+                showsCloseButton: true,
+                onClose: { showEQPopover = false }
+            )
         }
     }
 

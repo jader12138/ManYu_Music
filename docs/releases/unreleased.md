@@ -7,13 +7,14 @@
 
 ## 本轮摘要（2026-09-20，分支 `codex/equalizer`，待合并）
 
-十段图形均衡器（31Hz~16kHz，±12 dB），入口两处：底部播放栏右侧「定时」按钮左侧新增均衡器快捷图标（点击弹面板，顶部带启用开关，开启时图标点亮）；设置里均衡器独立成页（「均衡器」标签页，播放页之后，含启用开关与完整面板），原「播放」页中的均衡器区块移除。内置平直/流行/古典/摇滚/人声五个预设，滑块微调自动标记「自定义」，可命名保存为自定义预设（UserDefaults JSON 持久化，重启不丢）并可删除。
+均衡器参考 MoeKoe EQ 插件全面重做：升级为 31 段参数均衡器（20Hz~20kHz ISO 三分之一倍频程，±6dB，每段 Q 值 0.1~18 独立可调默认 1.4），页面为「头部（标题/运行状态灯/关闭EQ/重置）+ 三页签（均衡器/音效增强/高级功能，后两个占位）+ 实时频谱 + 预设 chips + 31 根垂直滑杆（双击归零）」结构；内置 35 个预设曲线（取自参考项目）+ 自定义预设；旧版十段曲线与自定义预设按对数频率轴插值迁移。入口两处：播放栏「定时」左侧快捷图标（弹窗带关闭钮）与设置独立「均衡器」页。
 
-- **DSP**：RBJ biquad 级联——最低频段 low shelf、最高频段 high shelf、中间八段 peaking（Q=1.1）；0 dB 段使用恒等系数直通。`EQTapContext` 每个 tap 持有独立延迟状态（转置直接 II 型，声道×段），共享 `Equalizer` 参数（NSLock 保护），`revision` 号变化时在音频线程重建一次系数并清零状态。
-- **管线挂载**：`EQTap.attach` 经 `asset.loadTracks(withMediaType:.audio)` 异步取音轨，`AVMutableAudioMixInputParameters.audioTapProcessor = MTAudioProcessingTapCreate(...)`（kMTAudioProcessingTapCreationFlag_PostEffects）；四条 item 创建路径（cut 切歌、crossfade 新曲、gapless 预载、重启恢复）统一 `attachIfEnabled`，开关实时切换对当前两个引擎的 item 挂/摘 tap（`audioMix = nil` 摘除）。非交织/交织 AudioBufferList 布局都处理；平直曲线时 tap 直通不乘加。
-- **C 回调**：`MTAudioProcessingTapCallbacks` 全局函数 + tapStorage 传递 `EQTapContext`（passRetained / finalize release 配对）；process 回调先 `MTAudioProcessingTapGetSourceAudio` 再就地级联滤波。
-- **UI**：均衡器面板抽为共享视图 `EqualizerPanelView`（参数 `showsEnableToggle`/`showsHint`）：预设 Menu（内置+自定义分组）、2×5 滑块网格绑定本地镜像状态（onAppear 同步）、「保存为预设」alert 带 TextField 命名、选中自定义预设时显示删除按钮。播放栏快捷按钮用 `IconButton("slider.horizontal.3")` + `.popover(arrowEdge: .bottom)` 弹出面板，`@AppStorage(Equalizer.enabledKey)` 驱动点亮态；设置新增「均衡器」页（启用开关 row + 面板本体），`SettingsTab` 增加 `.equalizer` case，原 `playbackPane` 的 EQ 区块与旧 `equalizerPane` 移除。
-- **验证**：`swift test` 62/62 通过（新增 6 项：默认关/平直、钳制+revision、恒等系数、滤波器稳定性（极点在单位圆内）、自定义预设存取跨实例、预设应用持久化）；release 构建通过。EQ 对音乐的实际听感（尤其 ±12 dB 极端曲线）待主人验收。
+- **DSP**：RBJ biquad 级联——最低频段 low shelf、最高频段 high shelf、中间 29 段 peaking（各段独立 Q）；0 dB 段使用恒等系数直通。`EQTapContext` 每个 tap 持有独立延迟状态（转置直接 II 型，声道×段），共享 `Equalizer` 参数（NSLock 保护），`revision` 号变化时在音频线程重建一次系数并清零状态；增益与 Q 变化都推进 revision。
+- **tap 常驻**：音频 tap 不再随 EQ 开关挂/摘，四条 item 创建路径（cut 切歌、crossfade 新曲、gapless 预载、重启恢复）一律 `EQTap.attach`；EQ 关闭时 process 直通（`isBypassed` 锁内镜像，不碰 UserDefaults），频谱喂送恒定进行，开关即时生效。
+- **实时频谱**：`EQSpectrumRing`（16384 样本环形缓冲 + NSLock，音频线程写入下混单声道、prepare 时写入采样率）→ `EQSpectrumAnalyzer`（主线程 30fps 定时器，4096 点 Hann 加窗 + vDSP 实数 FFT，20Hz~20kHz 对数频轴 64 点峰值聚合，dB 归一化 + 快攻慢放平滑，暂停时谱线衰减归零）→ `EQSpectrumView` Canvas 绘制绿色频谱线 + 渐变填充 + 频率刻度。纯本地 Accelerate/vDSP 计算。
+- **UI**：`EqualizerPanelView` 整页重做——头部（标题 + 状态指示灯 + 关闭EQ/开启EQ + 重置 + 弹窗关闭钮）、Layout 协议 `FlowLayout` 预设 chips（选中高亮、+ 保存预设、自定义预设删除）、自绘 `EQVerticalSlider`（中心 0dB 基线、0.5 步进、双击归零）、`EQBandColumn`（增益值 + Q 值点击弹编辑滑杆 + 斜排频率标签）；「音效增强」「高级功能」页签为占位文案。播放栏弹窗宽 540，设置页整页嵌入。
+- **迁移**：旧十段增益（31/62/125/250/500/1k/2k/4k/8k/16Hz）与新自定义预设在对数频率轴上线性插值为 31 段并回写；Q 值为新键（默认 1.4×31）。
+- **验证**：`swift test` 68/68 通过（EQ 相关 12 项：默认/Q 镜像/钳制/重置/恒等/全预设稳定性/自定义存取/预设持久化/十段迁移/旧预设迁移/频谱环形缓冲）；release 构建通过。频谱观感与 31 段听感待主人验收。
 
 ## 本轮摘要（2026-09-20，分支 `codex/gapless-crossfade`，待合并）
 

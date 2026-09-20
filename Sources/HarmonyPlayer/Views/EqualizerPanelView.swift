@@ -1,158 +1,58 @@
 import SwiftUI
 
-/// 均衡器面板：预设菜单 + 十段滑块 + 自定义预设保存/删除。
-/// 设置页（独立「均衡器」页签）与底部播放栏的 EQ 弹窗共用。
-/// `showsEnableToggle` 为 true 时（播放栏弹窗）顶部带启用开关，
-/// 面板自身通过 @AppStorage 驱动刷新并调用 `player.setEQEnabled`。
+/// 均衡器面板（参考 MoeKoe EQ 面板设计）：
+/// 头部（标题 + 运行状态 + 关闭EQ/重置）→ 三页签（均衡器/音效增强/高级功能）
+/// → 实时频谱 → 预设 chips → 31 段垂直滑杆（双击归零、每段 Q 值可调）。
+/// 设置页（独立「均衡器」页签）与底部播放栏的 EQ 弹窗共用；
+/// 弹窗场景传 `showsCloseButton: true` + `onClose`。
 struct EqualizerPanelView: View {
     @EnvironmentObject private var player: AudioPlayer
     @AppStorage(Equalizer.enabledKey) private var eqEnabled = false
 
-    var showsEnableToggle = false
-    var showsHint = true
+    var showsCloseButton = false
+    var onClose: () -> Void = {}
+
+    @StateObject private var analyzer = EQSpectrumAnalyzer()
 
     // 本地镜像（Equalizer 非 Observable，滑块绑定镜像状态手动同步）
-    @State private var eqGains: [Double] = .init(repeating: 0, count: Equalizer.bandCount)
-    @State private var eqPresetID = ""
+    @State private var gains: [Double] = .init(repeating: 0, count: Equalizer.bandCount)
+    @State private var qValues: [Double] = .init(repeating: Equalizer.defaultQ, count: Equalizer.bandCount)
+    @State private var presetID = Equalizer.flat.id
+    @State private var selectedTab: EQPanelTab = .equalizer
     @State private var showSavePresetDialog = false
     @State private var newPresetName = ""
 
     var body: some View {
-        let customPresets = player.equalizer.customPresets
-        let selectedIsCustom = customPresets.contains { $0.id == eqPresetID }
-        let displayName = eqPresetID == Equalizer.customCurveID
-            ? "自定义"
-            : player.equalizer.selectedPresetName()
-        return VStack(alignment: .leading, spacing: 12) {
-            if showsEnableToggle {
-                HStack {
-                    Text("启用均衡器")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(Color.hpTextPrimary)
-                    Spacer()
-                    Toggle("", isOn: $eqEnabled)
-                        .toggleStyle(.switch)
-                        .labelsHidden()
-                        .onChange(of: eqEnabled) { newValue in
-                            player.setEQEnabled(newValue)
-                        }
-                }
-                Divider().opacity(0.08)
-            }
+        VStack(spacing: 0) {
+            header
+            tabBar
+            Divider().opacity(0.08)
 
-            HStack(spacing: 10) {
-                Menu {
-                    Section("预设") {
-                        ForEach(Equalizer.builtInPresets) { preset in
-                            Button(preset.name) {
-                                player.equalizer.apply(preset: preset)
-                                syncEQState()
-                            }
-                        }
-                    }
-                    if !customPresets.isEmpty {
-                        Section("自定义预设") {
-                            ForEach(customPresets) { preset in
-                                Button(preset.name) {
-                                    player.equalizer.apply(preset: preset)
-                                    syncEQState()
-                                }
-                            }
-                        }
-                    }
-                } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: "slider.horizontal.3")
-                            .font(.system(size: 10, weight: .medium))
-                        Text(displayName)
-                            .font(.system(size: 12, weight: .medium))
-                        Image(systemName: "chevron.up.chevron.down")
-                            .font(.system(size: 8, weight: .semibold))
-                            .foregroundStyle(Color.hpTextPrimary.opacity(0.5))
-                    }
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 5)
-                    .background(
-                        Color.hpTextPrimary.opacity(0.06),
-                        in: RoundedRectangle(cornerRadius: 6, style: .continuous)
+            Group {
+                switch selectedTab {
+                case .equalizer:
+                    equalizerTab
+                case .enhancement:
+                    placeholderTab(
+                        icon: "waveform.badge.plus",
+                        title: "音效增强",
+                        message: "空间音频、动态低音、音色激励等专业音效将在后续版本提供"
                     )
-                }
-                .fixedSize()
-
-                Spacer()
-
-                Button {
-                    newPresetName = ""
-                    showSavePresetDialog = true
-                } label: {
-                    Label("保存为预设", systemImage: "square.and.arrow.down")
-                        .font(.system(size: 11, weight: .medium))
-                }
-                .buttonStyle(.plain)
-                .help("把当前曲线保存为命名自定义预设")
-
-                if selectedIsCustom {
-                    Button {
-                        player.equalizer.removeCustomPreset(id: eqPresetID)
-                        syncEQState()
-                    } label: {
-                        Image(systemName: "trash")
-                            .font(.system(size: 12))
-                            .foregroundStyle(.red.opacity(0.8))
-                    }
-                    .buttonStyle(.plain)
-                    .help("删除当前自定义预设")
-                }
-            }
-
-            LazyVGrid(
-                columns: [GridItem(.flexible(), spacing: 24), GridItem(.flexible())],
-                spacing: 10
-            ) {
-                ForEach(0..<Equalizer.bandCount, id: \.self) { index in
-                    HStack(spacing: 8) {
-                        Text(Equalizer.bandLabels[index])
-                            .font(.system(size: 10, weight: .medium, design: .rounded))
-                            .foregroundStyle(Color.hpTextPrimary.opacity(0.55))
-                            .frame(width: 28, alignment: .leading)
-                        Slider(
-                            value: Binding(
-                                get: { eqGains[index] },
-                                set: { newValue in
-                                    eqGains[index] = newValue
-                                    player.equalizer.setGain(at: index, to: newValue)
-                                    if eqPresetID != Equalizer.customCurveID {
-                                        eqPresetID = Equalizer.customCurveID
-                                    }
-                                }
-                            ),
-                            in: Equalizer.gainRange,
-                            step: 0.5
-                        )
-                        .tint(.hpAccent)
-                        Text(String(format: "%+.1f", eqGains[index]))
-                            .font(.system(size: 10, weight: .medium, design: .rounded))
-                            .foregroundStyle(
-                                abs(eqGains[index]) > 0.01
-                                    ? Color.hpAccent
-                                    : Color.hpTextPrimary.opacity(0.4)
-                            )
-                            .frame(width: 34, alignment: .trailing)
-                            .monospacedDigit()
-                    }
-                }
-            }
-
-            if showsHint {
-                HStack {
-                    Spacer()
-                    Text("拖动各段滑块调整音色，范围 -12 ~ +12 dB；0 dB 为不增不减")
-                        .font(.system(size: 9))
-                        .foregroundStyle(Color.hpTextPrimary.opacity(0.35))
+                case .advanced:
+                    placeholderTab(
+                        icon: "slider.horizontal.2.square.on.square",
+                        title: "高级功能",
+                        message: "动态 EQ、限幅器、声道独立调节等高级处理将在后续版本提供"
+                    )
                 }
             }
         }
-        .onAppear(perform: syncEQState)
+        .frame(width: showsCloseButton ? 540 : nil)
+        .frame(maxWidth: showsCloseButton ? nil : .infinity)
+        .onAppear {
+            syncEQState()
+            analyzer.connect(to: player.equalizer.spectrumRing)
+        }
         .alert("保存自定义预设", isPresented: $showSavePresetDialog) {
             TextField("预设名称", text: $newPresetName)
             Button("保存") {
@@ -161,13 +61,540 @@ struct EqualizerPanelView: View {
             }
             Button("取消", role: .cancel) {}
         } message: {
-            Text("以当前十条滑块的曲线保存，保存后可在上方菜单中随时切换")
+            Text("以当前 31 段滑块的曲线保存，保存后可在预设区随时切换")
+        }
+    }
+
+    // MARK: - 头部（标题 + 状态 + 关闭EQ / 重置 + 弹窗关闭钮）
+
+    private var header: some View {
+        HStack(spacing: 8) {
+            Text("31段均衡器")
+                .font(.system(size: 16, weight: .bold, design: .rounded))
+                .foregroundStyle(Color.hpAccent)
+
+            Spacer()
+
+            HStack(spacing: 5) {
+                Circle()
+                    .fill(eqEnabled ? Color.green : Color.hpTextPrimary.opacity(0.3))
+                    .frame(width: 7, height: 7)
+                Text(eqEnabled ? "EQ运行中" : "EQ已关闭")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(eqEnabled ? Color.green : Color.hpTextPrimary.opacity(0.45))
+            }
+
+            Button {
+                let newValue = !eqEnabled
+                eqEnabled = newValue
+                player.setEQEnabled(newValue)
+            } label: {
+                Text(eqEnabled ? "关闭EQ" : "开启EQ")
+                    .font(.system(size: 11, weight: .semibold))
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 4)
+                    .background(
+                        Color.hpTextPrimary.opacity(0.08),
+                        in: RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    )
+            }
+            .buttonStyle(.plain)
+            .help(eqEnabled ? "关闭均衡器" : "开启均衡器")
+
+            Button {
+                player.equalizer.resetAll()
+                syncEQState()
+            } label: {
+                Text("重置")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.red.opacity(0.85))
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 4)
+                    .background(
+                        Color.red.opacity(0.1),
+                        in: RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                            .stroke(Color.red.opacity(0.35), lineWidth: 0.8)
+                    )
+            }
+            .buttonStyle(.plain)
+            .help("全部归零并恢复默认 Q 值")
+
+            if showsCloseButton {
+                Button(action: onClose) {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 11, weight: .semibold))
+                        .frame(width: 24, height: 24)
+                        .background(
+                            Color.hpTextPrimary.opacity(0.08),
+                            in: RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        )
+                }
+                .buttonStyle(.plain)
+                .help("关闭")
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.top, 12)
+        .padding(.bottom, 10)
+    }
+
+    // MARK: - 页签栏
+
+    private var tabBar: some View {
+        HStack(spacing: 22) {
+            ForEach(EQPanelTab.allCases) { tab in
+                let isSelected = selectedTab == tab
+                Button {
+                    withAnimation(.easeInOut(duration: 0.15)) {
+                        selectedTab = tab
+                    }
+                } label: {
+                    VStack(spacing: 4) {
+                        Text(tab.title)
+                            .font(.system(size: 12, weight: isSelected ? .semibold : .medium))
+                            .foregroundStyle(isSelected ? Color.hpAccent : Color.hpTextPrimary.opacity(0.55))
+                        Capsule()
+                            .fill(isSelected ? Color.hpAccent : .clear)
+                            .frame(width: 26, height: 2.5)
+                    }
+                }
+                .buttonStyle(.plain)
+            }
+            Spacer()
+        }
+        .padding(.horizontal, 14)
+    }
+
+    // MARK: - 均衡器页签
+
+    private var equalizerTab: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            // 频谱分析
+            Text("频谱分析")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(Color.hpTextPrimary.opacity(0.7))
+            EQSpectrumView(analyzer: analyzer)
+                .frame(height: 120)
+
+            // 预设
+            Text("预设")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(Color.hpTextPrimary.opacity(0.7))
+            presetChips
+
+            // 均衡器调节
+            HStack(spacing: 8) {
+                Text("均衡器调节")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(Color.hpTextPrimary.opacity(0.7))
+                Text("双击滑杆归零 | Q值可调")
+                    .font(.system(size: 10))
+                    .foregroundStyle(Color.hpTextPrimary.opacity(0.4))
+            }
+            slidersRow
+        }
+        .padding(.horizontal, 14)
+        .padding(.top, 12)
+        .padding(.bottom, 14)
+    }
+
+    // MARK: 预设 chips（内置 + 自定义 + 保存/删除）
+
+    private var presetChips: some View {
+        let customPresets = player.equalizer.customPresets
+        let selectedIsCustom = customPresets.contains { $0.id == presetID }
+        return FlowLayout(spacing: 6) {
+            ForEach(Equalizer.builtInPresets) { preset in
+                EQPresetChip(
+                    title: preset.name,
+                    isSelected: presetID == preset.id
+                ) {
+                    player.equalizer.apply(preset: preset)
+                    syncEQState()
+                }
+            }
+            ForEach(customPresets) { preset in
+                EQPresetChip(
+                    title: preset.name,
+                    isSelected: presetID == preset.id
+                ) {
+                    player.equalizer.apply(preset: preset)
+                    syncEQState()
+                }
+            }
+            EQPresetChip(title: "+ 保存预设", isSelected: false, tint: .green) {
+                newPresetName = ""
+                showSavePresetDialog = true
+            }
+            .help("把当前曲线保存为命名自定义预设")
+            if selectedIsCustom {
+                EQPresetChip(title: "删除预设", isSelected: false, tint: .red) {
+                    player.equalizer.removeCustomPreset(id: presetID)
+                    syncEQState()
+                }
+                .help("删除当前选中的自定义预设")
+            }
+        }
+    }
+
+    // MARK: 31 段垂直滑杆
+
+    private var slidersRow: some View {
+        HStack(spacing: 0) {
+            ForEach(0..<Equalizer.bandCount, id: \.self) { index in
+                EQBandColumn(
+                    index: index,
+                    gain: Binding(
+                        get: { gains[index] },
+                        set: { newValue in
+                            gains[index] = newValue
+                            player.equalizer.setGain(at: index, to: newValue)
+                            if presetID != Equalizer.customCurveID {
+                                presetID = Equalizer.customCurveID
+                            }
+                        }
+                    ),
+                    qValue: Binding(
+                        get: { qValues[index] },
+                        set: { newValue in
+                            qValues[index] = newValue
+                            player.equalizer.setQ(at: index, to: newValue)
+                        }
+                    )
+                )
+                .frame(maxWidth: .infinity)
+            }
         }
     }
 
     /// 把 Equalizer 里的真实状态同步到本地镜像（面板出现/预设切换后调用）。
     private func syncEQState() {
-        eqGains = player.equalizer.gains
-        eqPresetID = player.equalizer.selectedPresetID
+        gains = player.equalizer.gains
+        qValues = player.equalizer.qValues
+        presetID = player.equalizer.selectedPresetID
+    }
+
+    // MARK: 占位页签
+
+    private func placeholderTab(icon: String, title: String, message: String) -> some View {
+        VStack(spacing: 10) {
+            Image(systemName: icon)
+                .font(.system(size: 30))
+                .foregroundStyle(Color.hpTextPrimary.opacity(0.22))
+            Text(title)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(Color.hpTextPrimary.opacity(0.55))
+            Text(message)
+                .font(.system(size: 11))
+                .foregroundStyle(Color.hpTextPrimary.opacity(0.38))
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity, minHeight: 380)
+        .padding(14)
+    }
+}
+
+// MARK: - 页签定义
+
+enum EQPanelTab: String, CaseIterable, Identifiable {
+    case equalizer
+    case enhancement
+    case advanced
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .equalizer: "均衡器"
+        case .enhancement: "音效增强"
+        case .advanced: "高级功能"
+        }
+    }
+}
+
+// MARK: - 实时频谱视图
+
+/// 深色面板上的绿色实时频谱线（含下方渐变填充与频率刻度）。
+struct EQSpectrumView: View {
+    @ObservedObject var analyzer: EQSpectrumAnalyzer
+
+    private static let spectrumGreen = Color(red: 0.28, green: 0.82, blue: 0.42)
+
+    var body: some View {
+        RoundedRectangle(cornerRadius: 8, style: .continuous)
+            .fill(Color.black.opacity(0.82))
+            .overlay {
+                Canvas { context, size in
+                    let count = analyzer.levels.count
+                    guard count > 1 else { return }
+
+                    // 水平参考线
+                    for fraction in [0.25, 0.5, 0.75] {
+                        let y = size.height * fraction
+                        var grid = Path()
+                        grid.move(to: CGPoint(x: 0, y: y))
+                        grid.addLine(to: CGPoint(x: size.width, y: y))
+                        context.stroke(
+                            grid,
+                            with: .color(.white.opacity(0.05)),
+                            lineWidth: 0.5
+                        )
+                    }
+
+                    // 频谱曲线
+                    var line = Path()
+                    for (index, level) in analyzer.levels.enumerated() {
+                        let point = CGPoint(
+                            x: size.width * CGFloat(index) / CGFloat(count - 1),
+                            y: size.height * (1 - CGFloat(level) * 0.92) - 2
+                        )
+                        if index == 0 {
+                            line.move(to: point)
+                        } else {
+                            line.addLine(to: point)
+                        }
+                    }
+
+                    // 曲线下方渐变填充
+                    var fill = line
+                    fill.addLine(to: CGPoint(x: size.width, y: size.height))
+                    fill.addLine(to: CGPoint(x: 0, y: size.height))
+                    fill.closeSubpath()
+                    context.fill(
+                        fill,
+                        with: .linearGradient(
+                            Gradient(colors: [
+                                Self.spectrumGreen.opacity(0.30),
+                                Self.spectrumGreen.opacity(0.02),
+                            ]),
+                            startPoint: CGPoint(x: 0, y: 0),
+                            endPoint: CGPoint(x: 0, y: size.height)
+                        )
+                    )
+                    context.stroke(
+                        line,
+                        with: .color(Self.spectrumGreen),
+                        style: StrokeStyle(lineWidth: 1.4, lineJoin: .round)
+                    )
+                }
+            }
+            .overlay(alignment: .bottom) {
+                HStack {
+                    Text("20Hz")
+                    Spacer()
+                    Text("1k")
+                    Spacer()
+                    Text("20kHz")
+                }
+                .font(.system(size: 8, design: .rounded))
+                .foregroundStyle(.white.opacity(0.3))
+                .padding(.horizontal, 8)
+                .padding(.bottom, 3)
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .onAppear { analyzer.start() }
+            .onDisappear { analyzer.stop() }
+    }
+}
+
+// MARK: - 预设 chip
+
+struct EQPresetChip: View {
+    let title: String
+    let isSelected: Bool
+    var tint: Color?
+    let action: () -> Void
+
+    var body: some View {
+        let highlight = tint ?? Color.hpAccent
+        Button(action: action) {
+            Text(title)
+                .font(.system(size: 11, weight: isSelected ? .semibold : .medium))
+                .foregroundStyle(isSelected ? highlight : Color.hpTextPrimary.opacity(0.72))
+                .padding(.horizontal, 11)
+                .padding(.vertical, 5)
+                .background(
+                    (isSelected ? highlight.opacity(0.12) : Color.hpTextPrimary.opacity(0.06)),
+                    in: RoundedRectangle(cornerRadius: 6, style: .continuous)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .stroke(
+                            isSelected ? highlight.opacity(0.65) : Color.hpTextPrimary.opacity(0.10),
+                            lineWidth: isSelected ? 1 : 0.6
+                        )
+                )
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+// MARK: - 单个频段列（滑杆 + 增益 + Q + 频率标签）
+
+struct EQBandColumn: View {
+    let index: Int
+    @Binding var gain: Double
+    @Binding var qValue: Double
+
+    @State private var showQEditor = false
+
+    var body: some View {
+        VStack(spacing: 3) {
+            EQVerticalSlider(value: $gain, range: Equalizer.gainRange, step: Equalizer.gainStep)
+                .frame(height: 128)
+
+            Text(String(format: "%.1f", gain))
+                .font(.system(size: 8, weight: .medium, design: .rounded))
+                .foregroundStyle(
+                    abs(gain) > 0.01 ? Color.hpAccent : Color.hpTextPrimary.opacity(0.42)
+                )
+                .monospacedDigit()
+
+            Button {
+                showQEditor = true
+            } label: {
+                Text(String(format: "%.1f", qValue))
+                    .font(.system(size: 8, weight: .medium, design: .rounded))
+                    .foregroundStyle(Color.hpTextPrimary.opacity(0.55))
+                    .padding(.horizontal, 3)
+                    .padding(.vertical, 1)
+                    .background(
+                        Color.hpTextPrimary.opacity(0.08),
+                        in: RoundedRectangle(cornerRadius: 3, style: .continuous)
+                    )
+            }
+            .buttonStyle(.plain)
+            .help("频段 \(Equalizer.bandLabels[index]) 的 Q 值（点击调整）")
+            .popover(isPresented: $showQEditor, arrowEdge: .bottom) {
+                qEditor
+            }
+
+            Text(Equalizer.bandLabels[index])
+                .font(.system(size: 7.5, weight: .medium, design: .rounded))
+                .foregroundStyle(Color.hpTextPrimary.opacity(0.45))
+                .rotationEffect(.degrees(-45))
+                .frame(width: 14, height: 26)
+        }
+    }
+
+    /// Q 值编辑小弹窗：横向滑杆 0.1 ~ 18。
+    private var qEditor: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("频段 \(Equalizer.bandLabels[index]) Hz · Q 值")
+                .font(.system(size: 12, weight: .semibold))
+            HStack(spacing: 10) {
+                Slider(value: $qValue, in: Equalizer.qRange, step: Equalizer.qStep)
+                    .frame(width: 190)
+                Text(String(format: "%.1f", qValue))
+                    .font(.system(size: 11, weight: .medium, design: .rounded))
+                    .monospacedDigit()
+                    .frame(width: 30, alignment: .trailing)
+            }
+            Text("Q 越小频段越宽、影响更平滑；越大频段越窄、调整更锐利")
+                .font(.system(size: 9))
+                .foregroundStyle(Color.hpTextPrimary.opacity(0.4))
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+    }
+}
+
+// MARK: - 垂直滑杆（自绘，中心为 0 dB，双击归零）
+
+struct EQVerticalSlider: View {
+    @Binding var value: Double
+    let range: ClosedRange<Double>
+    var step: Double = 0.5
+
+    var body: some View {
+        GeometryReader { geometry in
+            let height = geometry.size.height
+            let span = range.upperBound - range.lowerBound
+            let fraction = (value - range.lowerBound) / span
+            ZStack {
+                // 轨道
+                Capsule()
+                    .fill(Color.hpTextPrimary.opacity(0.16))
+                    .frame(width: 2)
+                // 0 dB 中线
+                Rectangle()
+                    .fill(Color.hpTextPrimary.opacity(0.12))
+                    .frame(height: 1)
+                // 滑块
+                RoundedRectangle(cornerRadius: 2.5, style: .continuous)
+                    .fill(
+                        abs(value) < 0.01
+                            ? Color.hpTextPrimary.opacity(0.5)
+                            : Color.hpAccent
+                    )
+                    .frame(width: 10, height: 8)
+                    .shadow(color: .black.opacity(0.2), radius: 1, y: 0.5)
+                    .offset(y: height / 2 - CGFloat(fraction) * height)
+            }
+            .frame(width: geometry.size.width, height: height)
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { gesture in
+                        let clampedY = min(max(gesture.location.y, 0), height)
+                        let fraction = Double(1 - clampedY / height)
+                        let raw = range.lowerBound + fraction * span
+                        let snapped = (raw / step).rounded() * step
+                        value = min(max(snapped, range.lowerBound), range.upperBound)
+                    }
+            )
+            .onTapGesture(count: 2) {
+                withAnimation(.easeInOut(duration: 0.15)) {
+                    value = 0
+                }
+            }
+        }
+    }
+}
+
+// MARK: - 流式布局（预设 chips 自动换行）
+
+/// macOS 14 可用的 Layout 协议流式布局：子视图按行排布，放不下就换行。
+struct FlowLayout: Layout {
+    var spacing: CGFloat = 6
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let maxWidth = proposal.width ?? .infinity
+        var x: CGFloat = 0
+        var y: CGFloat = 0
+        var rowHeight: CGFloat = 0
+        for subview in subviews {
+            let size = subview.sizeThatFits(.unspecified)
+            if x > 0, x + size.width > maxWidth {
+                x = 0
+                y += rowHeight + spacing
+                rowHeight = 0
+            }
+            x += size.width + spacing
+            rowHeight = max(rowHeight, size.height)
+        }
+        let width = maxWidth.isFinite ? maxWidth : max(0, x - spacing)
+        return CGSize(width: width, height: y + rowHeight)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        var x = bounds.minX
+        var y = bounds.minY
+        var rowHeight: CGFloat = 0
+        for subview in subviews {
+            let size = subview.sizeThatFits(.unspecified)
+            if x > bounds.minX, x + size.width > bounds.maxX {
+                x = bounds.minX
+                y += rowHeight + spacing
+                rowHeight = 0
+            }
+            subview.place(at: CGPoint(x: x, y: y), proposal: .unspecified)
+            x += size.width + spacing
+            rowHeight = max(rowHeight, size.height)
+        }
     }
 }

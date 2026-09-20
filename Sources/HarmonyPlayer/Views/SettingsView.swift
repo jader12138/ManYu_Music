@@ -47,7 +47,6 @@ struct SettingsView: View {
     @AppStorage(AudioPlayer.gaplessPlaybackKey) private var gaplessPlayback = false
     @AppStorage(AudioPlayer.crossfadeEnabledKey) private var crossfadeEnabled = false
     @AppStorage(AudioPlayer.crossfadeDurationKey) private var crossfadeDuration = AudioPlayer.defaultCrossfadeDuration
-    @AppStorage(Equalizer.enabledKey) private var eqEnabled = false
     @AppStorage(RecommendationSettings.frequencyKey)
     private var recommendationFrequencyRaw = RecommendationFrequency.daily.rawValue
     @AppStorage(RecommendationSettings.independentKey)
@@ -397,27 +396,11 @@ struct SettingsView: View {
 
     // MARK: - 均衡器
 
+    /// 独立均衡器页：面板自带头部（标题/运行状态/关闭EQ/重置）、
+    /// 三页签、实时频谱、预设与 31 段调节，设置页直接整页嵌入。
     private var equalizerSettingsPage: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            sectionHeading("均衡器")
-
-            row(title: "启用均衡器",
-                subtitle: "十段图形均衡器，实时作用于所有播放中的音乐") {
-                Toggle("", isOn: $eqEnabled)
-                    .toggleStyle(.switch)
-                    .labelsHidden()
-                    .onChange(of: eqEnabled) { newValue in
-                        player.setEQEnabled(newValue)
-                    }
-            }
-
-            Divider().opacity(0.08)
-
-            // 面板本体（预设菜单 + 十段滑块 + 自定义预设管理），
-            // 启用开关已放在上方 row，这里不再重复显示。
-            EqualizerPanelView(showsEnableToggle: false, showsHint: true)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        EqualizerPanelView()
+            .padding(.vertical, 10)
     }
 
     // MARK: - 资料库
