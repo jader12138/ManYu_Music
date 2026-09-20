@@ -518,8 +518,9 @@ enum EQPanelTab: String, CaseIterable, Identifiable {
 // MARK: - 实时频谱视图
 
 /// 深色面板上的绿色实时频谱波浪（含下方渐变填充与频率刻度）：
-/// 曲线用 Catmull-Rom 平滑成柔和波浪，底部始终叠加缓慢起伏的
-/// "水波"基线——静默/暂停时也保持波浪感，播放时真实频谱叠加其上。
+/// 曲线用弱化张力的 Catmull-Rom 保留峰形，轮廓随真实频谱
+/// 高低错落——像层叠的山峰而非均匀波浪；静默/暂停时衰减贴底。
+/// 主线之下叠加一条更矮、衰减更慢的"远山影"（trailing）增加层次。
 struct EQSpectrumView: View {
     @ObservedObject var analyzer: EQSpectrumAnalyzer
 
@@ -546,34 +547,27 @@ struct EQSpectrumView: View {
                         )
                     }
 
-                    // 主波浪：频谱能量 + 水波基线（能量越高水波贡献越少）
+                    // 主山峰线：真实频谱能量直接映射高度（无人工波浪叠加）
                     let mainPoints = (0..<count).map { index -> CGPoint in
                         let xNorm = Double(index) / Double(count - 1)
-                        let level = analyzer.levels[index]
-                        let wave = Self.waveValue(xNorm: xNorm, phase: analyzer.phase)
-                        let value = min(1, level + wave * (1 - level))
+                        let value = max(analyzer.levels[index], 0.02)
                         return CGPoint(
                             x: size.width * CGFloat(xNorm),
-                            y: size.height * (1 - CGFloat(value) * 0.92) - 2
+                            y: size.height * (1 - CGFloat(value) * 0.95) - 2
                         )
                     }
 
-                    // 次级回声波：相位错开、幅度收敛，画在主线下方增加层次
+                    // 远山影：矮化快照画在主线下方，峰过之后缓缓退去
                     let echoPoints = (0..<count).map { index -> CGPoint in
                         let xNorm = Double(index) / Double(count - 1)
-                        let level = analyzer.levels[index] * 0.5
-                        let wave = Self.waveValue(
-                            xNorm: xNorm,
-                            phase: analyzer.phase + 2.2
-                        )
-                        let value = min(1, level + wave * 0.55 * (1 - level))
+                        let value = max(analyzer.trailing[index], 0.015)
                         return CGPoint(
                             x: size.width * CGFloat(xNorm),
-                            y: size.height * (1 - CGFloat(value) * 0.92) - 2
+                            y: size.height * (1 - CGFloat(value) * 0.95) - 2
                         )
                     }
 
-                    // 回声波（仅描线，弱化显示）
+                    // 远山影（仅描线，弱化显示）
                     let echoLine = Self.smoothPath(points: echoPoints)
                     context.stroke(
                         echoLine,
@@ -581,7 +575,7 @@ struct EQSpectrumView: View {
                         style: StrokeStyle(lineWidth: 1, lineJoin: .round)
                     )
 
-                    // 主波浪曲线下方渐变填充
+                    // 主山峰曲线下方渐变填充
                     var fill = Self.smoothPath(points: mainPoints)
                     fill.addLine(to: CGPoint(x: size.width, y: size.height))
                     fill.addLine(to: CGPoint(x: 0, y: size.height))
@@ -622,18 +616,8 @@ struct EQSpectrumView: View {
             .onDisappear { analyzer.stop() }
     }
 
-    /// 水波基线：三列不同波长、不同慢速的正弦叠加（相位沿 x 漂移），
-    /// 均值约 0.09、峰值约 0.2，让静默时曲线呈现缓和的水面起伏。
-    private static func waveValue(xNorm: Double, phase: Double) -> Double {
-        let x = xNorm * 2 * .pi
-        let value = 0.09
-            + 0.05 * sin(x * 0.9 + phase)
-            + 0.04 * sin(x * 1.6 - phase * 0.7 + 1.7)
-            + 0.028 * sin(x * 2.8 + phase * 0.45 + 3.9)
-        return max(0.012, value)
-    }
-
-    /// Catmull-Rom → 三次贝塞尔：把折线平滑成柔和曲线。
+    /// Catmull-Rom → 三次贝塞尔：张力弱化（控制点系数 1/9），
+    /// 保留峰谷的陡峭轮廓，只消除相邻点的细碎锯齿。
     private static func smoothPath(points: [CGPoint]) -> Path {
         var path = Path()
         guard let first = points.first else { return path }
@@ -645,12 +629,12 @@ struct EQSpectrumView: View {
             let p2 = points[index + 1]
             let p3 = index + 2 < points.count ? points[index + 2] : p2
             let control1 = CGPoint(
-                x: p1.x + (p2.x - p0.x) / 6,
-                y: p1.y + (p2.y - p0.y) / 6
+                x: p1.x + (p2.x - p0.x) / 9,
+                y: p1.y + (p2.y - p0.y) / 9
             )
             let control2 = CGPoint(
-                x: p2.x - (p3.x - p1.x) / 6,
-                y: p2.y - (p3.y - p1.y) / 6
+                x: p2.x - (p3.x - p1.x) / 9,
+                y: p2.y - (p3.y - p1.y) / 9
             )
             path.addCurve(to: p2, control1: control1, control2: control2)
         }
