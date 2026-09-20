@@ -1,9 +1,13 @@
 # 下一版本（v3.13.0 正式版或后续 beta 准备中）
 
-- 发布状态：截至 2026-09-20 的三轮 UI/默认主题改动已随 **`v3.13.0-beta3`** 内测预发布版发布（GitHub Releases，prerelease，不顶替 3.12.0 稳定版）；`CHANGELOG.md` 已归档 beta3 区块，本文件保留过程摘要。
+- 发布状态：截至 2026-09-20 的三轮 UI/默认主题改动已随 **`v3.13.0-beta3`** 内测预发布版发布（GitHub Releases，prerelease，不顶替 3.12.0 稳定版）；`CHANGELOG.md` 已归档 beta3 区块，本文件保留过程摘要。beta3 之后的封面包边与图标尺寸标准化已本地合并，等待下一次发版。
 - 已发布内测：`v3.13.0-beta1`、`v3.13.0-beta2`、`v3.13.0-beta3`（见文末附录）
 - 上一稳定版本：`v3.12.0`
 - 当前 `VERSION`：`3.13.0-beta3`
+
+## 本轮摘要（2026-09-20 本地合并，分支 `codex/artwork-acrylic-border` + `codex/icon-size-standard`）
+
+播放条左下角封面加亚克力包边（hero 同款 ultraThinMaterial，外框 54/封面 48，0.6pt 灰发丝线+轻阴影，不参与播放页转场）；Dock 三种状态图标（白色/黑色/专辑封面）与启动台图标统一缩到 macOS 标准网格占比（内容 87.5%→80.5%，1024 母版留 10% 透明边，PNG/icns 重新生成；封面模式 512 渲染整体缩到 440 居中），与系统其他 App 图标同档。纯资源与展示层改动。
 
 ## 本轮摘要（2026-09-20 合并，分支 `codex/heart-format-colors`）
 
