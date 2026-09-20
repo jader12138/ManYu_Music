@@ -58,7 +58,7 @@ enum AppIconStyleManager {
             isDark = false
         case .automatic:
             let appearanceRaw = UserDefaults.standard.string(forKey: ThemeStore.appearanceKey)
-            let appearance = AppAppearance(rawValue: appearanceRaw ?? "") ?? .dark
+            let appearance = AppAppearance(rawValue: appearanceRaw ?? "") ?? .system
             if appearance == .system {
                 isDark = NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
             } else {
@@ -105,7 +105,8 @@ enum AppIconStyleManager {
                     isDark = appearance == .dark
                 }
             } else {
-                isDark = true
+                // appearance 未设过时默认跟随系统浅色（白色模式），与 ThemeStore 默认 .system 一致
+                isDark = NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
             }
         }
 
