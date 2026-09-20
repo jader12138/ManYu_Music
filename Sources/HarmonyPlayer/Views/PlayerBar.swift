@@ -106,9 +106,29 @@ struct PlayerBar: View {
                 }
             } label: {
                 HStack(spacing: 10) {
-                    // 圆角基准：7:48，全局其他封面（播放页大封面除外）都按此比例统一。
-                    ArtworkView(image: player.artwork, size: 48, cornerRadius: ArtworkLayout.cornerRadius(for: 48))
-                        .matchedGeometryEffect(id: "nowPlayingArtwork.playerBar", in: transitionNamespace, isSource: true)
+                    // 亚克力包边：玻璃底 + 白色微光 + 一圈很细的灰线（自适应深浅模式），
+                    // 按小封面等比缩小——hero 每边宽 11pt，这里每边 3pt（外框 54、封面 48）；
+                    // 白色封面也能凭灰线清楚看到边界。包边不参与 matchedGeometry 转场，
+                    // 进播放页时只放大封面、包边留在播放条。
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .fill(.ultraThinMaterial)
+                            .overlay {
+                                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                    .fill(Color.white.opacity(0.08))
+                            }
+                            .overlay {
+                                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                    .stroke(Color.hpHairline, lineWidth: 0.6)
+                                    .shadow(color: .black.opacity(0.38), radius: 0.9, y: 0.9)
+                            }
+                            .shadow(color: .black.opacity(0.18), radius: 5, y: 2)
+
+                        // 圆角基准：7:48，全局其他封面（播放页大封面除外）都按此比例统一。
+                        ArtworkView(image: player.artwork, size: 48, cornerRadius: ArtworkLayout.cornerRadius(for: 48))
+                            .matchedGeometryEffect(id: "nowPlayingArtwork.playerBar", in: transitionNamespace, isSource: true)
+                    }
+                    .frame(width: 54, height: 54)
 
                     if let track = player.currentTrack {
                         HStack(spacing: 8) {
