@@ -318,7 +318,9 @@ enum EQPanelTab: String, CaseIterable, Identifiable {
 
 // MARK: - 实时频谱视图
 
-/// 深色面板上的绿色实时频谱线（含下方渐变填充与频率刻度）。
+/// 深色面板上的绿色实时频谱波浪（含下方渐变填充与频率刻度）：
+/// 曲线用 Catmull-Rom 平滑成柔和波浪，底部始终叠加缓慢起伏的
+/// "水波"基线——静默/暂停时也保持波浪感，播放时真实频谱叠加其上。
 struct EQSpectrumView: View {
     @ObservedObject var analyzer: EQSpectrumAnalyzer
 
@@ -345,22 +347,43 @@ struct EQSpectrumView: View {
                         )
                     }
 
-                    // 频谱曲线
-                    var line = Path()
-                    for (index, level) in analyzer.levels.enumerated() {
-                        let point = CGPoint(
-                            x: size.width * CGFloat(index) / CGFloat(count - 1),
-                            y: size.height * (1 - CGFloat(level) * 0.92) - 2
+                    // 主波浪：频谱能量 + 水波基线（能量越高水波贡献越少）
+                    let mainPoints = (0..<count).map { index -> CGPoint in
+                        let xNorm = Double(index) / Double(count - 1)
+                        let level = analyzer.levels[index]
+                        let wave = Self.waveValue(xNorm: xNorm, phase: analyzer.phase)
+                        let value = min(1, level + wave * (1 - level))
+                        return CGPoint(
+                            x: size.width * CGFloat(xNorm),
+                            y: size.height * (1 - CGFloat(value) * 0.92) - 2
                         )
-                        if index == 0 {
-                            line.move(to: point)
-                        } else {
-                            line.addLine(to: point)
-                        }
                     }
 
-                    // 曲线下方渐变填充
-                    var fill = line
+                    // 次级回声波：相位错开、幅度收敛，画在主线下方增加层次
+                    let echoPoints = (0..<count).map { index -> CGPoint in
+                        let xNorm = Double(index) / Double(count - 1)
+                        let level = analyzer.levels[index] * 0.5
+                        let wave = Self.waveValue(
+                            xNorm: xNorm,
+                            phase: analyzer.phase + 2.2
+                        )
+                        let value = min(1, level + wave * 0.55 * (1 - level))
+                        return CGPoint(
+                            x: size.width * CGFloat(xNorm),
+                            y: size.height * (1 - CGFloat(value) * 0.92) - 2
+                        )
+                    }
+
+                    // 回声波（仅描线，弱化显示）
+                    let echoLine = Self.smoothPath(points: echoPoints)
+                    context.stroke(
+                        echoLine,
+                        with: .color(Self.spectrumGreen.opacity(0.30)),
+                        style: StrokeStyle(lineWidth: 1, lineJoin: .round)
+                    )
+
+                    // 主波浪曲线下方渐变填充
+                    var fill = Self.smoothPath(points: mainPoints)
                     fill.addLine(to: CGPoint(x: size.width, y: size.height))
                     fill.addLine(to: CGPoint(x: 0, y: size.height))
                     fill.closeSubpath()
@@ -376,7 +399,7 @@ struct EQSpectrumView: View {
                         )
                     )
                     context.stroke(
-                        line,
+                        Self.smoothPath(points: mainPoints),
                         with: .color(Self.spectrumGreen),
                         style: StrokeStyle(lineWidth: 1.4, lineJoin: .round)
                     )
@@ -398,6 +421,41 @@ struct EQSpectrumView: View {
             .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
             .onAppear { analyzer.start() }
             .onDisappear { analyzer.stop() }
+    }
+
+    /// 水波基线：三列不同波长、不同慢速的正弦叠加（相位沿 x 漂移），
+    /// 均值约 0.09、峰值约 0.2，让静默时曲线呈现缓和的水面起伏。
+    private static func waveValue(xNorm: Double, phase: Double) -> Double {
+        let x = xNorm * 2 * .pi
+        let value = 0.09
+            + 0.05 * sin(x * 0.9 + phase)
+            + 0.04 * sin(x * 1.6 - phase * 0.7 + 1.7)
+            + 0.028 * sin(x * 2.8 + phase * 0.45 + 3.9)
+        return max(0.012, value)
+    }
+
+    /// Catmull-Rom → 三次贝塞尔：把折线平滑成柔和曲线。
+    private static func smoothPath(points: [CGPoint]) -> Path {
+        var path = Path()
+        guard let first = points.first else { return path }
+        path.move(to: first)
+        guard points.count > 1 else { return path }
+        for index in 0..<(points.count - 1) {
+            let p0 = index > 0 ? points[index - 1] : points[index]
+            let p1 = points[index]
+            let p2 = points[index + 1]
+            let p3 = index + 2 < points.count ? points[index + 2] : p2
+            let control1 = CGPoint(
+                x: p1.x + (p2.x - p0.x) / 6,
+                y: p1.y + (p2.y - p0.y) / 6
+            )
+            let control2 = CGPoint(
+                x: p2.x - (p3.x - p1.x) / 6,
+                y: p2.y - (p3.y - p1.y) / 6
+            )
+            path.addCurve(to: p2, control1: control1, control2: control2)
+        }
+        return path
     }
 }
 

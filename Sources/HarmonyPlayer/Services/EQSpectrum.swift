@@ -83,6 +83,9 @@ final class EQSpectrumRing {
 final class EQSpectrumAnalyzer: ObservableObject {
     @Published private(set) var levels: [Double] =
         [Double](repeating: 0, count: EQSpectrumAnalyzer.pointCount)
+    /// 波浪相位：每个 tick 缓慢推进，驱动频谱底部的"水波"起伏
+    /// （无信号/暂停时谱线也保持柔和的波浪感）。
+    @Published private(set) var phase: Double = 0
 
     static let pointCount = 64
     static let minHz: Double = 20
@@ -147,6 +150,9 @@ final class EQSpectrumAnalyzer: ObservableObject {
     }
 
     private func tick() {
+        // 波浪相位始终缓慢推进（一圈约 7 秒），保证静默时也有柔和水波。
+        phase = (phase + 0.03).truncatingRemainder(dividingBy: 2 * .pi)
+
         preparePipelineIfNeeded()
         guard isPipelineReady, let ring else { return }
 
@@ -203,7 +209,7 @@ final class EQSpectrumAnalyzer: ObservableObject {
             newLevels[index] = min(max(normalized, 0), 1)
         }
 
-        // 快攻慢放：新值更高立刻跟上，回落时保留一点余晖。
-        levels = zip(newLevels, levels).map { max($0, $1 * 0.72) }
+        // 快攻慢放：新值更高立刻跟上，回落时保留更长的柔和余晖。
+        levels = zip(newLevels, levels).map { max($0, $1 * 0.8) }
     }
 }

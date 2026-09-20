@@ -11,7 +11,7 @@
 
 - **DSP**：RBJ biquad 级联——最低频段 low shelf、最高频段 high shelf、中间 29 段 peaking（各段独立 Q）；0 dB 段使用恒等系数直通。`EQTapContext` 每个 tap 持有独立延迟状态（转置直接 II 型，声道×段），共享 `Equalizer` 参数（NSLock 保护），`revision` 号变化时在音频线程重建一次系数并清零状态；增益与 Q 变化都推进 revision。
 - **tap 常驻**：音频 tap 不再随 EQ 开关挂/摘，四条 item 创建路径（cut 切歌、crossfade 新曲、gapless 预载、重启恢复）一律 `EQTap.attach`；EQ 关闭时 process 直通（`isBypassed` 锁内镜像，不碰 UserDefaults），频谱喂送恒定进行，开关即时生效。
-- **实时频谱**：`EQSpectrumRing`（16384 样本环形缓冲 + NSLock，音频线程写入下混单声道、prepare 时写入采样率）→ `EQSpectrumAnalyzer`（主线程 30fps 定时器，4096 点 Hann 加窗 + vDSP 实数 FFT，20Hz~20kHz 对数频轴 64 点峰值聚合，dB 归一化 + 快攻慢放平滑，暂停时谱线衰减归零）→ `EQSpectrumView` Canvas 绘制绿色频谱线 + 渐变填充 + 频率刻度。纯本地 Accelerate/vDSP 计算。
+- **实时频谱**：`EQSpectrumRing`（16384 样本环形缓冲 + NSLock，音频线程写入下混单声道、prepare 时写入采样率）→ `EQSpectrumAnalyzer`（主线程 30fps 定时器，4096 点 Hann 加窗 + vDSP 实数 FFT，20Hz~20kHz 对数频轴 64 点峰值聚合，dB 归一化 + 快攻慢放平滑，暂停时谱线衰减归零；相位每 tick 缓慢推进驱动水波基线）→ `EQSpectrumView` Canvas 绘制：Catmull-Rom 平滑波浪线 + 渐变填充 + 缓慢起伏水波基线（静默时也有波浪感）+ 相位错开的回声波 + 频率刻度。纯本地 Accelerate/vDSP 计算。
 - **UI**：`EqualizerPanelView` 整页重做——头部（标题 + 状态指示灯 + 关闭EQ/开启EQ + 重置 + 弹窗关闭钮）、Layout 协议 `FlowLayout` 预设 chips（选中高亮、+ 保存预设、自定义预设删除）、自绘 `EQVerticalSlider`（中心 0dB 基线、0.5 步进、双击归零）、`EQBandColumn`（增益值 + Q 值点击弹编辑滑杆 + 斜排频率标签）；「音效增强」「高级功能」页签为占位文案。播放栏弹窗宽 540，设置页整页嵌入。
 - **迁移**：旧十段增益（31/62/125/250/500/1k/2k/4k/8k/16Hz）与新自定义预设在对数频率轴上线性插值为 31 段并回写；Q 值为新键（默认 1.4×31）。
 - **验证**：`swift test` 68/68 通过（EQ 相关 12 项：默认/Q 镜像/钳制/重置/恒等/全预设稳定性/自定义存取/预设持久化/十段迁移/旧预设迁移/频谱环形缓冲）；release 构建通过。频谱观感与 31 段听感待主人验收。
