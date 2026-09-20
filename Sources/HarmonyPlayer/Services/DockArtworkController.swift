@@ -59,7 +59,6 @@ final class DockArtworkController {
                 guard generation == self.renderGeneration else { return }
                 NSApplication.shared.applicationIconImage = icon
                 NSApplication.shared.dockTile.display()
-                NotificationCenter.default.post(name: .appIconDidChange, object: nil)
             }
         }
     }

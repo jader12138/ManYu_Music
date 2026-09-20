@@ -7,12 +7,6 @@ private func hpSystemIsDarkAppearance() -> Bool {
     NSApp?.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
 }
 
-extension Notification.Name {
-    /// `NSApp.applicationIconImage` 刚被替换（主题图标或 Dock 封面模式）。
-    /// 菜单栏等镜像展示该图标的地方收到后刷新，避免引用过期图像。
-    static let appIconDidChange = Notification.Name("ManyuMusic.appIconDidChange")
-}
-
 enum AppIconStyle: String, CaseIterable, Identifiable {
     case automatic
     case dark
@@ -83,7 +77,6 @@ enum AppIconStyleManager {
         guard let image = image(for: resolvedStyle) else { return }
         NSApplication.shared.applicationIconImage = image
         NSApplication.shared.dockTile.display()
-        NotificationCenter.default.post(name: .appIconDidChange, object: nil)
     }
 
     /// 启动第一步调用：直接恢复上一次会话解析出的具体图标（深色/浅色），
@@ -98,7 +91,6 @@ enum AppIconStyleManager {
         }
         NSApplication.shared.applicationIconImage = image
         NSApplication.shared.dockTile.display()
-        NotificationCenter.default.post(name: .appIconDidChange, object: nil)
     }
 
     static func image(for style: AppIconStyle, colorScheme: ColorScheme? = nil) -> NSImage? {

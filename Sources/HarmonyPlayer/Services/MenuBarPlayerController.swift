@@ -1,28 +1,23 @@
 import AppKit
-import SwiftUI
+import Combine
 
-/// 菜单栏迷你播放器：NSStatusItem 展示应用图标（与 Dock 图标同步，含专辑
-/// 封面模式），左键弹出迷你播放面板；点击面板外自动收起（transient）。
+/// 菜单栏播放控制：状态项左侧实时显示当前歌词，右侧为播放图标（临时
+/// 占位，正式图标设计完成后替换），左键/右键点击均弹出「播放 / 暂停」菜单。
 @MainActor
 final class MenuBarPlayerController: NSObject {
     static let shared = MenuBarPlayerController()
 
     static let enabledKey = "ManyuMusic.menuBarPlayer"
 
-    /// 菜单栏图标边长：与系统状态项图标（Wi-Fi/音量）同档。
-    private static let iconSide: CGFloat = 17
+    /// 歌词文本的最大展示宽度，超出按菜单栏字体测宽截尾，
+    /// 避免一句长歌词占满整条菜单栏挤掉其他应用的状态项。
+    private static let maxLyricWidth: CGFloat = 170
 
     private var statusItem: NSStatusItem?
-    private let popover = NSPopover()
-    private var iconObserver: NSObjectProtocol?
+    private var cancellables: Set<AnyCancellable> = []
 
     private override init() {
         super.init()
-        popover.behavior = .transient
-        popover.animates = true
-        popover.contentViewController = NSHostingController(
-            rootView: MiniPlayerView(player: AudioPlayer.shared)
-        )
     }
 
     /// 未写过设置时默认开启；启动与设置开关变化后都调用它装卸。
@@ -43,117 +38,113 @@ final class MenuBarPlayerController: NSObject {
     // MARK: - 状态项装卸
 
     private func install() {
-        if let statusItem {
-            refreshIcon()
-            return
+        if statusItem != nil { return }
+
+        let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        if let button = item.button {
+            if let icon = NSImage(systemSymbolName: "play.fill", accessibilityDescription: "播放") {
+                icon.isTemplate = true
+                button.image = icon
+            }
+            // 歌词在图标前面（左侧），图标贴状态项尾随端。
+            button.imagePosition = .imageTrailing
+            button.target = self
+            button.action = #selector(statusItemClicked(_:))
+            // 左键与右键都弹菜单。
+            button.sendAction(on: [.leftMouseUp, .rightMouseUp])
         }
-
-        let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
-        item.button?.target = self
-        item.button?.action = #selector(togglePopover(_:))
         statusItem = item
-
-        observeIconChanges()
-        refreshIcon()
+        observeLyrics()
     }
 
     private func remove() {
-        if let iconObserver {
-            NotificationCenter.default.removeObserver(iconObserver)
-            self.iconObserver = nil
-        }
-        popover.close()
+        cancellables.removeAll()
         if let statusItem {
             NSStatusBar.system.removeStatusItem(statusItem)
             self.statusItem = nil
         }
     }
 
-    // MARK: - 图标
+    // MARK: - 歌词实时刷新
 
-    /// Dock 图标被替换（主题/封面模式/播放状态）时同步刷新菜单栏图标。
-    private func observeIconChanges() {
-        guard iconObserver == nil else { return }
-        iconObserver = NotificationCenter.default.addObserver(
-            forName: .appIconDidChange,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
+    /// 曲目 / 歌词 / 播放时间（0.25s tick，桥接在 clock 上）任一变化即重算
+    /// 当前句；文本未变不写 title，避免无谓的按钮重绘。
+    private func observeLyrics() {
+        let player = AudioPlayer.shared
+        Publishers.CombineLatest3(
+            player.$currentTrack,
+            player.$lyricLines,
+            player.clock.$currentTime
+        )
+        .map { _, _, _ in player.currentLyricText ?? "" }
+        .removeDuplicates()
+        .sink { [weak self] text in
             Task { @MainActor in
-                self?.refreshIcon()
+                self?.updateLyricTitle(text)
             }
         }
+        .store(in: &cancellables)
     }
 
-    private func refreshIcon() {
-        guard let button = statusItem?.button else { return }
-        button.image = Self.menuBarIcon(from: NSApp?.applicationIconImage)
-        button.imageScaling = .scaleProportionallyUpOrDown
+    private func updateLyricTitle(_ text: String) {
+        statusItem?.button?.title = Self.truncatedLyric(text)
     }
 
-    /// 把当前应用图标重绘为菜单栏尺寸（等比裁满方形，保留内置透明边与圆角）。
-    private static func menuBarIcon(from icon: NSImage?) -> NSImage? {
-        guard let icon, icon.size.width > 0, icon.size.height > 0 else { return nil }
-        let side = iconSide
-        let image = NSImage(size: NSSize(width: side, height: side))
-        image.lockFocus()
-        NSGraphicsContext.current?.imageInterpolation = .high
-        // 图标源图均为方形，这里仍按 aspect-fill 裁剪，防御非方形源图。
-        let sourceAspect = icon.size.width / icon.size.height
-        let sourceRect: NSRect
-        if sourceAspect > 1 {
-            let width = icon.size.height
-            sourceRect = NSRect(
-                x: (icon.size.width - width) / 2,
-                y: 0,
-                width: width,
-                height: icon.size.height
-            )
-        } else {
-            let height = icon.size.width
-            sourceRect = NSRect(
-                x: 0,
-                y: (icon.size.height - height) / 2,
-                width: icon.size.width,
-                height: height
-            )
+    /// 中英文混排宽度差异大，按字符数截断不可靠，改为实测宽度截尾。
+    private static func truncatedLyric(_ text: String) -> String {
+        guard !text.isEmpty else { return text }
+        let attributes: [NSAttributedString.Key: Any] = [.font: NSFont.menuBarFont(ofSize: 0)]
+        func width(_ string: String) -> CGFloat {
+            (string as NSString).size(withAttributes: attributes).width
         }
-        icon.draw(
-            in: NSRect(origin: .zero, size: NSSize(width: side, height: side)),
-            from: sourceRect,
-            operation: .sourceOver,
-            fraction: 1
-        )
-        image.unlockFocus()
-        image.isTemplate = false
-        return image
+        guard width(text) > maxLyricWidth else { return text }
+        var trimmed = text
+        while !trimmed.isEmpty {
+            trimmed.removeLast()
+            if width(trimmed + "…") <= maxLyricWidth {
+                return trimmed + "…"
+            }
+        }
+        return "…"
     }
 
-    // MARK: - 弹窗
+    // MARK: - 菜单
 
-    @objc private func togglePopover(_ sender: NSStatusBarButton?) {
-        guard let button = sender ?? statusItem?.button else { return }
-        if popover.isShown {
-            popover.close()
-        } else {
-            refreshIcon()
-            syncAppearance()
-            popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
-        }
+    /// 每次点击现做菜单，播放状态即时反映到两项的可用态。
+    @objc private func statusItemClicked(_ sender: NSStatusBarButton?) {
+        guard let item = statusItem else { return }
+        item.menu = makeMenu()
+        // performClick 会高亮按钮并把菜单贴着状态项弹出；弹出后解除关联，
+        // 下次点击仍走 action 由我们重建菜单。
+        item.button?.performClick(nil)
+        item.menu = nil
     }
 
-    /// 弹窗外观跟随 App 内主题（而非系统外观）：App 固定夜间时弹窗也呈夜间。
-    private func syncAppearance() {
-        let appearance = AppAppearance(
-            rawValue: UserDefaults.standard.string(forKey: ThemeStore.appearanceKey) ?? ""
-        ) ?? .system
-        switch appearance {
-        case .system:
-            popover.appearance = nil
-        case .light:
-            popover.appearance = NSAppearance(named: .vibrantLight)
-        case .dark:
-            popover.appearance = NSAppearance(named: .vibrantDark)
-        }
+    private func makeMenu() -> NSMenu {
+        let player = AudioPlayer.shared
+        let hasTrack = player.currentTrack != nil
+
+        let play = NSMenuItem(title: "播放", action: #selector(playTapped), keyEquivalent: "")
+        play.target = self
+        play.isEnabled = hasTrack && !player.isPlaying
+        play.image = NSImage(systemSymbolName: "play.fill", accessibilityDescription: "播放")
+
+        let pause = NSMenuItem(title: "暂停", action: #selector(pauseTapped), keyEquivalent: "")
+        pause.target = self
+        pause.isEnabled = hasTrack && player.isPlaying
+        pause.image = NSImage(systemSymbolName: "pause.fill", accessibilityDescription: "暂停")
+
+        let menu = NSMenu()
+        menu.addItem(play)
+        menu.addItem(pause)
+        return menu
+    }
+
+    @objc private func playTapped() {
+        AudioPlayer.shared.resume()
+    }
+
+    @objc private func pauseTapped() {
+        AudioPlayer.shared.pause()
     }
 }

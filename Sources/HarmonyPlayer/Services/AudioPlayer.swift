@@ -1035,14 +1035,6 @@ final class AudioPlayer: ObservableObject {
         lyricPassage(maxLines: 1).first
     }
 
-    /// 当前歌词行的下一句（菜单栏迷你播放器预览用）；末句或空白行返回 nil。
-    var nextLyricText: String? {
-        let index = currentLyricIndex()
-        guard index + 1 < lyricLines.count else { return nil }
-        let text = lyricLines[index + 1].text.trimmingCharacters(in: .whitespacesAndNewlines)
-        return text.isEmpty ? nil : text
-    }
-
     func lyricPassage(maxLines: Int = 4) -> [String] {
         guard !lyricLines.isEmpty, maxLines > 0 else { return [] }
 

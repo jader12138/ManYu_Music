@@ -7,13 +7,13 @@
 
 ## 本轮摘要（2026-09-21，分支 `codex/dock-menu`）
 
-系统集成两项：macOS 菜单栏迷你播放器 + Dock 图标右键菜单。目标是不开主窗口也能看当前歌曲与歌词、随手切歌。
+系统集成两项：macOS 菜单栏实时歌词/播放控制 + Dock 图标右键菜单。目标是不开主窗口也能看当前歌词、随手控制播放。菜单栏方案按主人要求中途改版：早期为「应用图标 + 点击弹出迷你播放面板（封面/歌名/歌词预览/进度条/切歌）」，最终改为「状态栏直显歌词 + 左右键弹播放/暂停菜单」，弹出面板代码（`MiniPlayerView`、`appIconDidChange` 通知链路、`nextLyricText`）已在本分支内删除。
 
 - **Dock 右键菜单**：`applicationDockMenu(_:)` 每次右键现做新菜单（系统每次都重新取，无需常驻观察者），内容为歌曲名（加粗）+ 歌手·专辑（次色）+ 播放/暂停（文案与 SF Symbol 随播放状态切换）+ 上一首/下一首；无曲目时显示「未在播放」占位且三条命令置灰。菜单规格抽成纯数据 `PlayerMenuSpec`（无 AppKit 依赖），标题/占位/禁用逻辑由单元测试覆盖；`DockMenuController` 把 spec 渲染为 NSMenu，target-action 直接调 `AudioPlayer.shared`。菜单顶部的「漫域音乐 + 对勾」是系统自动附加的窗口列表项（WindowGroup 默认以应用名为窗口标题），已通过 `window.isExcludedFromWindowsMenu = true` 移除。
-- **菜单栏迷你播放器**：`NSStatusItem` 常驻菜单栏，图标为当前应用图标的 17pt 重绘（等比裁方），与 Dock 图标同步——`AppIconStyleManager.apply()` 与 `DockArtworkController` 封面渲染完成后发新通知 `appIconDidChange`，控制器收到即刷新，因此 Dock 专辑封面模式（含播放/暂停徽标）在菜单栏同步呈现。左键 `NSPopover`（transient，点外自动收起）弹出 `MiniPlayerView`（宽 300）：封面（56pt，`ArtworkLayout.cornerRadius`）、歌名/歌手·专辑、歌词区（当前句两行 + 下一句预览，固定高度防跳动）、`PlaybackProgressRow` 进度条（可拖动 seek，含快切冻结）、上一首/播放暂停/下一首（复用 `IconButton`/`PlaybackToggleSymbol`/`PlaybackPressButtonStyle`，观感与主播放条一致）。弹窗 appearance 跟随 App 内主题（固定白天/夜间时弹窗同步，跟随系统时置 nil）。
-- **开关**：设置 → 播放新增「菜单栏播放控制」（UserDefaults 键 `ManyuMusic.menuBarPlayer`，未记录默认开启），切换即时装卸 NSStatusItem（`syncWithSetting()`），关闭时同时移除图标观察者。
-- **单例接线**：`AudioPlayer` 新增 `static let shared`；`HarmonyPlayerApp` 的 `@StateObject` 改引同一实例（App 场景与 AppDelegate/控制器共享，init 副作用只跑一次）。`AudioPlayer` 歌词取数抽出 `currentLyricIndex()`，新增 `nextLyricText`（当前句下一句，供迷你播放器预览）。
-- **验证**：`swift test` 86/86 通过（新增 `PlayerMenuSpecTests` 5 项：无曲目占位与禁用、空标题视为无曲目、播放中显示暂停、暂停显示播放、空副标题省略次行）；`swift build -c release` 通过；`./scripts/build-app.sh` 打包签名校验通过（ad-hoc，Gatekeeper 拒绝属正常）；实机启动冒烟——启动（走新菜单栏安装路径）稳定运行 14s+ 正常退出，无新崩溃报告。菜单栏图标/弹窗与 Dock 右键菜单的实际观感待主人验收。
+- **菜单栏状态项（实时歌词）**：`NSStatusItem`（variableLength）常驻菜单栏，布局「歌词文本（左）+ 播放图标（右）」（`button.imagePosition = .imageTrailing`）。图标暂用 SF Symbol `play.fill` 模板图（白色模板自动适配深浅色菜单栏；正式图标待主人设计后替换）。歌词取 `AudioPlayer.currentLyricText`（已到播放时刻的最后一句），订阅 `currentTrack`/`lyricLines`/`clock.currentTime`（0.25s tick）三流 CombineLatest 重算 + `removeDuplicates` 防重绘，切歌、逐句推进实时跟随；超宽歌词按 `NSFont.menuBarFont` 实测宽度截尾加「…」（上限 170pt，中英文混排按字符数截断不可靠）。左键/右键点击都弹「播放 / 暂停」菜单：`sendAction(on: [.leftMouseUp, .rightMouseUp])`，因 NSStatusItem 挂 menu 后不再走 action，采用「点击时临时挂 menu → `performClick` 弹出 → 立即置 nil」模式，每次现做菜单即时反映播放状态（播放中「播放」置灰、暂停时「暂停」置灰、无曲目全灰）。
+- **开关**：设置 → 播放新增「菜单栏播放控制」（UserDefaults 键 `ManyuMusic.menuBarPlayer`，未记录默认开启），切换即时装卸 NSStatusItem（`syncWithSetting()`），关闭时同时移除歌词订阅。
+- **单例接线**：`AudioPlayer` 新增 `static let shared`；`HarmonyPlayerApp` 的 `@StateObject` 改引同一实例（App 场景与 AppDelegate/控制器共享，init 副作用只跑一次）。`AudioPlayer` 歌词取数抽出 `currentLyricIndex()`，`currentLyricText` 供菜单栏直接取当前句。
+- **验证**：`swift test` 86/86 通过（新增 `PlayerMenuSpecTests` 5 项：无曲目占位与禁用、空标题视为无曲目、播放中显示暂停、暂停显示播放、空副标题省略次行）；`swift build -c release` 通过；`./scripts/build-app.sh` 打包签名校验通过；实机冒烟——重启应用后状态栏正常显示「当前歌词 + 播放图标」（菜单栏截图确认渲染与布局），左/右键菜单与 Dock 右键菜单的实际观感待主人验收。
 
 ## 本轮摘要（2026-09-20，分支 `codex/equalizer`，已随 beta4 发布）
 
