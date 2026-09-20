@@ -162,6 +162,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             window.titlebarAppearsTransparent = true
             window.titleVisibility = .hidden
             window.titlebarSeparatorStyle = .none
+            // 排除出窗口列表：否则 Dock 右键菜单顶部会多一条系统自动加的
+            // 窗口标题项（应用名 + 对勾），与自定义播放菜单叠在一起。
+            window.isExcludedFromWindowsMenu = true
             window.styleMask.insert(.fullSizeContentView)
             window.isOpaque = false
             window.backgroundColor = .clear

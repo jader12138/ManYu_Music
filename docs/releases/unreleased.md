@@ -9,7 +9,7 @@
 
 系统集成两项：macOS 菜单栏迷你播放器 + Dock 图标右键菜单。目标是不开主窗口也能看当前歌曲与歌词、随手切歌。
 
-- **Dock 右键菜单**：`applicationDockMenu(_:)` 每次右键现做新菜单（系统每次都重新取，无需常驻观察者），内容为歌曲名（加粗）+ 歌手·专辑（次色）+ 播放/暂停（文案与 SF Symbol 随播放状态切换）+ 上一首/下一首；无曲目时显示「未在播放」占位且三条命令置灰。菜单规格抽成纯数据 `PlayerMenuSpec`（无 AppKit 依赖），标题/占位/禁用逻辑由单元测试覆盖；`DockMenuController` 把 spec 渲染为 NSMenu，target-action 直接调 `AudioPlayer.shared`。
+- **Dock 右键菜单**：`applicationDockMenu(_:)` 每次右键现做新菜单（系统每次都重新取，无需常驻观察者），内容为歌曲名（加粗）+ 歌手·专辑（次色）+ 播放/暂停（文案与 SF Symbol 随播放状态切换）+ 上一首/下一首；无曲目时显示「未在播放」占位且三条命令置灰。菜单规格抽成纯数据 `PlayerMenuSpec`（无 AppKit 依赖），标题/占位/禁用逻辑由单元测试覆盖；`DockMenuController` 把 spec 渲染为 NSMenu，target-action 直接调 `AudioPlayer.shared`。菜单顶部的「漫域音乐 + 对勾」是系统自动附加的窗口列表项（WindowGroup 默认以应用名为窗口标题），已通过 `window.isExcludedFromWindowsMenu = true` 移除。
 - **菜单栏迷你播放器**：`NSStatusItem` 常驻菜单栏，图标为当前应用图标的 17pt 重绘（等比裁方），与 Dock 图标同步——`AppIconStyleManager.apply()` 与 `DockArtworkController` 封面渲染完成后发新通知 `appIconDidChange`，控制器收到即刷新，因此 Dock 专辑封面模式（含播放/暂停徽标）在菜单栏同步呈现。左键 `NSPopover`（transient，点外自动收起）弹出 `MiniPlayerView`（宽 300）：封面（56pt，`ArtworkLayout.cornerRadius`）、歌名/歌手·专辑、歌词区（当前句两行 + 下一句预览，固定高度防跳动）、`PlaybackProgressRow` 进度条（可拖动 seek，含快切冻结）、上一首/播放暂停/下一首（复用 `IconButton`/`PlaybackToggleSymbol`/`PlaybackPressButtonStyle`，观感与主播放条一致）。弹窗 appearance 跟随 App 内主题（固定白天/夜间时弹窗同步，跟随系统时置 nil）。
 - **开关**：设置 → 播放新增「菜单栏播放控制」（UserDefaults 键 `ManyuMusic.menuBarPlayer`，未记录默认开启），切换即时装卸 NSStatusItem（`syncWithSetting()`），关闭时同时移除图标观察者。
 - **单例接线**：`AudioPlayer` 新增 `static let shared`；`HarmonyPlayerApp` 的 `@StateObject` 改引同一实例（App 场景与 AppDelegate/控制器共享，init 副作用只跑一次）。`AudioPlayer` 歌词取数抽出 `currentLyricIndex()`，新增 `nextLyricText`（当前句下一句，供迷你播放器预览）。
