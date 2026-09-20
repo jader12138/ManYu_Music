@@ -1,10 +1,9 @@
 import SwiftUI
 
 /// 均衡器面板（参考 MoeKoe EQ 面板设计）：
-/// 头部（标题 + 运行状态 + 关闭EQ/重置）→ 三页签（均衡器/音效增强/高级功能）
+/// 完整模式（设置页）：头部 → 三页签（均衡器/音效增强/高级功能）
 /// → 实时频谱 → 预设 chips → 31 段垂直滑杆（双击归零、每段 Q 值可调）。
-/// 设置页（独立「均衡器」页签）与底部播放栏的 EQ 弹窗共用；
-/// 弹窗场景传 `showsCloseButton: true` + `onClose`。
+/// 精简模式（播放栏 EQ 弹窗，`showsCloseButton: true`）：仅头部 + 预设 chips。
 struct EqualizerPanelView: View {
     @EnvironmentObject private var player: AudioPlayer
     @AppStorage(Equalizer.enabledKey) private var eqEnabled = false
@@ -23,6 +22,34 @@ struct EqualizerPanelView: View {
     @State private var newPresetName = ""
 
     var body: some View {
+        Group {
+            if showsCloseButton {
+                compactPanel
+            } else {
+                fullPanel
+            }
+        }
+        .onAppear {
+            syncEQState()
+            if !showsCloseButton {
+                analyzer.connect(to: player.equalizer.spectrumRing)
+            }
+        }
+        .alert("保存自定义预设", isPresented: $showSavePresetDialog) {
+            TextField("预设名称", text: $newPresetName)
+            Button("保存") {
+                _ = player.equalizer.saveCustomPreset(named: newPresetName)
+                syncEQState()
+            }
+            Button("取消", role: .cancel) {}
+        } message: {
+            Text("以当前 31 段滑块的曲线保存，保存后可在预设区随时切换")
+        }
+    }
+
+    // MARK: - 完整面板（设置页）
+
+    private var fullPanel: some View {
         VStack(spacing: 0) {
             header
             tabBar
@@ -47,22 +74,26 @@ struct EqualizerPanelView: View {
                 }
             }
         }
-        .frame(width: showsCloseButton ? 540 : nil)
-        .frame(maxWidth: showsCloseButton ? nil : .infinity)
-        .onAppear {
-            syncEQState()
-            analyzer.connect(to: player.equalizer.spectrumRing)
-        }
-        .alert("保存自定义预设", isPresented: $showSavePresetDialog) {
-            TextField("预设名称", text: $newPresetName)
-            Button("保存") {
-                player.equalizer.saveCustomPreset(named: newPresetName)
-                syncEQState()
+        .frame(maxWidth: .infinity)
+    }
+
+    // MARK: - 精简面板（播放栏弹窗）：仅头部 + 预设
+
+    private var compactPanel: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            header
+            Divider().opacity(0.08)
+            VStack(alignment: .leading, spacing: 10) {
+                Text("预设")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(Color.hpTextPrimary.opacity(0.7))
+                presetChips
             }
-            Button("取消", role: .cancel) {}
-        } message: {
-            Text("以当前 31 段滑块的曲线保存，保存后可在预设区随时切换")
+            .padding(.horizontal, 14)
+            .padding(.top, 12)
+            .padding(.bottom, 14)
         }
+        .frame(width: 540)
     }
 
     // MARK: - 头部（标题 + 状态 + 关闭EQ / 重置 + 弹窗关闭钮）
