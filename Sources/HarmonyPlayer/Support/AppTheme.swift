@@ -44,6 +44,24 @@ extension Color {
     static let hpIce = Color(red: 0.85, green: 0.95, blue: 1.00)
     static let hpOnAccent = Color(red: 0.025, green: 0.07, blue: 0.13)
 
+    /// 文件格式徽标颜色：FLAC 金、MP3 蓝、MP4 家族淡红、其余按格式分色，未识别回退灰色。
+    /// 用法：徽标文字色 = `Color.formatColor(forExtension:)`，背景 = 同色 opacity 0.13~0.15。
+    static func formatColor(forExtension ext: String) -> Color {
+        switch ext.lowercased() {
+        case "flac": return .hpGold
+        case "mp3": return .hpAccent
+        case "mp4", "m4a", "m4b", "m4r", "m4v", "mov": return Color(red: 0.95, green: 0.42, blue: 0.45) // 淡红
+        case "wav": return .hpMint
+        case "aiff", "aif", "aifc": return Color(red: 0.95, green: 0.58, blue: 0.30) // 橙
+        case "ogg", "oga": return Color(red: 0.55, green: 0.80, blue: 0.42) // 绿
+        case "opus": return Color(red: 0.68, green: 0.52, blue: 0.92) // 紫
+        case "aac": return .hpViolet
+        case "wma": return Color(red: 0.85, green: 0.50, blue: 0.30) // 棕橙
+        case "alac": return Color(red: 0.80, green: 0.65, blue: 0.30) // 麦金
+        default: return .hpTextSecondary
+        }
+    }
+
     static let hpNavy = adaptiveColor(
         dark: NSColor(srgbRed: 0.035, green: 0.065, blue: 0.125, alpha: 1),
         light: NSColor(srgbRed: 0.91, green: 0.96, blue: 1.00, alpha: 1)
@@ -362,6 +380,7 @@ struct PlaybackStateBadge: View {
 struct IconButton: View {
     let systemName: String
     var isActive = false
+    var activeColor: Color = .hpAccent
     var help: String
     var size: CGFloat = 15
     let action: () -> Void
@@ -374,14 +393,14 @@ struct IconButton: View {
             Image(systemName: systemName)
                 .font(.system(size: size, weight: .semibold))
                 .frame(width: 32, height: 32)
-                .foregroundStyle(isActive ? Color.hpAccent : Color.hpTextPrimary.opacity(0.78))
+                .foregroundStyle(isActive ? activeColor : Color.hpTextPrimary.opacity(0.78))
                 .contentTransition(reduceMotion ? .identity : .symbolEffect(.replace))
                 .animation(reduceMotion ? nil : .easeInOut(duration: 0.18), value: systemName)
                 .background {
                     RoundedRectangle(cornerRadius: 9, style: .continuous)
                         .fill(
                             isActive
-                                ? Color.hpAccent.opacity(0.15)
+                                ? activeColor.opacity(0.15)
                                 : Color.hpTextPrimary.opacity(isHovering ? 0.08 : 0)
                         )
                         .animation(reduceMotion ? nil : .easeOut(duration: 0.14), value: isHovering)
@@ -444,6 +463,15 @@ private struct ArtworkRequestID: Hashable {
     let url: URL
     let size: CGFloat
     let tier: ArtworkPixelTier
+}
+
+/// 专辑封面统一布局（播放页大封面除外，它保持自己的 22pt 观感）。
+/// 圆角与播放条 48pt/7pt 小封面同比例：任何尺寸的封面都按 7:48 取圆角，
+/// 视觉语言一致，改基准值这里一处即可全局生效。艺术家圆形头像不走这里。
+enum ArtworkLayout {
+    static func cornerRadius(for size: CGFloat) -> CGFloat {
+        (size * 7.0 / 48.0).rounded()
+    }
 }
 
 struct LazyArtworkView: View {

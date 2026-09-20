@@ -303,7 +303,7 @@ struct TrackRow: View {
             }
 
             ZStack(alignment: .bottomTrailing) {
-                LazyArtworkView(track: track, size: 44, cornerRadius: 9)
+                LazyArtworkView(track: track, size: 44, cornerRadius: ArtworkLayout.cornerRadius(for: 44))
 
                 if isCurrent || isHovering {
                     PlaybackStateBadge(
@@ -321,12 +321,15 @@ struct TrackRow: View {
                     .lineLimit(1)
 
                 HStack(spacing: 6) {
-                    Text(track.url.pathExtension.uppercased())
-                        .font(.system(size: 8, weight: .bold))
-                        .foregroundStyle(Color.hpAccent)
-                        .padding(.horizontal, 5)
-                        .padding(.vertical, 1.5)
-                        .background(Color.hpAccent.opacity(0.13), in: RoundedRectangle(cornerRadius: 3))
+                    Group {
+                        let color = Color.formatColor(forExtension: track.url.pathExtension)
+                        Text(track.url.pathExtension.uppercased())
+                            .font(.system(size: 8, weight: .bold))
+                            .foregroundStyle(color)
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 1.5)
+                            .background(color.opacity(0.13), in: RoundedRectangle(cornerRadius: 3))
+                    }
                     Text(track.displayArtist)
                         .font(.system(size: 10))
                         .foregroundStyle(Color.hpTextPrimary.opacity(0.48))
@@ -506,13 +509,13 @@ private struct AlbumCard: View {
         VStack(alignment: .leading, spacing: 10) {
             ZStack {
                 if let track = album.artworkTrack {
-                    LazyArtworkView(track: track, size: 156, cornerRadius: 13)
+                    LazyArtworkView(track: track, size: 156, cornerRadius: ArtworkLayout.cornerRadius(for: 156))
                 } else {
-                    ArtworkView(image: nil, size: 156, cornerRadius: 13)
+                    ArtworkView(image: nil, size: 156, cornerRadius: ArtworkLayout.cornerRadius(for: 156))
                 }
 
                 if isHovering {
-                    RoundedRectangle(cornerRadius: 13, style: .continuous)
+                    RoundedRectangle(cornerRadius: ArtworkLayout.cornerRadius(for: 156), style: .continuous)
                         .fill(.black.opacity(0.30))
                 }
 
@@ -599,9 +602,9 @@ struct AlbumDetailView: View {
     private var hero: some View {
         HStack(alignment: .bottom, spacing: 26) {
             if let track = album.artworkTrack {
-                LazyArtworkView(track: track, size: 196, cornerRadius: 16)
+                LazyArtworkView(track: track, size: 196, cornerRadius: ArtworkLayout.cornerRadius(for: 196))
             } else {
-                ArtworkView(image: nil, size: 196, cornerRadius: 16)
+                ArtworkView(image: nil, size: 196, cornerRadius: ArtworkLayout.cornerRadius(for: 196))
             }
 
             VStack(alignment: .leading, spacing: 10) {
