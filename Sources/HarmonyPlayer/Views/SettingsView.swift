@@ -319,7 +319,7 @@ struct SettingsView: View {
 
             // 菜单栏播放器
             row(title: "菜单栏播放控制",
-                subtitle: "在系统菜单栏实时显示当前歌词与播放图标，点击弹出播放/暂停菜单") {
+                subtitle: "在系统菜单栏实时显示当前歌词与播放图标，点击图标弹出播放/暂停菜单，歌词仅展示") {
                 Toggle("", isOn: Binding(
                     get: { menuBarPlayer },
                     set: { menuBarPlayer = $0; MenuBarPlayerController.shared.syncWithSetting() }
