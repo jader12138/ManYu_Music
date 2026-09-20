@@ -3,6 +3,7 @@ import SwiftUI
 /// 均衡器面板（参考 MoeKoe EQ 面板设计）：
 /// 完整模式（设置页）：头部 → 三页签（均衡器/音效增强/高级功能）
 /// → 实时频谱 → 预设 chips → 31 段垂直滑杆（双击归零、每段 Q 值可调）。
+/// 「音效增强」页签为完整实现：频率调节（8 项滤波/压缩）、空间效果（3 项）、输出控制（2 项）。
 /// 精简模式（播放栏 EQ 弹窗，`showsCloseButton: true`）：仅头部 + 预设 chips。
 struct EqualizerPanelView: View {
     @EnvironmentObject private var player: AudioPlayer
@@ -60,11 +61,7 @@ struct EqualizerPanelView: View {
                 case .equalizer:
                     equalizerTab
                 case .enhancement:
-                    placeholderTab(
-                        icon: "waveform.badge.plus",
-                        title: "音效增强",
-                        message: "空间音频、动态低音、音色激励等专业音效将在后续版本提供"
-                    )
+                    AudioEnhancementPanel(enhancer: player.equalizer.enhancer)
                 case .advanced:
                     placeholderTab(
                         icon: "slider.horizontal.2.square.on.square",
@@ -326,6 +323,177 @@ struct EqualizerPanelView: View {
         }
         .frame(maxWidth: .infinity, minHeight: 380)
         .padding(14)
+    }
+}
+
+// MARK: - 音效增强面板
+
+/// 音效增强页签：开关 + 重置 → 频率调节 8 卡 → 空间效果 3 卡 → 输出控制 2 卡。
+/// 全部参数实时生效（音频 tap 内 DSP 处理）并自动持久化。
+struct AudioEnhancementPanel: View {
+    @ObservedObject var enhancer: AudioEnhancer
+
+    private struct CardSpec {
+        let title: String
+        let subtitle: String
+        let value: (AudioEnhancer) -> Double
+        let apply: (AudioEnhancer, Double) -> Void
+        let display: (Double) -> String
+        var range: ClosedRange<Double> = AudioEnhancer.percentRange
+        var defaultValue: Double = 0
+    }
+
+    private static func percentText(_ value: Double) -> String {
+        "\(Int(value.rounded()))%"
+    }
+
+    private static func balanceText(_ value: Double) -> String {
+        if abs(value) < 0.005 { return "居中" }
+        let percent = Int(abs(value) * 100)
+        return value < 0 ? "左 \(percent)%" : "右 \(percent)%"
+    }
+
+    private static let frequencyCards: [CardSpec] = [
+        CardSpec(title: "低频提升", subtitle: "增强60Hz低频", value: { $0.lowBoost }, apply: { $0.setLowBoost($1) }, display: percentText),
+        CardSpec(title: "低音增强", subtitle: "增强低频力度", value: { $0.bassEnhance }, apply: { $0.setBassEnhance($1) }, display: percentText),
+        CardSpec(title: "温暖感", subtitle: "增强中低频", value: { $0.warmth }, apply: { $0.setWarmth($1) }, display: percentText),
+        CardSpec(title: "人声增强", subtitle: "增强3kHz人声", value: { $0.vocalEnhance }, apply: { $0.setVocalEnhance($1) }, display: percentText),
+        CardSpec(title: "临场感", subtitle: "增强4kHz频段", value: { $0.presence }, apply: { $0.setPresence($1) }, display: percentText),
+        CardSpec(title: "清晰度", subtitle: "增强高频细节", value: { $0.clarity }, apply: { $0.setClarity($1) }, display: percentText),
+        CardSpec(title: "高频提升", subtitle: "增强8kHz以上", value: { $0.trebleBoost }, apply: { $0.setTrebleBoost($1) }, display: percentText),
+        CardSpec(title: "动态增强", subtitle: "压缩动态范围", value: { $0.dynamics }, apply: { $0.setDynamics($1) }, display: percentText),
+    ]
+
+    private static let spaceCards: [CardSpec] = [
+        CardSpec(title: "环境感", subtitle: "添加空间感", value: { $0.ambience }, apply: { $0.setAmbience($1) }, display: percentText),
+        CardSpec(title: "环绕声", subtitle: "立体声扩展", value: { $0.surround }, apply: { $0.setSurround($1) }, display: percentText),
+        CardSpec(title: "环境混响", subtitle: "沉浸混响效果", value: { $0.reverb }, apply: { $0.setReverb($1) }, display: percentText),
+    ]
+
+    private static let outputCards: [CardSpec] = [
+        CardSpec(
+            title: "输出增益", subtitle: "整体音量增益",
+            value: { $0.outputGainDB }, apply: { $0.setOutputGain($1) },
+            display: { String(format: "%+.0f dB", $0) },
+            range: AudioEnhancer.outputGainRange
+        ),
+        CardSpec(
+            title: "声道平衡", subtitle: "左右声道平衡",
+            value: { $0.balance }, apply: { $0.setBalance($1) },
+            display: balanceText,
+            range: AudioEnhancer.balanceRange
+        ),
+    ]
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 12) {
+                toggleRow
+                groupHeader(icon: "slider.horizontal.3", title: "频率调节")
+                cardGrid(Self.frequencyCards)
+                groupHeader(icon: "hifispeaker.2", title: "空间效果")
+                cardGrid(Self.spaceCards)
+                groupHeader(icon: "dial.min", title: "输出控制")
+                cardGrid(Self.outputCards)
+            }
+            .padding(.horizontal, 14)
+            .padding(.top, 12)
+            .padding(.bottom, 14)
+        }
+    }
+
+    private var toggleRow: some View {
+        HStack(spacing: 10) {
+            Toggle("音效增强", isOn: Binding(
+                get: { enhancer.enabled },
+                set: { enhancer.setEnabled($0) }
+            ))
+            .toggleStyle(.switch)
+            .controlSize(.small)
+            .font(.system(size: 13, weight: .semibold))
+            .help("开启或关闭音效增强")
+
+            Spacer()
+
+            Button {
+                enhancer.resetAll()
+            } label: {
+                Text("重置")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(Color.red.opacity(0.85))
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 4)
+                    .background(
+                        Color.red.opacity(0.1),
+                        in: RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                            .stroke(Color.red.opacity(0.35), lineWidth: 0.8)
+                    )
+            }
+            .buttonStyle(.plain)
+            .help("音效增强全部参数恢复默认（开关保持不变）")
+        }
+    }
+
+    private func groupHeader(icon: String, title: String) -> some View {
+        HStack(spacing: 5) {
+            Image(systemName: icon)
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(Color.hpTextPrimary.opacity(0.55))
+            Text(title)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(Color.hpTextPrimary.opacity(0.7))
+        }
+    }
+
+    private func cardGrid(_ specs: [CardSpec]) -> some View {
+        LazyVGrid(
+            columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)],
+            spacing: 10
+        ) {
+            ForEach(0..<specs.count, id: \.self) { index in
+                card(specs[index])
+            }
+        }
+    }
+
+    private func card(_ spec: CardSpec) -> some View {
+        let value = spec.value(enhancer)
+        let changed = abs(value - spec.defaultValue) > 0.004
+        return VStack(alignment: .leading, spacing: 7) {
+            HStack(alignment: .top) {
+                Text(spec.title)
+                    .font(.system(size: 12, weight: .semibold))
+                Spacer()
+                Text(spec.display(value))
+                    .font(.system(size: 11, weight: .semibold, design: .rounded))
+                    .foregroundStyle(changed ? Color.hpAccent : Color.hpTextPrimary.opacity(0.45))
+                    .monospacedDigit()
+            }
+            Slider(
+                value: Binding(
+                    get: { spec.value(enhancer) },
+                    set: { spec.apply(enhancer, $0) }
+                ),
+                in: spec.range
+            )
+            .tint(Color.hpAccent)
+            .controlSize(.small)
+            Text(spec.subtitle)
+                .font(.system(size: 10))
+                .foregroundStyle(Color.hpTextPrimary.opacity(0.42))
+        }
+        .padding(11)
+        .background(
+            Color.hpTextPrimary.opacity(0.05),
+            in: RoundedRectangle(cornerRadius: 10, style: .continuous)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .stroke(Color.hpTextPrimary.opacity(0.08), lineWidth: 0.6)
+        )
     }
 }
 

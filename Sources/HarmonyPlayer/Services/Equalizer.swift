@@ -197,6 +197,8 @@ final class Equalizer {
 
     /// 实时频谱的共享采样环形缓冲（所有 tap 的下混采样都写进来）。
     let spectrumRing = EQSpectrumRing()
+    /// 音效增强（与本 EQ 共用同一个音频 tap，EQ 处理后级联，开关互相独立）。
+    let enhancer: AudioEnhancer
 
     private let defaults: UserDefaults
     private let lock = NSLock()
@@ -208,6 +210,7 @@ final class Equalizer {
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
+        self.enhancer = AudioEnhancer(defaults: defaults)
         let saved = defaults.array(forKey: Self.gainsKey) as? [Double]
         let curve: [Double]
         switch saved?.count {
@@ -496,6 +499,8 @@ final class Equalizer {
 final class EQTapContext {
     let equalizer: Equalizer
     let spectrumRing: EQSpectrumRing?
+    /// 音效增强实时引擎（EQ 之后级联，独立开关）。
+    let enhancerEngine: EnhancerEngine
     var sampleRate: Double = 48_000
     var channels = 2
     /// [声道][段] 的二阶状态（转置直接 II 型的 s1/s2）。
@@ -509,6 +514,7 @@ final class EQTapContext {
     init(equalizer: Equalizer, spectrumRing: EQSpectrumRing?) {
         self.equalizer = equalizer
         self.spectrumRing = spectrumRing
+        self.enhancerEngine = EnhancerEngine(enhancer: equalizer.enhancer)
     }
 
     func resetForPrepare(sampleRate: Double, channels: Int, maxFrames: Int) {
@@ -519,6 +525,7 @@ final class EQTapContext {
             spectrumRing.sampleRate = sampleRate
         }
         rebuildDelays()
+        enhancerEngine.prepare(sampleRate: sampleRate, channels: self.channels)
         cachedRevision = -1  // 强制下一帧按新采样率重建系数
     }
 
@@ -554,16 +561,25 @@ final class EQTapContext {
     }
 
     /// 就地处理 AudioBufferList。支持非交织（每声道一个 buffer）与交织两种布局。
-    /// EQ 关闭（bypass）时跳过滤波，但频谱喂送照常——频谱不依赖 EQ 开关。
+    /// EQ 关闭（bypass）时跳过滤波，但频谱喂送照常；随后音效增强按独立开关处理。
     func process(bufferList pointer: UnsafeMutablePointer<AudioBufferList>, frames: Int) {
         feedSpectrum(pointer, frames: frames)
-        guard !equalizer.isBypassed else { return }
-        refreshCoefficientsIfNeeded()
 
-        // 平直曲线直接通过，不做任何乘加。
-        let g = equalizer.gains
-        if g.allSatisfy({ abs($0) < 0.001 }) { return }
+        // EQ 滤波（关闭或平直曲线时直通）
+        if !equalizer.isBypassed {
+            refreshCoefficientsIfNeeded()
+            let g = equalizer.gains
+            if !g.allSatisfy({ abs($0) < 0.001 }) {
+                applyCascade(pointer, frames: frames)
+            }
+        }
 
+        // 音效增强（独立开关，与 EQ 状态无关；关闭时引擎内部直通）
+        enhancerEngine.process(pointer, frames: frames)
+    }
+
+    /// EQ 31 段级联：非交织逐声道、交织按帧步进。
+    private func applyCascade(_ pointer: UnsafeMutablePointer<AudioBufferList>, frames: Int) {
         let list = UnsafeMutableAudioBufferListPointer(pointer)
         if list.count > 1 {
             // 非交织：每个 AudioBuffer 是一个声道的连续 PCM。
