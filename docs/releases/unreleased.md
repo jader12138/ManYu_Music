@@ -1,8 +1,35 @@
-# 下一版本（尚未分配版本号）
+# 下一版本（v3.13.0-beta2 准备中）
 
-- 发布状态：内部测试中（首个预发布版本 `v3.13.0-beta1`）
+- 发布状态：beta2 待发布（内测反馈修复 + 歌词格式扩展）
+- 已发布内测：`v3.13.0-beta1`（见下方记录）
 - 上一稳定版本：`v3.12.0`
 - 当前 `VERSION`：`3.13.0-beta1`
+
+## beta2 拟并入：歌词格式扩展
+
+修复内嵌歌词识别：此前只有 FLAC 的 Vorbis LYRICS 能被自家解析识别，MP3/MP4 的内嵌歌词需依赖 AVFoundation 兜底（实际经常读不到）。本次为 MP3 和 MP4 家族新增与 FLAC 同级的自家二进制解析，放在 AVFoundation 之前生效。
+
+### 用户可见更新
+
+- 内嵌歌词识别扩展到所有支持的音频格式：MP3 读取 ID3v2 USLT 帧，MP4/M4A/M4B/MOV 读取 `moov.udta.©lyr` atom；软件支持什么格式就识别什么格式的内嵌歌词，外置 `.lrc` 维持不变。
+
+### 技术变更
+
+- `EmbeddedMetadataReader.readLyrics` 按扩展名分发：flac/mp3/m4a/m4b/mp4/mov 各走自家解析，其余返回 nil 交 AVFoundation 兜底。
+- 新增 `readMP3Lyrics`：解析 ID3v2.3/2.4 头与帧，定位 USLT，支持 UTF-8/UTF-16(BOM)/UTF-16BE/ISO-8859-1 四种文本编码。
+- 新增 `readMP4Lyrics` + `scanMP4Atom`：深度优先扫描 MP4 atom 树（仅下钻 moov/udta/meta/ilst，跳过 trak 等大块），定位 `©lyr` atom 并读取 UTF-8 文本。
+- 新增 `Tests/HarmonyPlayerTests/EmbeddedLyricsFormatTests.swift`（5 个用例覆盖 MP3 ID3v2.3/2.4、UTF-16-BOM、无 ID3；MP4 m4a/mp4 有/无歌词；不支持格式）。
+
+### 兼容性与迁移
+
+- 仅支持 Apple 芯片（arm64）、macOS 14 及以上；ad-hoc 签名、未公证。
+- 单元测试：50/50 通过。
+- Release 构建编译通过、签名校验通过。
+- 待人工验收：含内嵌 USLT 的 MP3、含 `©lyr` 的 M4A 在歌词面板正确显示。
+
+---
+
+# v3.13.0-beta1 发布记录（2026-09-18 已发布）
 
 ## 摘要
 
