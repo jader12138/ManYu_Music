@@ -5,6 +5,7 @@ private enum SettingsTab: String, CaseIterable, Identifiable {
     case appearance
     case home
     case playback
+    case equalizer
     case library
     case about
 
@@ -15,6 +16,7 @@ private enum SettingsTab: String, CaseIterable, Identifiable {
         case .appearance: "外观"
         case .home: "首页"
         case .playback: "播放"
+        case .equalizer: "均衡器"
         case .library: "资料库"
         case .about: "关于"
         }
@@ -25,6 +27,7 @@ private enum SettingsTab: String, CaseIterable, Identifiable {
         case .appearance: "paintpalette.fill"
         case .home: "house.fill"
         case .playback: "play.circle.fill"
+        case .equalizer: "slider.horizontal.3"
         case .library: "music.note.list"
         case .about: "info.circle.fill"
         }
@@ -44,6 +47,7 @@ struct SettingsView: View {
     @AppStorage(AudioPlayer.gaplessPlaybackKey) private var gaplessPlayback = false
     @AppStorage(AudioPlayer.crossfadeEnabledKey) private var crossfadeEnabled = false
     @AppStorage(AudioPlayer.crossfadeDurationKey) private var crossfadeDuration = AudioPlayer.defaultCrossfadeDuration
+    @AppStorage(Equalizer.enabledKey) private var eqEnabled = false
     @AppStorage(RecommendationSettings.frequencyKey)
     private var recommendationFrequencyRaw = RecommendationFrequency.daily.rawValue
     @AppStorage(RecommendationSettings.independentKey)
@@ -119,6 +123,7 @@ struct SettingsView: View {
         case .appearance: appearancePane
         case .home: homePane
         case .playback: playbackPane
+        case .equalizer: equalizerSettingsPage
         case .library: libraryPane
         case .about: aboutPane
         }
@@ -386,6 +391,31 @@ struct SettingsView: View {
 
             // 睡眠定时
             SleepTimerRow(clock: player.clock)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    // MARK: - 均衡器
+
+    private var equalizerSettingsPage: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            sectionHeading("均衡器")
+
+            row(title: "启用均衡器",
+                subtitle: "十段图形均衡器，实时作用于所有播放中的音乐") {
+                Toggle("", isOn: $eqEnabled)
+                    .toggleStyle(.switch)
+                    .labelsHidden()
+                    .onChange(of: eqEnabled) { newValue in
+                        player.setEQEnabled(newValue)
+                    }
+            }
+
+            Divider().opacity(0.08)
+
+            // 面板本体（预设菜单 + 十段滑块 + 自定义预设管理），
+            // 启用开关已放在上方 row，这里不再重复显示。
+            EqualizerPanelView(showsEnableToggle: false, showsHint: true)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }

@@ -5,6 +5,16 @@
 - 上一稳定版本：`v3.12.0`
 - 当前 `VERSION`：`3.13.0-beta3`
 
+## 本轮摘要（2026-09-20，分支 `codex/equalizer`，待合并）
+
+十段图形均衡器（31Hz~16kHz，±12 dB），入口两处：底部播放栏右侧「定时」按钮左侧新增均衡器快捷图标（点击弹面板，顶部带启用开关，开启时图标点亮）；设置里均衡器独立成页（「均衡器」标签页，播放页之后，含启用开关与完整面板），原「播放」页中的均衡器区块移除。内置平直/流行/古典/摇滚/人声五个预设，滑块微调自动标记「自定义」，可命名保存为自定义预设（UserDefaults JSON 持久化，重启不丢）并可删除。
+
+- **DSP**：RBJ biquad 级联——最低频段 low shelf、最高频段 high shelf、中间八段 peaking（Q=1.1）；0 dB 段使用恒等系数直通。`EQTapContext` 每个 tap 持有独立延迟状态（转置直接 II 型，声道×段），共享 `Equalizer` 参数（NSLock 保护），`revision` 号变化时在音频线程重建一次系数并清零状态。
+- **管线挂载**：`EQTap.attach` 经 `asset.loadTracks(withMediaType:.audio)` 异步取音轨，`AVMutableAudioMixInputParameters.audioTapProcessor = MTAudioProcessingTapCreate(...)`（kMTAudioProcessingTapCreationFlag_PostEffects）；四条 item 创建路径（cut 切歌、crossfade 新曲、gapless 预载、重启恢复）统一 `attachIfEnabled`，开关实时切换对当前两个引擎的 item 挂/摘 tap（`audioMix = nil` 摘除）。非交织/交织 AudioBufferList 布局都处理；平直曲线时 tap 直通不乘加。
+- **C 回调**：`MTAudioProcessingTapCallbacks` 全局函数 + tapStorage 传递 `EQTapContext`（passRetained / finalize release 配对）；process 回调先 `MTAudioProcessingTapGetSourceAudio` 再就地级联滤波。
+- **UI**：均衡器面板抽为共享视图 `EqualizerPanelView`（参数 `showsEnableToggle`/`showsHint`）：预设 Menu（内置+自定义分组）、2×5 滑块网格绑定本地镜像状态（onAppear 同步）、「保存为预设」alert 带 TextField 命名、选中自定义预设时显示删除按钮。播放栏快捷按钮用 `IconButton("slider.horizontal.3")` + `.popover(arrowEdge: .bottom)` 弹出面板，`@AppStorage(Equalizer.enabledKey)` 驱动点亮态；设置新增「均衡器」页（启用开关 row + 面板本体），`SettingsTab` 增加 `.equalizer` case，原 `playbackPane` 的 EQ 区块与旧 `equalizerPane` 移除。
+- **验证**：`swift test` 62/62 通过（新增 6 项：默认关/平直、钳制+revision、恒等系数、滤波器稳定性（极点在单位圆内）、自定义预设存取跨实例、预设应用持久化）；release 构建通过。EQ 对音乐的实际听感（尤其 ±12 dB 极端曲线）待主人验收。
+
 ## 本轮摘要（2026-09-20，分支 `codex/gapless-crossfade`，待合并）
 
 播放核心新增两个可开关的连播增强，默认都关闭，关闭时播放链路与历史完全一致。技术上把单一 `AVPlayer` 扩展为「双引擎乒乓」：`engineA/engineB` 两个固定 `AVPlayer`，`activeEngine` 为当前出声引擎、`standbyEngine` 为备用，所有既有内部代码通过计算属性 `player` 仍访问当前引擎；实际音量 = 用户音量 × 每引擎 `gain`（0...1）。
