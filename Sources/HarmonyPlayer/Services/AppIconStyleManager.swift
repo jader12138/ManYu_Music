@@ -1,6 +1,12 @@
 import AppKit
 import SwiftUI
 
+/// 系统当前是否为深色外观。单元测试进程没有初始化 NSApplication，`NSApp`
+/// 全局常量为 nil（隐式解包直接崩溃），此时按默认浅色（白色模式）返回 false。
+private func hpSystemIsDarkAppearance() -> Bool {
+    NSApp?.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+}
+
 enum AppIconStyle: String, CaseIterable, Identifiable {
     case automatic
     case dark
@@ -60,7 +66,7 @@ enum AppIconStyleManager {
             let appearanceRaw = UserDefaults.standard.string(forKey: ThemeStore.appearanceKey)
             let appearance = AppAppearance(rawValue: appearanceRaw ?? "") ?? .system
             if appearance == .system {
-                isDark = NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+                isDark = hpSystemIsDarkAppearance()
             } else {
                 isDark = appearance == .dark
             }
@@ -100,13 +106,13 @@ enum AppIconStyleManager {
             } else if let appearanceRaw = UserDefaults.standard.string(forKey: ThemeStore.appearanceKey),
                       let appearance = AppAppearance(rawValue: appearanceRaw) {
                 if appearance == .system {
-                    isDark = NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+                    isDark = hpSystemIsDarkAppearance()
                 } else {
                     isDark = appearance == .dark
                 }
             } else {
                 // appearance 未设过时默认跟随系统浅色（白色模式），与 ThemeStore 默认 .system 一致
-                isDark = NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+                isDark = hpSystemIsDarkAppearance()
             }
         }
 

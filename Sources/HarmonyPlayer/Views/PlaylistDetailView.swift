@@ -140,10 +140,10 @@ struct PlaylistDetailView: View {
     private var playlistArtwork: some View {
         Group {
             if let track = tracks.first {
-                LazyArtworkView(track: track, size: 196, cornerRadius: 16)
+                LazyArtworkView(track: track, size: 196, cornerRadius: ArtworkLayout.cornerRadius(for: 196))
             } else {
                 ZStack {
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    RoundedRectangle(cornerRadius: ArtworkLayout.cornerRadius(for: 196), style: .continuous)
                         .fill(LinearGradient.hpBrandFill)
                     Image(systemName: "music.note.list")
                         .font(.system(size: 54, weight: .medium))

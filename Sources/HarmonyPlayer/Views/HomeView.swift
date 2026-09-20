@@ -193,7 +193,7 @@ struct HomeView: View {
                         Button {
                             openFeaturedPlayer(track)
                         } label: {
-                            LazyArtworkView(track: track, size: 184, cornerRadius: 20)
+                            LazyArtworkView(track: track, size: 184, cornerRadius: ArtworkLayout.cornerRadius(for: 184))
                                 .matchedGeometryEffect(id: "nowPlayingArtwork.homeHero", in: transitionNamespace, isSource: true)
                         }
                         .buttonStyle(.plain)
@@ -219,7 +219,7 @@ struct HomeView: View {
                     RoundedRectangle(cornerRadius: 27, style: .continuous)
                         .fill(.ultraThinMaterial)
                         .frame(width: 206, height: 206)
-                    ArtworkView(image: nil, size: 184, cornerRadius: 20)
+                    ArtworkView(image: nil, size: 184, cornerRadius: ArtworkLayout.cornerRadius(for: 184))
                 }
             }
         }
@@ -577,9 +577,9 @@ private struct HomeRecentCard: View {
                     // 封面随网格列宽伸缩，保持方形；像素档位会自动归一化。
                     let side = max(84, geo.size.width)
                     ZStack {
-                        LazyArtworkView(track: track, size: side, cornerRadius: 12)
+                        LazyArtworkView(track: track, size: side, cornerRadius: ArtworkLayout.cornerRadius(for: side))
 
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        RoundedRectangle(cornerRadius: ArtworkLayout.cornerRadius(for: side), style: .continuous)
                             .fill(.black.opacity(0.27))
                             .opacity(isHovering ? 1 : 0)
 
@@ -623,7 +623,7 @@ private struct HomeRecentRow: View {
     var body: some View {
         Button(action: play) {
             HStack(spacing: 12) {
-                LazyArtworkView(track: track, size: 38, cornerRadius: 8)
+                LazyArtworkView(track: track, size: 38, cornerRadius: ArtworkLayout.cornerRadius(for: 38))
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(track.displayTitle)

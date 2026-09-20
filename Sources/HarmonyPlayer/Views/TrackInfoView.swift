@@ -27,7 +27,18 @@ struct TrackInfoView: View {
             infoRow("艺人", track.displayArtist)
             infoRow("专辑", track.displayAlbum)
             infoRow("时长", Track.formatTime(track.duration))
-            infoRow("格式", track.url.pathExtension.uppercased())
+            // 格式行单独着色：与列表/播放条徽标同色，便于快速辨识文件类型
+            HStack(alignment: .top, spacing: 18) {
+                Text("格式")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 62, alignment: .trailing)
+                Text(track.url.pathExtension.uppercased())
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(Color.formatColor(forExtension: track.url.pathExtension))
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
             infoRow("播放次数", "\(library.playCount(for: track))")
             infoRow("文件大小", fileSize)
             infoRow("文件位置", track.url.path)

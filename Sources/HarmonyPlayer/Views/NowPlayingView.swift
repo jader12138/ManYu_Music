@@ -242,6 +242,7 @@ struct NowPlayingView: View {
                 IconButton(
                     systemName: isCurrentFavorite ? "heart.fill" : "heart",
                     isActive: isCurrentFavorite,
+                    activeColor: .hpPink,
                     help: isCurrentFavorite ? "取消收藏" : "收藏",
                     size: 14
                 ) {

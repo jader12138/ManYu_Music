@@ -57,7 +57,10 @@ struct PlayerBar: View {
 
     private var wideContent: some View {
         HStack(spacing: 18) {
+            // 红圈曲目区（封面+歌名+格式徽标+歌手名）整体右移 20pt：
+            // padding 加在 frame 内侧，外部 280 定宽不变，不挤压中央控件。
             nowPlaying
+                .padding(.leading, 20)
                 .frame(width: 280, alignment: .leading)
 
             Spacer(minLength: 12)
@@ -78,6 +81,7 @@ struct PlayerBar: View {
         // 控件也被挤到右侧——窗口 840~1040pt 时播放条看起来像"变形"。
         HStack(spacing: 12) {
             nowPlaying
+                .padding(.leading, 20)
                 .frame(width: 240, alignment: .leading)
 
             Spacer(minLength: 8)
@@ -102,24 +106,29 @@ struct PlayerBar: View {
                 }
             } label: {
                 HStack(spacing: 10) {
-                    ArtworkView(image: player.artwork, size: 44, cornerRadius: 10)
+                    // 圆角基准：7:48，全局其他封面（播放页大封面除外）都按此比例统一。
+                    ArtworkView(image: player.artwork, size: 48, cornerRadius: ArtworkLayout.cornerRadius(for: 48))
                         .matchedGeometryEffect(id: "nowPlayingArtwork.playerBar", in: transitionNamespace, isSource: true)
 
                     if let track = player.currentTrack {
                         HStack(spacing: 8) {
-                            VStack(alignment: .leading, spacing: 3) {
-                                Text(track.displayTitle)
-                                    .font(.system(size: 11, weight: .semibold))
-                                    .foregroundStyle(Color.hpTextPrimary)
-                                    .lineLimit(1)
+                            VStack(alignment: .leading, spacing: 4) {
+                                HStack(spacing: 4) {
+                                    Text(track.displayTitle)
+                                        .font(.system(size: 12, weight: .semibold))
+                                        .foregroundStyle(Color.hpTextPrimary)
+                                        .lineLimit(1)
+                                    // 格式徽标紧贴歌名右侧，往下微调使其视觉居中于
+                                    // 歌名与歌手名两行之间，而不是漂在右侧远离文字。
+                                    formatBadge(for: track)
+                                        .offset(y: 5)
+                                }
                                 Text(track.displayArtist)
-                                    .font(.system(size: 10))
+                                    .font(.system(size: 11))
                                     .foregroundStyle(Color.hpTextPrimary.opacity(0.44))
                                     .lineLimit(1)
                             }
                             .frame(maxWidth: .infinity, alignment: .leading)
-
-                            formatBadge(for: track)
                         }
                     } else {
                         VStack(alignment: .leading, spacing: 4) {
@@ -197,6 +206,7 @@ struct PlayerBar: View {
                 IconButton(
                     systemName: (player.currentTrack.flatMap { library.isFavorite($0) } ?? false) ? "heart.fill" : "heart",
                     isActive: (player.currentTrack.flatMap { library.isFavorite($0) } ?? false),
+                    activeColor: .hpPink,
                     help: (player.currentTrack.flatMap { library.isFavorite($0) } ?? false) ? "取消收藏" : "收藏",
                     size: 13
                 ) {
@@ -218,12 +228,13 @@ struct PlayerBar: View {
     }
 
     private func formatBadge(for track: Track) -> some View {
-        Text(track.url.pathExtension.uppercased())
+        let color = Color.formatColor(forExtension: track.url.pathExtension)
+        return Text(track.url.pathExtension.uppercased())
             .font(.system(size: 8, weight: .bold))
-            .foregroundStyle(Color.hpAccent)
+            .foregroundStyle(color)
             .padding(.horizontal, 6)
             .padding(.vertical, 3)
-            .background(Color.hpAccent.opacity(0.12), in: RoundedRectangle(cornerRadius: 4))
+            .background(color.opacity(0.14), in: RoundedRectangle(cornerRadius: 4))
     }
 
     private var sleepTimerMenu: some View {
