@@ -120,8 +120,9 @@ beta3 之后最大的一次内测版本：引入 31 段参数均衡器（参考 
 
 - `swift build -c release --disable-sandbox`：编译通过。
 - `swift test --disable-sandbox`：81/81 通过。
-- DMG 资产 `ManyuMusic-3.13.0-beta4.dmg`（大小与 SHA-256 见发布后补记），挂载校验含 app + Applications 软链、卷内 app 版本/签名通过；卷宗白色图标。
-- GitHub Release：prerelease、make_latest=false（不顶替 v3.12.0）。
+- DMG 资产 `ManyuMusic-3.13.0-beta4.dmg`（10,064,380 字节，SHA-256 `20fb6a538521c87e9f54e88bfd2d776d9780d8a7f51b96808a5b214bb5e294f4`），挂载校验含 app + Applications 软链、卷内 app 版本/签名通过；卷宗白色图标；发布后从 GitHub 回下载比对 SHA256 一致。
+- GitHub Release：https://github.com/jader12138/ManYu_Music/releases/tag/v3.13.0-beta4 ，prerelease、make_latest=false（不顶替 v3.12.0，「最新正式版」仍为 v3.12.0）。
+- 标签 `v3.13.0-beta4`（annotated，对象 361d670）打在 main a1f2632 上；main 已推送（20+ 提交全部入库）。
 - 待人工验收：EQ/音效增强实际听感、Gapless 衔接与 Crossfade 手感。
 
 ### 已知问题与后续
