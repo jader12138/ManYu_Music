@@ -1,11 +1,48 @@
-# 下一版本（v3.13.0-beta2 准备中）
+# 下一版本（v3.13.0 正式版或后续 beta 准备中）
 
-- 发布状态：beta2 待发布（内测反馈修复 + 歌词格式扩展）
-- 已发布内测：`v3.13.0-beta1`（见文末附录）
+- 发布状态：本轮 UI 优化已合并至 main，等待发版（具体版本号待主人定）
+- 已发布内测：`v3.13.0-beta1`、`v3.13.0-beta2`（见文末附录）
 - 上一稳定版本：`v3.12.0`
-- 当前 `VERSION`：`3.13.0-beta2`
+- 当前 `VERSION`：`3.13.0-beta2`（合并后未递进，下次发版时调整）
 
-## beta2 摘要
+## 本轮摘要（2026-09-20 合并，分支 `codex/playback-ui-polish`）
+
+主页进播放页的交互优化 + 播放页底部渐变色效果调整；均为 UI 层改动，未触碰任何播放逻辑（AudioPlayer / PlaybackClock / LyricsCache / 队列 / seek / 恢复均未受影响）。
+
+## 用户可见更新
+
+### 新增
+
+- 主页底部播放条整条空白区域均可点击进入播放页：除播放/暂停、循环模式、上一首/下一首、收藏、音量、睡眠定时、队列等已有具体功能的控件以外，曲目区、Spacer、padding 与进度条之外的空白处点击都会触发进入播放页；封面按钮原入口保留不变。
+- 播放页底部渐变色效果调整：
+  - 颜色更重：深色模式主色不透明度 0.58 → 0.82，副色 0.34 → 0.55，新增第三色（accent）层 0.46；浅色模式相应加深；模糊背景图层与两枚光斑 opacity 同步上调。
+  - 抽取的颜色样本更多：封面缩略图改为按 3×3 网格分块，每块独立做饱和度加权平均得到区域代表色；`secondary` 与 `accent` 不再只是 `primary` 旋转色相派生，而是从九宫格里挑选与 `primary` 色相距离最大、饱和度合理的真实区域色（单色封面回退派生保持兼容）。
+  - 渐变色动起来：动画 duration 从 40~90 秒缩到 9~16 秒，肉眼可见；各层节奏错相（9/11/13/16s）配合偏移与不对称角度，背景扫动不再呈现机械的左右对称。
+  - 设置 → 播放新增「播放页背景动画」开关：关闭时背景渐变完全静止；开启时按上述节奏缓慢扫动（reduceMotion 用户始终关闭，开关无效）。
+
+## 技术变更
+
+- `PlayerBar.body`：最外层 `Group` 上加 `.contentShape(Rectangle()).onTapGesture`，触发进入播放页；SwiftUI 中 Button/IconButton/Menu/进度条 DragGesture 都会先吞掉点击，因此空白处才会落到这一层。`onNowPlayingEntrySelected()` 与 `showNowPlaying = true` 调用复用既有入口标记，大封面 matched geometry 来源仍是 `.playerBar`。
+- `ArtworkPaletteExtractor`：新增 `regionSamples(pixels:width:height:)` 把 32×32 缩略图按 3×3 网格分块采样；`pickSecondary`/`pickAccent` 在九宫格区域色里按色相距离挑选真实区域色，回退时仍走原 `adjusted` hueShift 派生；`ArtworkPalette` 结构与 `palette(from:)` 签名不变，所有调用方（`DockArtworkController`、`AudioPlayer`、`AppTheme`、`HomeView`、`NowPlayingView`）零改动兼容。
+- `NowPlayingBackdrop`：渐变层从两色扩为三色 + navy 兜底，opacity 上调；动画 duration 改为 9/11/13/16s 各自 `repeatForever(autoreverses: true)`；新增第二层 accent 色 `RadialGradient` 不对称偏移与节奏；`@AppStorage(BackdropAnimation.enabledKey)` 控制开关，关闭时 drift 全置 false 且 `animation` 传 nil，整个背景冻结。
+- `SettingsView.playbackPane` 新增一行「播放页背景动画」开关，绑定同一 `@AppStorage` 键。
+
+## 兼容性与迁移
+
+- 仅影响播放页背景视觉与主页播放条点击热区，不触碰任何播放、队列、歌词、恢复逻辑；`AudioPlayer` / `PlaybackClock` / `LyricsCache` / `AVPlayerItem` 全部未改动。
+- 抽色算法对外接口签名与返回结构均不变，`DockArtworkController` Dock 底色、`AudioPlayer.orbPrimaryImage/orbSecondaryImage` 预烘焙光斑继续按 `primary/secondary` 工作；Dock 视觉上颜色更准，但功能无变化。
+- 新增 UserDefaults 键 `ManyuMusic.nowPlayingBackdropAnimation`（默认 true），未记录时按默认值开启，老版本偏好不受影响。
+- 单元测试：53/53 通过。
+
+## 验证
+
+- `swift build -c release --disable-sandbox`：编译通过（除既有 `DockArtworkController`/`VolumeFrameReporter` 的非新增 warning 外无新错误）。
+- `swift test --disable-sandbox`：53/53 通过（6.6 秒）。
+- 人工验收（主人 2026-09-20 检查效果）：底部播放条空白处点击可进播放页；播放页背景渐变颜色加深、肉眼可见缓慢扫动；设置开关可关闭/开启动画；未观察到播放/切歌/进度/歌词同步异常。
+
+---
+
+## 附录：v3.13.0-beta2 摘要
 
 修复内测中发现的两个关联问题——重启后播放栏不恢复上次曲目（歌库异步加载导致恢复从未执行），以及窄窗口（840～1040pt）下播放条布局变形；同时把内嵌歌词识别从仅 FLAC 扩展到所有支持的音频格式（MP3 读 ID3v2 USLT、MP4 读 moov.udta.©lyr）。
 

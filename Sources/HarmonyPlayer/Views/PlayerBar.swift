@@ -24,6 +24,19 @@ struct PlayerBar: View {
             }
             .padding(.horizontal, geometry.size.width >= 1040 ? 18 : 12)
             .frame(width: geometry.size.width, height: geometry.size.height)
+            // 点击播放条空白区域进入播放页：Button/IconButton/Menu 等带
+            // 自身手势的子视图会优先吞掉点击，因此空白处（Spacer、padding、
+            // 非按钮区域）的 tap 才会落到这一层 contentShape 上。
+            // 进度条用 DragGesture(minimumDistance: 0) 也已拦截点击，
+            // 不会被误识别为「进播放页」。
+            .contentShape(Rectangle())
+            .onTapGesture {
+                guard player.currentTrack != nil else { return }
+                withAnimation(.spring(response: 0.56, dampingFraction: 0.86)) {
+                    onNowPlayingEntrySelected()
+                    showNowPlaying = true
+                }
+            }
         }
         .frame(height: 72)
         .onAppear {

@@ -849,11 +849,21 @@ struct NowPlayingBackdrop: View {
     /// 背景渐变缓慢漂移的状态位：onAppear 置 true 后以 repeatForever 来回摆动。
     @State private var gradientDrift = false
     @State private var orbDrift = false
+    /// 第二层渐变（accent 色光斑）的独立摆动，与主层节奏不同，
+    /// 让背景看起来不是规则地整体旋转——两层各自走自己的相位。
+    @State private var accentDrift = false
+
+    /// 用户在设置里开启/关闭播放页背景动画。关闭时所有 drift 置 false、
+    /// animation 修饰符传 nil，整个背景完全静止；开启时每层 duration
+    /// 都在 9~16 秒区间，肉眼能直接看到颜色带在缓慢扫动。
+    @AppStorage(BackdropAnimation.enabledKey) private var animationEnabled = true
 
     var body: some View {
         let palette = player.artworkPalette ?? .fallback
         let primary = Color(nsColor: palette.primary)
         let secondary = Color(nsColor: palette.secondary)
+        let accent = Color(nsColor: palette.accent)
+        let motionAllowed = animationEnabled && !reduceMotion
 
         ZStack {
             if let backdrop = player.backdropImage {
@@ -863,7 +873,7 @@ struct NowPlayingBackdrop: View {
                     .aspectRatio(contentMode: .fill)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .scaleEffect(1.16)
-                    .opacity(colorScheme == .dark ? 0.48 : 0.30)
+                    .opacity(colorScheme == .dark ? 0.55 : 0.38)
             } else if let artwork = player.artwork {
                 // 模糊图尚未就绪（刚换歌的极短窗口）时的兜底：保持原实时模糊。
                 Image(nsImage: artwork)
@@ -872,30 +882,68 @@ struct NowPlayingBackdrop: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .blur(radius: 72)
                     .scaleEffect(1.16)
-                    .opacity(colorScheme == .dark ? 0.48 : 0.30)
+                    .opacity(colorScheme == .dark ? 0.55 : 0.38)
             }
 
+            // 主层：三色线性渐变——primary→secondary→accent→navy，颜色更重。
+            // 不再单一从主色到派生色的对称过渡，而是把抽取自封面不同区域的
+            // 多种采样色按斜角铺成一条带，放大后旋转摆动产生颜色扫动。
             LinearGradient(
                 colors: colorScheme == .dark
                     ? [
-                        primary.opacity(0.58),
-                        secondary.opacity(0.34),
+                        primary.opacity(0.82),
+                        secondary.opacity(0.55),
+                        accent.opacity(0.46),
                         Color.hpNavyDeep.opacity(0.97)
                     ]
                     : [
-                        primary.opacity(0.27),
+                        primary.opacity(0.42),
+                        secondary.opacity(0.30),
                         Color.white.opacity(0.78),
-                        secondary.opacity(0.18)
+                        accent.opacity(0.22)
                     ],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
             )
-            // 放大后缓慢摆动旋转：颜色带在屏幕上极慢地扫动（90 秒一个来回）。
-            .scaleEffect(2.2)
-            .rotationEffect(.degrees(gradientDrift ? 80 : -80))
+            // 放大后摆动旋转：颜色带在屏幕上扫动（9 秒一个来回——肉眼可见）。
+            // 角度幅度 ±115°，叠加偏移让整体不是纯旋转——看起来像颜色带
+            // 在缓慢横向漂移，而不是规整地左右摆。
+            .scaleEffect(2.4)
+            .rotationEffect(.degrees(gradientDrift ? 115 : -115))
+            .offset(
+                x: gradientDrift ? 60 : -60,
+                y: gradientDrift ? -28 : 28
+            )
             .animation(
-                reduceMotion ? nil : .linear(duration: 90).repeatForever(autoreverses: true),
+                motionAllowed
+                    ? .easeInOut(duration: 9).repeatForever(autoreverses: true)
+                    : nil,
                 value: gradientDrift
+            )
+
+            // 第二层：accent 色的径向强调点，位置不对称（偏左下），
+            // 节奏与主层不同（11s vs 9s）——两层相位错开后，
+            // 颜色带的扫动看起来更不规律、不会呈现机械的左右对称。
+            RadialGradient(
+                colors: [
+                    accent.opacity(colorScheme == .dark ? 0.38 : 0.20),
+                    accent.opacity(0)
+                ],
+                center: .init(x: 0.32, y: 0.72),
+                startRadius: 80,
+                endRadius: 540
+            )
+            .scaleEffect(1.8)
+            .rotationEffect(.degrees(accentDrift ? -75 : 75))
+            .offset(
+                x: accentDrift ? -80 : 80,
+                y: accentDrift ? 40 : -40
+            )
+            .animation(
+                motionAllowed
+                    ? .easeInOut(duration: 11).repeatForever(autoreverses: true)
+                    : nil,
+                value: accentDrift
             )
 
             // 光斑：优先用预烘焙的模糊图（进出转场 GPU 零滤镜成本），
@@ -912,13 +960,15 @@ struct NowPlayingBackdrop: View {
                         .blur(radius: 160)
                 }
             }
-            .opacity(colorScheme == .dark ? 0.28 : 0.18)
+            .opacity(colorScheme == .dark ? 0.32 : 0.22)
             .offset(
                 x: 420 + (orbDrift ? 52 : -52),
                 y: -340 + (orbDrift ? -36 : 36)
             )
             .animation(
-                reduceMotion ? nil : .easeInOut(duration: 55).repeatForever(autoreverses: true),
+                motionAllowed
+                    ? .easeInOut(duration: 13).repeatForever(autoreverses: true)
+                    : nil,
                 value: orbDrift
             )
 
@@ -934,23 +984,47 @@ struct NowPlayingBackdrop: View {
                         .blur(radius: 150)
                 }
             }
-            .opacity(colorScheme == .dark ? 0.18 : 0.13)
+            .opacity(colorScheme == .dark ? 0.22 : 0.16)
             .offset(
                 x: -430 + (orbDrift ? -44 : 44),
                 y: 320 + (orbDrift ? 40 : -40)
             )
             .animation(
-                reduceMotion ? nil : .easeInOut(duration: 68).repeatForever(autoreverses: true),
+                motionAllowed
+                    ? .easeInOut(duration: 16).repeatForever(autoreverses: true)
+                    : nil,
                 value: orbDrift
             )
         }
         .animation(.easeInOut(duration: 0.65), value: player.currentTrack?.id)
         .onAppear {
-            guard !reduceMotion else { return }
+            // 关闭动画或 reduceMotion 时：所有 drift 都不置 true，
+            // rotationEffect/offset 维持 false 分支的固定值，整个背景完全静止。
+            guard motionAllowed else { return }
             gradientDrift = true
             orbDrift = true
+            accentDrift = true
+        }
+        .onChange(of: animationEnabled) { _, enabled in
+            // 用户切换开关时同步 drift 状态：
+            // 开启 → drift=true 触发 repeatForever 循环；
+            // 关闭 → drift=false，配合 nil 动画立刻静止在 false 分支位置。
+            guard !reduceMotion else {
+                gradientDrift = false
+                orbDrift = false
+                accentDrift = false
+                return
+            }
+            gradientDrift = enabled
+            orbDrift = enabled
+            accentDrift = enabled
         }
     }
+}
+
+/// 播放页背景动画开关的存储键集中点。
+enum BackdropAnimation {
+    static let enabledKey = "ManyuMusic.nowPlayingBackdropAnimation"
 }
 
 struct NowPlayingHeaderControls: View {

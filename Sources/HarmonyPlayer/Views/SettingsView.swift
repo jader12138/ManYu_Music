@@ -40,6 +40,7 @@ struct SettingsView: View {
     @AppStorage(DockArtworkController.showsArtworkKey) private var showDockArtwork = true
     @AppStorage(AudioPlayer.rememberPlaybackKey) private var rememberPlaybackState = true
     @AppStorage(ArtworkPreloader.enabledKey) private var preloadArtwork = false
+    @AppStorage(BackdropAnimation.enabledKey) private var backdropAnimationEnabled = true
     @AppStorage(RecommendationSettings.frequencyKey)
     private var recommendationFrequencyRaw = RecommendationFrequency.daily.rawValue
     @AppStorage(RecommendationSettings.independentKey)
@@ -328,6 +329,16 @@ struct SettingsView: View {
                     .foregroundStyle(
                         player.isPlaying ? Color.hpAccent : Color.hpTextPrimary.opacity(0.45)
                     )
+            }
+
+            Divider().opacity(0.08)
+
+            // 播放页背景动画
+            row(title: "播放页背景动画",
+                subtitle: "关闭后背景渐变完全静止；开启时颜色带缓慢扫动（设置仅影响播放页背景，不影响其他动画）") {
+                Toggle("", isOn: $backdropAnimationEnabled)
+                    .toggleStyle(.switch)
+                    .labelsHidden()
             }
 
             Divider().opacity(0.08)
