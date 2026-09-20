@@ -49,13 +49,34 @@ final class DockArtworkController {
         let generation = renderGeneration
         let source = artwork
         renderQueue.async {
-            let icon = Self.makeDockIcon(artwork: source, isPlaying: isPlaying)
+            let raw = Self.makeDockIcon(artwork: source, isPlaying: isPlaying)
+            // 与静态图标（白色/黑色版，内容占画布 80.5%、四周约 10% 透明边）对齐：
+            // 旧封面图标的底板占 512 画布的 93.75%，在 Dock 里明显比其他 App 大一圈。
+            // 整体等比缩到 440/512（0.8594）并居中，底板边缘变为距画布约 50px——
+            // 三种 Dock 状态（白色/黑色/专辑封面）视觉尺寸完全一致，与系统其他图标同档。
+            let icon = Self.composeStandardSizedIcon(raw)
             DispatchQueue.main.async {
                 guard generation == self.renderGeneration else { return }
                 NSApplication.shared.applicationIconImage = icon
                 NSApplication.shared.dockTile.display()
             }
         }
+    }
+
+    /// 把已渲染的 512×512 图标等比缩小居中到 macOS 标准图标网格占比（内容 80.5%）。
+    private static func composeStandardSizedIcon(_ raw: NSImage) -> NSImage {
+        let size = NSSize(width: 512, height: 512)
+        let scaled = CGFloat(440)
+        let margin = (512 - scaled) / 2
+        let out = NSImage(size: size)
+        out.lockFocus()
+        NSGraphicsContext.current?.imageInterpolation = .high
+        raw.draw(in: NSRect(x: margin, y: margin, width: scaled, height: scaled),
+                 from: NSRect(origin: .zero, size: size),
+                 operation: .sourceOver, fraction: 1)
+        out.unlockFocus()
+        out.isTemplate = false
+        return out
     }
 
     func refreshSetting() {
