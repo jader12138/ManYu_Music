@@ -5,6 +5,7 @@ private enum SettingsTab: String, CaseIterable, Identifiable {
     case appearance
     case home
     case playback
+    case equalizer
     case library
     case about
 
@@ -15,6 +16,7 @@ private enum SettingsTab: String, CaseIterable, Identifiable {
         case .appearance: "外观"
         case .home: "首页"
         case .playback: "播放"
+        case .equalizer: "均衡器"
         case .library: "资料库"
         case .about: "关于"
         }
@@ -25,6 +27,7 @@ private enum SettingsTab: String, CaseIterable, Identifiable {
         case .appearance: "paintpalette.fill"
         case .home: "house.fill"
         case .playback: "play.circle.fill"
+        case .equalizer: "slider.horizontal.3"
         case .library: "music.note.list"
         case .about: "info.circle.fill"
         }
@@ -41,6 +44,9 @@ struct SettingsView: View {
     @AppStorage(AudioPlayer.rememberPlaybackKey) private var rememberPlaybackState = true
     @AppStorage(ArtworkPreloader.enabledKey) private var preloadArtwork = false
     @AppStorage(BackdropAnimation.enabledKey) private var backdropAnimationEnabled = true
+    @AppStorage(AudioPlayer.gaplessPlaybackKey) private var gaplessPlayback = false
+    @AppStorage(AudioPlayer.crossfadeEnabledKey) private var crossfadeEnabled = false
+    @AppStorage(AudioPlayer.crossfadeDurationKey) private var crossfadeDuration = AudioPlayer.defaultCrossfadeDuration
     @AppStorage(RecommendationSettings.frequencyKey)
     private var recommendationFrequencyRaw = RecommendationFrequency.daily.rawValue
     @AppStorage(RecommendationSettings.independentKey)
@@ -116,6 +122,7 @@ struct SettingsView: View {
         case .appearance: appearancePane
         case .home: homePane
         case .playback: playbackPane
+        case .equalizer: equalizerSettingsPage
         case .library: libraryPane
         case .about: aboutPane
         }
@@ -322,6 +329,44 @@ struct SettingsView: View {
 
             Divider().opacity(0.08)
 
+            // 无缝播放
+            row(title: "无缝播放（Gapless）",
+                subtitle: "自然连播时提前准备下一首，歌曲衔接处没有空隙，适合整张专辑连续听") {
+                Toggle("", isOn: $gaplessPlayback)
+                    .toggleStyle(.switch)
+                    .labelsHidden()
+            }
+
+            Divider().opacity(0.08)
+
+            // 淡入淡出
+            row(title: "淡入淡出（Crossfade）",
+                subtitle: "切歌时上一首渐弱、下一首渐强，重叠过渡；开启后自动连播也按此处理") {
+                Toggle("", isOn: $crossfadeEnabled)
+                    .toggleStyle(.switch)
+                    .labelsHidden()
+            }
+
+            if crossfadeEnabled {
+                row(title: "淡入淡出时长",
+                    subtitle: "两首歌重叠过渡的秒数") {
+                    HStack(spacing: 10) {
+                        Text("\(Int(crossfadeDuration)) 秒")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(Color.hpTextPrimary.opacity(0.6))
+                            .frame(width: 38, alignment: .trailing)
+                        Slider(
+                            value: $crossfadeDuration,
+                            in: AudioPlayer.crossfadeDurationRange,
+                            step: 1
+                        )
+                        .frame(width: 150)
+                    }
+                }
+            }
+
+            Divider().opacity(0.08)
+
             // 当前状态
             row(title: "当前状态") {
                 Text(player.isPlaying ? "播放中" : "已暂停")
@@ -347,6 +392,15 @@ struct SettingsView: View {
             SleepTimerRow(clock: player.clock)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    // MARK: - 均衡器
+
+    /// 独立均衡器页：面板自带头部（标题/运行状态/关闭EQ/重置）、
+    /// 三页签、实时频谱、预设与 31 段调节，设置页直接整页嵌入。
+    private var equalizerSettingsPage: some View {
+        EqualizerPanelView()
+            .padding(.vertical, 10)
     }
 
     // MARK: - 资料库

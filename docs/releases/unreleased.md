@@ -5,6 +5,32 @@
 - 上一稳定版本：`v3.12.0`
 - 当前 `VERSION`：`3.13.0-beta3`
 
+## 本轮摘要（2026-09-20，分支 `codex/equalizer`，待合并）
+
+均衡器参考 MoeKoe EQ 插件全面重做：升级为 31 段参数均衡器（20Hz~20kHz ISO 三分之一倍频程，±6dB，每段 Q 值 0.1~18 独立可调默认 1.4），设置页为「头部（标题/运行状态灯/关闭EQ/重置）+ 三页签（均衡器/音效增强/高级功能，后两个占位）+ 实时频谱 + 预设 chips + 31 根垂直滑杆（双击归零）」结构；内置 35 个预设曲线（取自参考项目）+ 自定义预设；旧版十段曲线与自定义预设按对数频率轴插值迁移。入口两处：播放栏「定时」左侧快捷图标弹出精简面板（仅头部 + 预设 chips，带关闭钮）与设置独立「均衡器」页（完整面板）。
+
+- **DSP**：RBJ biquad 级联——最低频段 low shelf、最高频段 high shelf、中间 29 段 peaking（各段独立 Q）；0 dB 段使用恒等系数直通。`EQTapContext` 每个 tap 持有独立延迟状态（转置直接 II 型，声道×段），共享 `Equalizer` 参数（NSLock 保护），`revision` 号变化时在音频线程重建一次系数并清零状态；增益与 Q 变化都推进 revision。
+- **tap 常驻**：音频 tap 不再随 EQ 开关挂/摘，四条 item 创建路径（cut 切歌、crossfade 新曲、gapless 预载、重启恢复）一律 `EQTap.attach`；EQ 关闭时 process 直通（`isBypassed` 锁内镜像，不碰 UserDefaults），频谱喂送恒定进行，开关即时生效。
+- **实时频谱**：`EQSpectrumRing`（16384 样本环形缓冲 + NSLock，音频线程写入下混单声道、prepare 时写入采样率）→ `EQSpectrumAnalyzer`（主线程 30fps 定时器，4096 点 Hann 加窗 + vDSP 实数 FFT，20Hz~20kHz 对数频轴 64 点峰值聚合，dB 归一化 + 快攻慢放平滑，暂停时谱线衰减归零；相位每 tick 缓慢推进驱动水波基线）→ `EQSpectrumView` Canvas 绘制：Catmull-Rom 平滑波浪线 + 渐变填充 + 缓慢起伏水波基线（静默时也有波浪感）+ 相位错开的回声波 + 频率刻度。纯本地 Accelerate/vDSP 计算。
+- **UI**：`EqualizerPanelView` 双模式——完整模式（设置页整页嵌入）：头部（标题 + 状态指示灯 + 关闭EQ/开启EQ + 重置）、Layout 协议 `FlowLayout` 预设 chips（选中高亮、+ 保存预设、自定义预设删除）、自绘 `EQVerticalSlider`（中心 0dB 基线、0.5 步进、双击归零）、`EQBandColumn`（增益值 + Q 值点击弹编辑滑杆 + 斜排频率标签），「音效增强」「高级功能」页签为占位文案；精简模式（播放栏弹窗宽 540）：仅头部 + 预设 chips。
+- **音效增强（页签完整实现）**：`AudioEnhancer` 参数类（锁内镜像 + revision + UserDefaults 持久化，挂于 `Equalizer.enhancer`）+ `EnhancerEngine` 实时引擎（EQ 之后级联、独立开关）。频率调节：60Hz low shelf / 100Hz / 250Hz / 3kHz / 4kHz / 8kHz peaking / 8kHz high shelf（百分比映射 0~8dB、0~6dB 等上限）+ 动态增强压缩器（峰值包络 limiter，阈值 -14~-28dB、attack 5ms / release 150ms、makeup 补偿）；空间效果：早反射（20ms 缓冲 4 taps，L/R 错开）做环境感、Schroeder 4-comb + 每声道 2-allpass（freeverb 经典长度按采样率缩放）做环境混响（L/R comb 分组去相关）、M/S 立体声扩展做环绕声；输出控制：线性声道平衡 + ±12dB 输出增益 + 限幅。prepare 时按采样率一次性预分配全部缓冲，音频线程无分配；UI 为开关 + 分组重置 + 13 张滑杆卡片（LazyVGrid 双列）。
+- **迁移**：旧十段增益（31/62/125/250/500/1k/2k/4k/8k/16Hz）与新自定义预设在对数频率轴上线性插值为 31 段并回写；Q 值为新键（默认 1.4×31）。
+- **验证**：`swift test` 80/80 通过（EQ 12 项 + 音效增强 12 项：默认/钳制/bypass 镜像/持久化/重置保开关/引擎直通恒等/输出增益与平衡/声场扩展数值/混响冲激 3 秒衰减不发散/滤波有界性/动态压缩压峰；其余 56 项回归通过）；release 构建通过。频谱观感、31 段与音效增强听感待主人验收。
+
+## 本轮摘要（2026-09-20，分支 `codex/gapless-crossfade`，待合并）
+
+播放核心新增两个可开关的连播增强，默认都关闭，关闭时播放链路与历史完全一致。技术上把单一 `AVPlayer` 扩展为「双引擎乒乓」：`engineA/engineB` 两个固定 `AVPlayer`，`activeEngine` 为当前出声引擎、`standbyEngine` 为备用，所有既有内部代码通过计算属性 `player` 仍访问当前引擎；实际音量 = 用户音量 × 每引擎 `gain`（0...1）。
+
+- **Crossfade**：正在播放时切歌走 `beginCrossfade`——旧引擎保持出声、新曲在备用引擎从 gain 0 起播，30fps smoothstep ramp（时长由设置 3~12s，默认 6）令旧 1→0、新 0→1；UI（封面/歌名/歌词）立即切新曲，周期时间观察器重绑到新引擎使进度条从 0 走新曲。`fadeGeneration` 代数号支持在淡变中途再次切歌（以各引擎瞬时增益为新 ramp 起点，旧 ramp 自动作废）。暂停、seek、cut 切换、改播放模式、队列增删移动都会 `abortInFlightFade`/`disarmGapless` 立即收敛到单引擎。暂停时切歌、首播、连续快切（<0.7s）不走淡变。
+- **Gapless**：crossfade 关闭且 gapless 开启时，周期 tick 在结尾前 2s 把下一首装入备用引擎并 `preroll(atRate:1)`，同时在当前引擎注册 `addBoundaryTimeObserver`（结尾前 60ms）；boundary 触发时备用引擎 `play()` 接管、翻转 active、重绑时钟，旧引擎自然走完最后约 60ms 后于 0.5s 延迟清理。预载未就绪则回退普通自动连播。boundary observer 记录所属引擎，保证只在同一 player 上移除。
+- 自动连播候选由 `nextAutoPlaybackIndex()` 统一计算（随机/顺序/列表循环；列表结束且循环关闭返回 nil 交由原结束通知停止）；单曲循环（`repeatMode == .one`）完全不预载，仍走 seek(0) 重播。crossfade 与 gapless 同开时自动连播走 crossfade（主人确认 crossfade 优先）。
+- 设置：`SettingsView.playbackPane` 新增两个开关与 crossfade 时长滑块；UserDefaults 键 `ManyuMusic.gaplessPlayback`、`ManyuMusic.crossfadeEnabled`（均默认 false）、`ManyuMusic.crossfadeDuration`（默认 6）。
+- 验证：`swift test` 53/53 通过（默认关闭，cut 路径行为不变）；release 构建通过。待主人试听确认 gapless 衔接与 crossfade 时长/手感。
+
+## 本轮摘要（2026-09-20 本地合并，分支 `codex/dock-badge-crossfade`）
+
+Dock 专辑封面模式的播放/暂停蓝白徽标往左上内收（右/底边距 16/6→34/24，512 画布单位），完全退入亚克力底板；播放页封面切歌改方向性转场——新封面从旧封面后面顶出（上浮 14pt + 放大 5% + 淡入，zIndex 在后），旧封面在前景向左滑 36pt 并淡出（zIndex 在前），固定尺寸 ZStack 不推动布局，0.5s easeOut，遵循 reduceMotion。
+
 ## 本轮摘要（2026-09-20 本地合并，分支 `codex/artwork-acrylic-border` + `codex/icon-size-standard`）
 
 播放条左下角封面加亚克力包边（hero 同款 ultraThinMaterial，外框 54/封面 48，0.6pt 灰发丝线+轻阴影，不参与播放页转场）；Dock 三种状态图标（白色/黑色/专辑封面）与启动台图标统一缩到 macOS 标准网格占比（内容 87.5%→80.5%，1024 母版留 10% 透明边，PNG/icns 重新生成；封面模式 512 渲染整体缩到 440 居中），与系统其他 App 图标同档。纯资源与展示层改动。

@@ -18,6 +18,14 @@ final class PlaybackClock: ObservableObject {
 @MainActor
 final class AudioPlayer: ObservableObject {
     static let rememberPlaybackKey = "ManyuMusic.rememberPlaybackState"
+    /// 无缝播放（gapless）：自然连播时提前预载下一首，结尾处近无间隙接管。
+    static let gaplessPlaybackKey = "ManyuMusic.gaplessPlayback"
+    /// 淡入淡出（crossfade）：切歌时旧曲渐弱、新曲渐强，重叠过渡。
+    static let crossfadeEnabledKey = "ManyuMusic.crossfadeEnabled"
+    /// crossfade 重叠时长（秒），设置里 3~12 可调，默认 6。
+    static let crossfadeDurationKey = "ManyuMusic.crossfadeDuration"
+    static let defaultCrossfadeDuration: TimeInterval = 6
+    static let crossfadeDurationRange: ClosedRange<Double> = 3...12
     @Published private(set) var currentTrack: Track?
     @Published private(set) var isPlaying = false
     @Published private(set) var artwork: NSImage?
@@ -37,7 +45,10 @@ final class AudioPlayer: ObservableObject {
     @Published private(set) var sleepTimerEnd: Date?
     @Published var volume: Double = 0.78 {
         didSet {
-            player.volume = Float(volume)
+            // crossfade 期间两个引擎可能同时出声，音量变化要同时作用于
+            // 当前引擎与备用引擎（各自乘上当前淡变增益）。
+            applyVolume(to: engineA)
+            applyVolume(to: engineB)
             saveVolume()
         }
     }
@@ -73,7 +84,48 @@ final class AudioPlayer: ObservableObject {
     /// `player.clock` instead of the player.
     var sleepTimerRemaining: TimeInterval? { clock.sleepTimerRemaining }
 
-    private let player = AVPlayer()
+    // MARK: - 双引擎乒乓（crossfade / gapless）
+
+    /// 两个固定 AVPlayer 实例：正常播放时 activeEngine 出声；切歌走
+    /// crossfade/gapless 时，新曲在 standbyEngine 起播，完成后身份对调。
+    /// 普通切换（功能关、暂停点歌、快切、首播）仍在 activeEngine 上
+    /// replaceCurrentItem，行为与历史一致。
+    private let engineA = AVPlayer()
+    private let engineB = AVPlayer()
+    /// 当前出声引擎，在 init 里指向 engineA；不能用属性默认值引用另一属性。
+    private var activeEngine: AVPlayer!
+    private var standbyEngine: AVPlayer { activeEngine === engineA ? engineB : engineA }
+    /// 所有既有内部代码使用的便捷入口，始终指向当前出声的引擎（显式非可选）。
+    private var player: AVPlayer { activeEngine }
+
+    /// 每个引擎的淡变增益（0...1）。实际音量 = 用户音量 × gain。
+    /// 非过渡时两者恒为 1；crossfade 时旧引擎 1→0、新引擎 0→1。
+    private var engineGain: [ObjectIdentifier: Double] = [:]
+    private func gain(of engine: AVPlayer) -> Double {
+        engineGain[ObjectIdentifier(engine)] ?? 1
+    }
+    private func applyVolume(to engine: AVPlayer) {
+        engine.volume = Float(volume * gain(of: engine))
+    }
+    private func setGain(_ engine: AVPlayer, _ value: Double) {
+        engineGain[ObjectIdentifier(engine)] = value
+        applyVolume(to: engine)
+    }
+
+    /// 进行中的 crossfade 代数号：每次新开淡变 +1，旧 ramp 轮询发现
+    /// 代数不符立即退出（不做收尾清理），避免快切时多个淡变互相打架。
+    private var fadeGeneration = 0
+    /// crossfade 进行中为 true：屏蔽非 active 引擎与短暂 waiting 造成的
+    /// isPlaying 抖动（过渡期间播放态恒为真）。
+    private var isCrossfading = false
+
+    /// gapless 预载状态：非 nil 表示已在 standbyEngine 装好下一首并
+    /// preroll，等待 boundary 精确接管；接管或撤销时复位为 nil。
+    private var armedGaplessIndex: Int?
+    private var gaplessBoundary: Any?
+    /// boundary observer 必须在添加它的同一个引擎上移除，单独记录。
+    private weak var gaplessBoundaryEngine: AVPlayer?
+
     private var timeObserver: Any?
     private var endObserver: NSObjectProtocol?
     private var cancellables = Set<AnyCancellable>()
@@ -87,12 +139,41 @@ final class AudioPlayer: ObservableObject {
 
     private let defaults: UserDefaults
 
+    // MARK: - 播放增强开关（设置里可切换，切歌/连播时读取最新值）
+
+    var gaplessEnabled: Bool {
+        defaults.object(forKey: Self.gaplessPlaybackKey) as? Bool ?? false
+    }
+    var crossfadeEnabled: Bool {
+        defaults.object(forKey: Self.crossfadeEnabledKey) as? Bool ?? false
+    }
+    var crossfadeDuration: TimeInterval {
+        let stored = defaults.object(forKey: Self.crossfadeDurationKey) as? Double
+        guard let stored else { return Self.defaultCrossfadeDuration }
+        // 存量值钳制在滑块区间内，外部写入的垃圾值不会产生 0 秒或超长淡变。
+        let range = Self.crossfadeDurationRange
+        return min(max(stored, range.lowerBound), range.upperBound)
+    }
+
+    /// 三十一段图形均衡器：参数共享给音频 tap，预设与自定义曲线也由它持久化；
+    /// 同一份 tap 还为实时频谱喂送下混采样。
+    let equalizer = Equalizer()
+
+    /// 均衡器开关：tap 已常驻所有播放条目（EQ 关闭时直通），开关即时生效，
+    /// 无需重新挂/摘 tap。
+    func setEQEnabled(_ enabled: Bool) {
+        equalizer.isEnabled = enabled
+    }
+
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
+        self.activeEngine = engineA
         let savedVolume = defaults.object(forKey: volumeKey) as? Double
         volume = savedVolume ?? 0.78
-        player.volume = Float(volume)
-        player.automaticallyWaitsToMinimizeStalling = false
+        for engine in [engineA, engineB] {
+            engine.automaticallyWaitsToMinimizeStalling = false
+            setGain(engine, 1)
+        }
         configurePlayerObservation()
         configureRemoteCommands()
 
@@ -158,8 +239,10 @@ final class AudioPlayer: ObservableObject {
         currentTime = max(0, min(savedTime, track.duration > 0 ? track.duration : savedTime))
 
         let item = Self.makePlaybackItem(url: track.url)
+        // 为恢复的条目挂常驻音频 tap（EQ + 频谱，与开关无关）。
+        EQTap.attach(to: item, equalizer: equalizer)
         player.replaceCurrentItem(with: item)
-        player.volume = Float(volume)
+        applyVolume(to: player)
         player.seek(
             to: CMTime(seconds: currentTime, preferredTimescale: 600),
             toleranceBefore: .zero,
@@ -185,6 +268,9 @@ final class AudioPlayer: ObservableObject {
     }
 
     func play(_ track: Track, in tracks: [Track]) {
+        // 队列即将被整体替换：已预载的 gapless 下一首索引指向旧队列，
+        // 不撤销会在接管时取出错的歌曲。先撤，之后 tick 会按新队列重新预排。
+        disarmGapless()
         let playableQueue = tracks.isEmpty ? [track] : tracks
         queue = playableQueue
         currentIndex = playableQueue.firstIndex(where: { $0.id == track.id }) ?? 0
@@ -194,7 +280,7 @@ final class AudioPlayer: ObservableObject {
             return
         }
 
-        load(track)
+        routeSwitch(to: track)
     }
 
     func togglePlayback() {
@@ -220,6 +306,10 @@ final class AudioPlayer: ObservableObject {
     }
 
     func pause() {
+        // 暂停要立刻安静：撤掉待接管的 gapless 预载，打断 crossfade 让
+        // 正在淡出的旧引擎立即静音，只保留当前引擎。
+        disarmGapless()
+        abortInFlightFade()
         player.pause()
         persistPlaybackState(force: true)
         updateNowPlaying()
@@ -244,6 +334,9 @@ final class AudioPlayer: ObservableObject {
 
     /// 直接设置播放模式（首页「随机播放」、菜单栏等入口使用）。
     func setPlaybackMode(_ mode: PlaybackMode) {
+        // 切模式会改变连播候选（尤其进/出随机），已预载的 gapless 下一首
+        // 可能不再正确，撤销预载；正在进行的 crossfade 让它自然走完。
+        disarmGapless()
         playbackMode = mode
         switch mode {
         case .sequential:
@@ -291,6 +384,9 @@ final class AudioPlayer: ObservableObject {
 
     func seek(to seconds: Double) {
         guard seconds.isFinite else { return }
+        // 拖动进度后，旧曲淡出/下一首预载都失去意义，立即收敛到单一引擎。
+        disarmGapless()
+        abortInFlightFade()
         let upperBound = duration > 0 ? duration : max(0, seconds)
         let target = min(max(0, seconds), upperBound)
         seekInFlight = true
@@ -316,10 +412,11 @@ final class AudioPlayer: ObservableObject {
     func playFromQueue(at index: Int) {
         guard queue.indices.contains(index) else { return }
         currentIndex = index
-        load(queue[index])
+        routeSwitch(to: queue[index])
     }
 
     func playNext(_ track: Track) {
+        disarmGapless()
         let insertionIndex = min((currentIndex ?? -1) + 1, queue.count)
         queue.insert(track, at: insertionIndex)
         if let currentIndex, insertionIndex <= currentIndex {
@@ -329,6 +426,7 @@ final class AudioPlayer: ObservableObject {
     }
 
     func addToQueue(_ track: Track) {
+        disarmGapless()
         queue.append(track)
         if currentIndex == nil {
             currentIndex = queue.indices.last
@@ -338,6 +436,7 @@ final class AudioPlayer: ObservableObject {
 
     func removeFromQueue(at offsets: IndexSet) {
         guard !queue.isEmpty else { return }
+        disarmGapless()
         let currentID = currentTrack?.id
         queue = queue.enumerated()
             .filter { !offsets.contains($0.offset) }
@@ -351,6 +450,7 @@ final class AudioPlayer: ObservableObject {
     }
 
     func clearQueue() {
+        disarmGapless()
         guard let currentTrack else {
             queue.removeAll()
             currentIndex = nil
@@ -362,6 +462,7 @@ final class AudioPlayer: ObservableObject {
     }
 
     func moveQueue(from offsets: IndexSet, to destination: Int) {
+        disarmGapless()
         guard let currentID = currentTrack?.id else { return }
         queue.move(fromOffsets: offsets, toOffset: destination)
         currentIndex = queue.firstIndex(where: { $0.id == currentID })
@@ -408,6 +509,25 @@ final class AudioPlayer: ObservableObject {
         library.toggleFavorite(track)
     }
 
+    /// 切换到新曲目时，所有与具体播放引擎无关的 UI/状态更新集中在此：
+    /// 当前曲目、进度归零、时长、歌词、封面与背景、状态持久化。
+    /// cut（load）、crossfade、gapless 三条路径共用，保证表现一致。
+    private func present(_ track: Track) {
+        currentTrack = track
+        currentTime = 0
+        duration = track.duration
+        lyricLines = []
+        lyricsResolved = false
+        prepareLyrics(for: track)
+        refreshDuration(for: track)
+        loadArtwork(for: track)
+        persistPlaybackState(force: true)
+        updateNowPlaying()
+        scheduleMemoryRelease()
+    }
+
+    /// cut 路径（普通切换）：在当前引擎上直接替换条目。功能全关、暂停时
+    /// 点歌、连续快切、首播与播放恢复都走这里，行为与历史完全一致。
     private func load(_ track: Track) {
         guard FileManager.default.fileExists(atPath: track.url.path) else {
             playbackError = "找不到文件：\(track.url.lastPathComponent)"
@@ -415,18 +535,18 @@ final class AudioPlayer: ObservableObject {
             return
         }
 
+        // 直接替换：撤销待执行的 gapless 预载与未完成 crossfade，
+        // 保证当前只有 activeEngine 出声，备用引擎干净静默。
+        disarmGapless()
+        abortInFlightFade()
+
         let now = Date()
         let rapid = now.timeIntervalSince(lastLoadAt) < Self.rapidSwitchWindow
         lastLoadAt = now
         switchGeneration += 1
         let generation = switchGeneration
 
-        currentTrack = track
-        currentTime = 0
-        duration = track.duration
-        lyricLines = []
-        lyricsResolved = false
-        prepareLyrics(for: track)
+        present(track)
 
         // Keep the previous artwork and Dock icon visible until the next
         // track's artwork has loaded. This removes the one-frame Dock flicker.
@@ -434,8 +554,10 @@ final class AudioPlayer: ObservableObject {
         // 本地文件按需读取，无需长前向缓冲：限制解码缓冲上限，
         // 避免播放器为每首曲目驻留过多解码数据。
         item.preferredForwardBufferDuration = 45
+        // 为新条目挂常驻音频 tap（cut / crossfade 新曲路径，EQ + 频谱）。
+        EQTap.attach(to: item, equalizer: equalizer)
         player.replaceCurrentItem(with: item)
-        player.volume = Float(volume)
+        setGain(player, 1)
 
         if rapid || isRapidSwitching {
             // 连续快切：replaceCurrentItem 是异步的，新条目就绪前旧曲目仍会
@@ -449,11 +571,261 @@ final class AudioPlayer: ObservableObject {
         }
 
         observeStatus(of: item)
-        refreshDuration(for: track)
-        loadArtwork(for: track)
-        persistPlaybackState(force: true)
+    }
+
+    /// 切换分流：正在播放且开启 crossfade 时走淡入淡出；否则走普通 cut。
+    /// 首播（当前无曲目）、暂停时点歌、连续快切期间一律 cut。
+    private func routeSwitch(to track: Track) {
+        let canCrossfade = crossfadeEnabled
+            && currentTrack != nil
+            && isPlaying
+            && !isRapidSwitching
+        if canCrossfade {
+            beginCrossfade(to: track)
+        } else {
+            load(track)
+        }
+    }
+
+    // MARK: - Crossfade（淡入淡出）
+
+    /// 旧引擎保持出声并淡出，新曲在备用引擎从静音淡入；UI 立即切到新曲，
+    /// clock 立即重绑新引擎（进度条从 0 走新曲）。ramp 结束后清理旧引擎。
+    private func beginCrossfade(to track: Track) {
+        guard FileManager.default.fileExists(atPath: track.url.path) else {
+            playbackError = "找不到文件：\(track.url.lastPathComponent)"
+            return
+        }
+
+        // 若上一个淡变尚未结束（6 秒内又切歌）：先作废其 ramp（不清理，
+        // 由本次接管），并以各引擎当前瞬时增益作为新 ramp 的起点。
+        let wasFading = isCrossfading
+        fadeGeneration += 1
+        let token = fadeGeneration
+
+        let oldEngine = player
+        let newEngine = standbyEngine
+
+        disarmGapless()
+
+        let item = Self.makePlaybackItem(url: track.url)
+        item.preferredForwardBufferDuration = 45
+        // 备用引擎上可能还留着上一轮旧曲（ramp 中途再切），直接覆盖。
+        newEngine.replaceCurrentItem(with: item)
+        let newFrom = wasFading ? gain(of: newEngine) : 0
+        let oldFrom = gain(of: oldEngine)
+        setGain(newEngine, newFrom)
+        observeStatus(of: item)
+
+        present(track)
+
+        activeEngine = newEngine
+        bindTimeObserver(to: newEngine)
+        newEngine.play()
+        isPlaying = true
+        isCrossfading = true
+
+        let seconds = max(0.5, crossfadeDuration)
+        rampFade(
+            token: token,
+            from: (old: oldEngine, new: newEngine),
+            startGain: (old: oldFrom, new: newFrom),
+            duration: seconds
+        )
+    }
+
+    private func rampFade(
+        token: Int,
+        from engines: (old: AVPlayer, new: AVPlayer),
+        startGain: (old: Double, new: Double),
+        duration: TimeInterval
+    ) {
+        Task { @MainActor [weak self] in
+            let start = Date()
+            while true {
+                guard let self else { return }
+                // 已被更新的淡变取代：立即退出，不做任何收尾（新 fade 接管）。
+                guard token == self.fadeGeneration else { return }
+                let t = min(1, Date().timeIntervalSince(start) / duration)
+                // smoothstep：起收略缓，听感比线性更自然。
+                let k = t * t * (3 - 2 * t)
+                self.setGain(engines.new, startGain.new + (1 - startGain.new) * k)
+                self.setGain(engines.old, startGain.old * (1 - k))
+                if t >= 1 { break }
+                try? await Task.sleep(for: .milliseconds(33))
+            }
+            guard let self else { return }
+            self.finishFade(token: token, oldEngine: engines.old)
+        }
+    }
+
+    private func finishFade(token: Int, oldEngine: AVPlayer) {
+        guard token == fadeGeneration else { return }
+        isCrossfading = false
+        oldEngine.pause()
+        oldEngine.replaceCurrentItem(with: nil)
+        // 备用引擎增益复位为 1，供下一轮使用。
+        setGain(oldEngine, 1)
+        setGain(activeEngine, 1)
+        isPlaying = activeEngine.timeControlStatus == .playing
+        refreshDockIcon()
         updateNowPlaying()
-        scheduleMemoryRelease()
+    }
+
+    /// 运输控制（暂停/seek/cut）打断淡变时调用：作废 ramp，把旧引擎立即
+    /// 静音释放，让当前 activeEngine 成为唯一出声源。
+    private func abortInFlightFade() {
+        guard isCrossfading else { return }
+        fadeGeneration += 1
+        isCrossfading = false
+        // activeEngine 是新曲所在引擎；另一个（正在淡出的旧引擎）静音清理。
+        let other: AVPlayer = activeEngine === engineA ? engineB : engineA
+        other.pause()
+        other.replaceCurrentItem(with: nil)
+        setGain(other, 1)
+        setGain(activeEngine, 1)
+    }
+
+    // MARK: - Gapless（无缝）
+
+    /// gapless 提前预载的时间窗口：在此剩余时间内装好下一首并 preroll。
+    private let gaplessArmAhead: TimeInterval = 2.0
+    /// boundary 距结尾的提前量：在此触发接管，preroll 过的新引擎起播，
+    /// 与旧引擎最后一小段几乎零间隙衔接（本地文件通常不可闻）。
+    private let gaplessTakeoverEpsilon: TimeInterval = 0.06
+
+    /// 自然连播调度：周期 tick 中按开关在结尾前预排 crossfade 或 gapless。
+    private func maybeArmNextTransition(currentTime: TimeInterval) {
+        guard isPlaying,
+              !isRapidSwitching,
+              !isCrossfading,
+              currentTrack != nil,
+              duration > 0,
+              repeatMode != .one   // 单曲循环：结尾重播同一首，绝不预载下一首
+        else { return }
+        if !crossfadeEnabled && !gaplessEnabled { return }
+
+        let remaining = duration - currentTime
+        guard remaining >= 0 else { return }
+        // 曲目刚起播的前 0.5 秒不预排：避免比淡变窗口还短的曲目在
+        // 起播瞬间就开始淡出（听众几乎听不到这首歌独立的部分）。
+        guard currentTime >= 0.5 else { return }
+
+        if crossfadeEnabled {
+            // 自动连播也走 crossfade（主人选定：crossfade 优先于 gapless）。
+            // beginCrossfade 内部会撤销已存在的 gapless 预载。
+            guard remaining <= crossfadeDuration else { return }
+            guard let idx = nextAutoPlaybackIndex() else { return }
+            let track = queue[idx]
+            currentIndex = idx
+            beginCrossfade(to: track)
+            if isShuffle { shuffleRemainingQueue() }
+        } else {
+            guard armedGaplessIndex == nil else { return }
+            guard remaining <= gaplessArmAhead else { return }
+            guard let idx = nextAutoPlaybackIndex() else { return }
+            armGapless(to: idx)
+        }
+    }
+
+    /// 计算自然连播（非手动）的下一首索引；列表结束且循环模式为关时返回
+    /// nil（表示应停止，不预载，交由原结束通知处理）。
+    private func nextAutoPlaybackIndex() -> Int? {
+        guard !queue.isEmpty else { return nil }
+        if isShuffle, queue.count > 1 {
+            let alternatives = queue.indices.filter { $0 != currentIndex }
+            return alternatives.randomElement()
+        }
+        var target = (currentIndex ?? 0) + 1
+        if target >= queue.count {
+            if repeatMode == .off { return nil }
+            target = 0
+        }
+        return target
+    }
+
+    private func armGapless(to index: Int) {
+        let track = queue[index]
+        guard FileManager.default.fileExists(atPath: track.url.path) else { return }
+        let next = standbyEngine
+        let item = Self.makePlaybackItem(url: track.url)
+        item.preferredForwardBufferDuration = 45
+        // 为预载条目挂常驻音频 tap，接管后 EQ 与频谱无缝延续。
+        EQTap.attach(to: item, equalizer: equalizer)
+        next.replaceCurrentItem(with: item)
+        setGain(next, 1)
+        observeStatus(of: item)
+        next.preroll(atRate: 1.0) { _ in }
+
+        // 在当前曲结尾前 epsilon 处精确触发接管。
+        let triggerTime = max(0, duration - gaplessTakeoverEpsilon)
+        let boundaryTime = CMTime(seconds: triggerTime, preferredTimescale: 600)
+        gaplessBoundary = player.addBoundaryTimeObserver(
+            forTimes: [NSValue(time: boundaryTime)],
+            queue: .main
+        ) { [weak self] in
+            Task { @MainActor in
+                self?.takeoverGapless(to: index)
+            }
+        }
+        gaplessBoundaryEngine = player
+        armedGaplessIndex = index
+    }
+
+    private func takeoverGapless(to index: Int) {
+        guard armedGaplessIndex == index else { return }
+        let track = queue[index]
+        let oldEngine = player
+        let newEngine = standbyEngine
+        // boundary 已触发，先在它所属的旧引擎上移除（一次性语义，避免重复触发）。
+        if let boundary = gaplessBoundary {
+            (gaplessBoundaryEngine ?? oldEngine).removeTimeObserver(boundary)
+        }
+        gaplessBoundary = nil
+        gaplessBoundaryEngine = nil
+        guard newEngine.currentItem != nil else {
+            // 预载未就绪：放弃无缝，回退到普通自动连播。
+            armedGaplessIndex = nil
+            currentIndex = index
+            load(track)
+            return
+        }
+
+        currentIndex = index
+        present(track)
+
+        activeEngine = newEngine
+        bindTimeObserver(to: newEngine)
+        newEngine.play()
+        isPlaying = true
+
+        armedGaplessIndex = nil
+
+        if isShuffle { shuffleRemainingQueue() }
+
+        // 旧引擎还在播最后约 60ms，让它自然走完后静音释放（0.5s 足够）。
+        let engineToClean = oldEngine
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+            guard let self, engineToClean !== self.activeEngine else { return }
+            engineToClean.pause()
+            engineToClean.replaceCurrentItem(with: nil)
+        }
+    }
+
+    /// 撤销尚未接管的 gapless 预载（seek/暂停/手动切歌/队列变更时调用）。
+    private func disarmGapless() {
+        if let boundary = gaplessBoundary {
+            (gaplessBoundaryEngine ?? player).removeTimeObserver(boundary)
+        }
+        gaplessBoundary = nil
+        gaplessBoundaryEngine = nil
+        if armedGaplessIndex != nil {
+            // 仅清理备用引擎上的预载（绝不动 activeEngine）。
+            let standby = standbyEngine
+            standby.pause()
+            standby.replaceCurrentItem(with: nil)
+        }
+        armedGaplessIndex = nil
     }
 
     /// 快切停顿后的恢复：代数号保证只有最后一次切换的任务会执行，
@@ -479,40 +851,22 @@ final class AudioPlayer: ObservableObject {
     }
 
     private func configurePlayerObservation() {
-        player.publisher(for: \.timeControlStatus)
-            .receive(on: RunLoop.main)
-            .sink { [weak self] status in
-                guard let self else { return }
-                self.isPlaying = status == .playing
-                self.refreshDockIcon()
-                self.updateNowPlaying()
-            }
-            .store(in: &cancellables)
-
-        timeObserver = player.addPeriodicTimeObserver(
-            forInterval: CMTime(seconds: 0.25, preferredTimescale: 600),
-            queue: .main
-        ) { [weak self] time in
-            Task { @MainActor in
-                guard let self else { return }
-                let seconds = time.seconds
-                guard seconds.isFinite else { return }
-                // seek 落位前观察器回报的仍是旧位置，直接丢弃。
-                if self.seekInFlight { return }
-                // 快切期间观察器可能回报前两曲的位置，丢弃：进度条
-                // 停在 0（load 已重置），等恢复播放后再走最新曲目的时间。
-                if self.isRapidSwitching { return }
-                self.currentTime = seconds
-                self.persistPlaybackState(force: false)
-
-                if self.duration <= 0,
-                   let itemDuration = self.player.currentItem?.duration.seconds,
-                   itemDuration.isFinite,
-                   itemDuration > 0 {
-                    self.duration = itemDuration
+        // 播放态订阅两个引擎各一次：只采纳当前 activeEngine 的状态。
+        // crossfade 期间屏蔽非播放态抖动（过渡在音乐上始终连续）。
+        for engine in [engineA, engineB] {
+            engine.publisher(for: \.timeControlStatus)
+                .receive(on: RunLoop.main)
+                .sink { [weak self, weak engine] status in
+                    guard let self, let engine, engine === self.activeEngine else { return }
+                    if self.isCrossfading, status != .playing { return }
+                    self.isPlaying = status == .playing
+                    self.refreshDockIcon()
+                    self.updateNowPlaying()
                 }
-            }
+                .store(in: &cancellables)
         }
+
+        bindTimeObserver(to: engineA)
 
         endObserver = NotificationCenter.default.addObserver(
             forName: .AVPlayerItemDidPlayToEndTime,
@@ -521,8 +875,50 @@ final class AudioPlayer: ObservableObject {
         ) { [weak self] notification in
             Task { @MainActor in
                 guard let self else { return }
+                // crossfade/gapless 接管后，旧引擎的结束通知其 item 已不属于
+                // activeEngine，自然被忽略；只有当前曲自然播完才推进。
                 guard notification.object as? AVPlayerItem === self.player.currentItem else { return }
                 self.handleTrackFinished()
+            }
+        }
+    }
+
+    /// 把 0.25s 周期观察器绑到指定引擎。crossfade/gapless 翻转 activeEngine
+    /// 后调用：旧 token 移除、新 token 绑定，clock 立即跟随新曲目从 0 走。
+    /// 周期观察器当前绑定的引擎：removeTimeObserver 必须在添加它的同一个
+    /// player 上调用，对错误的 player 调用会抛 NSInvalidArgumentException。
+    private weak var timeObserverEngine: AVPlayer?
+
+    private func bindTimeObserver(to engine: AVPlayer) {
+        if let token = timeObserver, let owner = timeObserverEngine {
+            owner.removeTimeObserver(token)
+        }
+        timeObserverEngine = engine
+        timeObserver = engine.addPeriodicTimeObserver(
+            forInterval: CMTime(seconds: 0.25, preferredTimescale: 600),
+            queue: .main
+        ) { [weak self, weak engine] time in
+            Task { @MainActor in
+                guard let self, let engine, engine === self.activeEngine else { return }
+                let seconds = time.seconds
+                guard seconds.isFinite else { return }
+                // seek 落位前观察器回报的仍是旧位置，直接丢弃。
+                if self.seekInFlight { return }
+                // 快切期间观察器可能回报前两曲的位置，丢弃：进度条
+                // 停在 0（present 已重置），等恢复播放后再走最新曲目的时间。
+                if self.isRapidSwitching { return }
+                self.currentTime = seconds
+                self.persistPlaybackState(force: false)
+
+                if self.duration <= 0,
+                   let itemDuration = engine.currentItem?.duration.seconds,
+                   itemDuration.isFinite,
+                   itemDuration > 0 {
+                    self.duration = itemDuration
+                }
+
+                // 自然连播：按开关在结尾前预排 crossfade / gapless。
+                self.maybeArmNextTransition(currentTime: seconds)
             }
         }
     }
@@ -739,7 +1135,7 @@ final class AudioPlayer: ObservableObject {
             let alternatives = queue.indices.filter { $0 != currentIndex }
             guard let target = alternatives.randomElement() else { return }
             currentIndex = target
-            load(queue[target])
+            routeSwitch(to: queue[target])
             // 随机切到一首后，把剩余未播放的重新洗牌，保证列表里顺序会变。
             shuffleRemainingQueue()
             return
@@ -762,7 +1158,9 @@ final class AudioPlayer: ObservableObject {
         }
 
         currentIndex = target
-        load(queue[target])
+        // 手动切歌（点上一首/下一首）且正在播放、crossfade 开时走淡入淡出；
+        // 自动连播兜底进入这里时旧曲已停（isPlaying=false），routeSwitch 自动退化为 cut。
+        routeSwitch(to: queue[target])
     }
 
     private func handleTrackFinished() {

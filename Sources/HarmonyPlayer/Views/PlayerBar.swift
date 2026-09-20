@@ -13,6 +13,9 @@ struct PlayerBar: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @FocusState private var isPlaybackControlFocused: Bool
 
+    @AppStorage(Equalizer.enabledKey) private var eqEnabled = false
+    @State private var showEQPopover = false
+
     var body: some View {
         GeometryReader { geometry in
             Group {
@@ -257,6 +260,25 @@ struct PlayerBar: View {
             .background(color.opacity(0.14), in: RoundedRectangle(cornerRadius: 4))
     }
 
+    /// 均衡器按钮：点击弹出轻量 EQ 面板（与设置页共用 EqualizerPanelView）。
+    /// EQ 开启时按钮保持高亮，位于「定时」左侧。
+    private var eqButton: some View {
+        IconButton(
+            systemName: "slider.horizontal.3",
+            isActive: eqEnabled,
+            help: eqEnabled ? "均衡器（已开启）" : "均衡器",
+            size: 13
+        ) {
+            showEQPopover.toggle()
+        }
+        .popover(isPresented: $showEQPopover, arrowEdge: .bottom) {
+            EqualizerPanelView(
+                showsCloseButton: true,
+                onClose: { showEQPopover = false }
+            )
+        }
+    }
+
     private var sleepTimerMenu: some View {
         Menu {
             Button("关闭定时") {
@@ -282,6 +304,8 @@ struct PlayerBar: View {
 
     private var compactUtilities: some View {
         HStack(spacing: 2) {
+            eqButton
+
             sleepTimerMenu
 
             // 简化版音量控件：喇叭 + 下方数字（不带%）+ 悬停滚轮调音量。
@@ -319,6 +343,8 @@ struct PlayerBar: View {
 
     private var utilities: some View {
         HStack(spacing: 8) {
+            eqButton
+
             sleepTimerMenu
 
             Image(systemName: player.volume == 0 ? "speaker.slash.fill" : "speaker.wave.2.fill")
