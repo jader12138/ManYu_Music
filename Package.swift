@@ -15,7 +15,8 @@ let package = Package(
             path: "Sources/HarmonyPlayer",
             linkerSettings: [
                 .linkedFramework("AVFoundation"),
-                .linkedFramework("MediaPlayer")
+                .linkedFramework("MediaPlayer"),
+                .linkedFramework("MediaToolbox")
             ]
         ),
         .testTarget(
