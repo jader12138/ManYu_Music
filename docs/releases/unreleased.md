@@ -5,6 +5,16 @@
 - 上一稳定版本：`v3.12.0`
 - 当前 `VERSION`：`3.13.0-beta4`
 
+## 本轮摘要（2026-09-21，分支 `codex/dock-menu`）
+
+系统集成两项：macOS 菜单栏迷你播放器 + Dock 图标右键菜单。目标是不开主窗口也能看当前歌曲与歌词、随手切歌。
+
+- **Dock 右键菜单**：`applicationDockMenu(_:)` 每次右键现做新菜单（系统每次都重新取，无需常驻观察者），内容为歌曲名（加粗）+ 歌手·专辑（次色）+ 播放/暂停（文案与 SF Symbol 随播放状态切换）+ 上一首/下一首；无曲目时显示「未在播放」占位且三条命令置灰。菜单规格抽成纯数据 `PlayerMenuSpec`（无 AppKit 依赖），标题/占位/禁用逻辑由单元测试覆盖；`DockMenuController` 把 spec 渲染为 NSMenu，target-action 直接调 `AudioPlayer.shared`。
+- **菜单栏迷你播放器**：`NSStatusItem` 常驻菜单栏，图标为当前应用图标的 17pt 重绘（等比裁方），与 Dock 图标同步——`AppIconStyleManager.apply()` 与 `DockArtworkController` 封面渲染完成后发新通知 `appIconDidChange`，控制器收到即刷新，因此 Dock 专辑封面模式（含播放/暂停徽标）在菜单栏同步呈现。左键 `NSPopover`（transient，点外自动收起）弹出 `MiniPlayerView`（宽 300）：封面（56pt，`ArtworkLayout.cornerRadius`）、歌名/歌手·专辑、歌词区（当前句两行 + 下一句预览，固定高度防跳动）、`PlaybackProgressRow` 进度条（可拖动 seek，含快切冻结）、上一首/播放暂停/下一首（复用 `IconButton`/`PlaybackToggleSymbol`/`PlaybackPressButtonStyle`，观感与主播放条一致）。弹窗 appearance 跟随 App 内主题（固定白天/夜间时弹窗同步，跟随系统时置 nil）。
+- **开关**：设置 → 播放新增「菜单栏播放控制」（UserDefaults 键 `ManyuMusic.menuBarPlayer`，未记录默认开启），切换即时装卸 NSStatusItem（`syncWithSetting()`），关闭时同时移除图标观察者。
+- **单例接线**：`AudioPlayer` 新增 `static let shared`；`HarmonyPlayerApp` 的 `@StateObject` 改引同一实例（App 场景与 AppDelegate/控制器共享，init 副作用只跑一次）。`AudioPlayer` 歌词取数抽出 `currentLyricIndex()`，新增 `nextLyricText`（当前句下一句，供迷你播放器预览）。
+- **验证**：`swift test` 86/86 通过（新增 `PlayerMenuSpecTests` 5 项：无曲目占位与禁用、空标题视为无曲目、播放中显示暂停、暂停显示播放、空副标题省略次行）；`swift build -c release` 通过；`./scripts/build-app.sh` 打包签名校验通过（ad-hoc，Gatekeeper 拒绝属正常）；实机启动冒烟——启动（走新菜单栏安装路径）稳定运行 14s+ 正常退出，无新崩溃报告。菜单栏图标/弹窗与 Dock 右键菜单的实际观感待主人验收。
+
 ## 本轮摘要（2026-09-20，分支 `codex/equalizer`，已随 beta4 发布）
 
 均衡器参考 MoeKoe EQ 插件全面重做：升级为 31 段参数均衡器（20Hz~20kHz ISO 三分之一倍频程，±6dB，每段 Q 值 0.1~18 独立可调默认 1.4），设置页为「头部（标题/运行状态灯/关闭EQ/重置）+ 三页签（均衡器/音效增强/高级功能，后两个占位）+ 实时频谱 + 预设 chips + 31 根垂直滑杆（双击归零）」结构；内置 35 个预设曲线（取自参考项目）+ 自定义预设；旧版十段曲线与自定义预设按对数频率轴插值迁移。入口两处：播放栏「定时」左侧快捷图标弹出精简面板（仅头部 + 预设 chips，带关闭钮）与设置独立「均衡器」页（完整面板）。

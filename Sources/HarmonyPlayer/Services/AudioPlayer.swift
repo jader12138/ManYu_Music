@@ -17,6 +17,10 @@ final class PlaybackClock: ObservableObject {
 
 @MainActor
 final class AudioPlayer: ObservableObject {
+    /// 全局共享实例：Dock 右键菜单与菜单栏迷你播放器由 AppDelegate 直接持有，
+    /// 不经 SwiftUI 环境注入；App 场景的 @StateObject 引用同一实例。
+    static let shared = AudioPlayer()
+
     static let rememberPlaybackKey = "ManyuMusic.rememberPlaybackState"
     /// 无缝播放（gapless）：自然连播时提前预载下一首，结尾处近无间隙接管。
     static let gaplessPlaybackKey = "ManyuMusic.gaplessPlayback"
@@ -1031,9 +1035,27 @@ final class AudioPlayer: ObservableObject {
         lyricPassage(maxLines: 1).first
     }
 
+    /// 当前歌词行的下一句（菜单栏迷你播放器预览用）；末句或空白行返回 nil。
+    var nextLyricText: String? {
+        let index = currentLyricIndex()
+        guard index + 1 < lyricLines.count else { return nil }
+        let text = lyricLines[index + 1].text.trimmingCharacters(in: .whitespacesAndNewlines)
+        return text.isEmpty ? nil : text
+    }
+
     func lyricPassage(maxLines: Int = 4) -> [String] {
         guard !lyricLines.isEmpty, maxLines > 0 else { return [] }
 
+        let index = currentLyricIndex()
+        let start = min(index, max(0, lyricLines.count - maxLines))
+        return lyricLines[start..<min(lyricLines.count, start + maxLines)]
+            .map(\.text)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+    }
+
+    /// 已到播放时刻的最后一句带时间轴歌词行下标（无时间轴歌词回退 0）。
+    private func currentLyricIndex() -> Int {
         var index = 0
         for (lineIndex, line) in lyricLines.enumerated() {
             guard let time = line.time else { continue }
@@ -1043,12 +1065,7 @@ final class AudioPlayer: ObservableObject {
                 break
             }
         }
-
-        let start = min(index, max(0, lyricLines.count - maxLines))
-        return lyricLines[start..<min(lyricLines.count, start + maxLines)]
-            .map(\.text)
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
+        return index
     }
 
     /// 歌词在切歌的同一轮状态更新中尽量同步落位（启动预热/上一首时已提前

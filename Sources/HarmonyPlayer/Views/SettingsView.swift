@@ -41,6 +41,7 @@ struct SettingsView: View {
 
     @AppStorage(AppIconStyle.storageKey) private var appIconStyleRaw = AppIconStyle.automatic.rawValue
     @AppStorage(DockArtworkController.showsArtworkKey) private var showDockArtwork = true
+    @AppStorage(MenuBarPlayerController.enabledKey) private var menuBarPlayer = true
     @AppStorage(AudioPlayer.rememberPlaybackKey) private var rememberPlaybackState = true
     @AppStorage(ArtworkPreloader.enabledKey) private var preloadArtwork = false
     @AppStorage(BackdropAnimation.enabledKey) private var backdropAnimationEnabled = true
@@ -309,6 +310,19 @@ struct SettingsView: View {
                 Toggle("", isOn: Binding(
                     get: { showDockArtwork },
                     set: { showDockArtwork = $0; player.refreshDockIcon() }
+                ))
+                .toggleStyle(.switch)
+                .labelsHidden()
+            }
+
+            Divider().opacity(0.08)
+
+            // 菜单栏播放器
+            row(title: "菜单栏播放控制",
+                subtitle: "在系统菜单栏显示应用图标，点击弹出迷你播放面板（切歌与歌词）") {
+                Toggle("", isOn: Binding(
+                    get: { menuBarPlayer },
+                    set: { menuBarPlayer = $0; MenuBarPlayerController.shared.syncWithSetting() }
                 ))
                 .toggleStyle(.switch)
                 .labelsHidden()

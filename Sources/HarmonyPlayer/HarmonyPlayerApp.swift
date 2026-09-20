@@ -5,7 +5,7 @@ import SwiftUI
 struct HarmonyPlayerApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var library = LibraryStore()
-    @StateObject private var player = AudioPlayer()
+    @StateObject private var player = AudioPlayer.shared
     @StateObject private var theme = ThemeStore()
 
     var body: some Scene {
@@ -96,6 +96,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         MemoryPressureMonitor.install()
 
         Self.installScrollbarHider()
+
+        MenuBarPlayerController.shared.syncWithSetting()
 
         DispatchQueue.main.async {
             Self.fitWindowsToVisibleScreen()
@@ -242,6 +244,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         true
+    }
+
+    /// Dock 图标右键菜单：每次右键系统都会重新取一份新菜单，
+    /// 歌曲信息与播放/暂停文案即时反映当前状态。
+    func applicationDockMenu(_ sender: NSApplication) -> NSMenu? {
+        DockMenuController.shared.makeMenu()
     }
 }
 
