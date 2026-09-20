@@ -150,10 +150,12 @@ final class DockArtworkController {
         NSGraphicsContext.restoreGraphicsState()
 
         // 右下角大号播放状态徽标：纯蓝圆底 + 白色描边 + 白色暂停/播放符号。
+        // 位置整体往左上内收（右边距 16→34、底边距 6→24）：徽标连同白色描边
+        // 完全退入亚克力底板内部，不再骑/压底板边缘。
         let badgeSize: CGFloat = 140
         let badgeRect = NSRect(
-            x: plateRect.maxX - badgeSize - 16,
-            y: plateRect.minY + 6,
+            x: plateRect.maxX - badgeSize - 34,
+            y: plateRect.minY + 24,
             width: badgeSize,
             height: badgeSize
         )
