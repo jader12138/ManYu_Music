@@ -41,6 +41,9 @@ struct SettingsView: View {
     @AppStorage(AudioPlayer.rememberPlaybackKey) private var rememberPlaybackState = true
     @AppStorage(ArtworkPreloader.enabledKey) private var preloadArtwork = false
     @AppStorage(BackdropAnimation.enabledKey) private var backdropAnimationEnabled = true
+    @AppStorage(AudioPlayer.gaplessPlaybackKey) private var gaplessPlayback = false
+    @AppStorage(AudioPlayer.crossfadeEnabledKey) private var crossfadeEnabled = false
+    @AppStorage(AudioPlayer.crossfadeDurationKey) private var crossfadeDuration = AudioPlayer.defaultCrossfadeDuration
     @AppStorage(RecommendationSettings.frequencyKey)
     private var recommendationFrequencyRaw = RecommendationFrequency.daily.rawValue
     @AppStorage(RecommendationSettings.independentKey)
@@ -318,6 +321,44 @@ struct SettingsView: View {
                 ))
                 .toggleStyle(.switch)
                 .labelsHidden()
+            }
+
+            Divider().opacity(0.08)
+
+            // 无缝播放
+            row(title: "无缝播放（Gapless）",
+                subtitle: "自然连播时提前准备下一首，歌曲衔接处没有空隙，适合整张专辑连续听") {
+                Toggle("", isOn: $gaplessPlayback)
+                    .toggleStyle(.switch)
+                    .labelsHidden()
+            }
+
+            Divider().opacity(0.08)
+
+            // 淡入淡出
+            row(title: "淡入淡出（Crossfade）",
+                subtitle: "切歌时上一首渐弱、下一首渐强，重叠过渡；开启后自动连播也按此处理") {
+                Toggle("", isOn: $crossfadeEnabled)
+                    .toggleStyle(.switch)
+                    .labelsHidden()
+            }
+
+            if crossfadeEnabled {
+                row(title: "淡入淡出时长",
+                    subtitle: "两首歌重叠过渡的秒数") {
+                    HStack(spacing: 10) {
+                        Text("\(Int(crossfadeDuration)) 秒")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(Color.hpTextPrimary.opacity(0.6))
+                            .frame(width: 38, alignment: .trailing)
+                        Slider(
+                            value: $crossfadeDuration,
+                            in: AudioPlayer.crossfadeDurationRange,
+                            step: 1
+                        )
+                        .frame(width: 150)
+                    }
+                }
             }
 
             Divider().opacity(0.08)

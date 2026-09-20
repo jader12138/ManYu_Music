@@ -5,6 +5,20 @@
 - 上一稳定版本：`v3.12.0`
 - 当前 `VERSION`：`3.13.0-beta3`
 
+## 本轮摘要（2026-09-20，分支 `codex/gapless-crossfade`，待合并）
+
+播放核心新增两个可开关的连播增强，默认都关闭，关闭时播放链路与历史完全一致。技术上把单一 `AVPlayer` 扩展为「双引擎乒乓」：`engineA/engineB` 两个固定 `AVPlayer`，`activeEngine` 为当前出声引擎、`standbyEngine` 为备用，所有既有内部代码通过计算属性 `player` 仍访问当前引擎；实际音量 = 用户音量 × 每引擎 `gain`（0...1）。
+
+- **Crossfade**：正在播放时切歌走 `beginCrossfade`——旧引擎保持出声、新曲在备用引擎从 gain 0 起播，30fps smoothstep ramp（时长由设置 3~12s，默认 6）令旧 1→0、新 0→1；UI（封面/歌名/歌词）立即切新曲，周期时间观察器重绑到新引擎使进度条从 0 走新曲。`fadeGeneration` 代数号支持在淡变中途再次切歌（以各引擎瞬时增益为新 ramp 起点，旧 ramp 自动作废）。暂停、seek、cut 切换、改播放模式、队列增删移动都会 `abortInFlightFade`/`disarmGapless` 立即收敛到单引擎。暂停时切歌、首播、连续快切（<0.7s）不走淡变。
+- **Gapless**：crossfade 关闭且 gapless 开启时，周期 tick 在结尾前 2s 把下一首装入备用引擎并 `preroll(atRate:1)`，同时在当前引擎注册 `addBoundaryTimeObserver`（结尾前 60ms）；boundary 触发时备用引擎 `play()` 接管、翻转 active、重绑时钟，旧引擎自然走完最后约 60ms 后于 0.5s 延迟清理。预载未就绪则回退普通自动连播。boundary observer 记录所属引擎，保证只在同一 player 上移除。
+- 自动连播候选由 `nextAutoPlaybackIndex()` 统一计算（随机/顺序/列表循环；列表结束且循环关闭返回 nil 交由原结束通知停止）；单曲循环（`repeatMode == .one`）完全不预载，仍走 seek(0) 重播。crossfade 与 gapless 同开时自动连播走 crossfade（主人确认 crossfade 优先）。
+- 设置：`SettingsView.playbackPane` 新增两个开关与 crossfade 时长滑块；UserDefaults 键 `ManyuMusic.gaplessPlayback`、`ManyuMusic.crossfadeEnabled`（均默认 false）、`ManyuMusic.crossfadeDuration`（默认 6）。
+- 验证：`swift test` 53/53 通过（默认关闭，cut 路径行为不变）；release 构建通过。待主人试听确认 gapless 衔接与 crossfade 时长/手感。
+
+## 本轮摘要（2026-09-20 本地合并，分支 `codex/dock-badge-crossfade`）
+
+Dock 专辑封面模式的播放/暂停蓝白徽标往左上内收（右/底边距 16/6→34/24，512 画布单位），完全退入亚克力底板；播放页封面切歌改方向性转场——新封面从旧封面后面顶出（上浮 14pt + 放大 5% + 淡入，zIndex 在后），旧封面在前景向左滑 36pt 并淡出（zIndex 在前），固定尺寸 ZStack 不推动布局，0.5s easeOut，遵循 reduceMotion。
+
 ## 本轮摘要（2026-09-20 本地合并，分支 `codex/artwork-acrylic-border` + `codex/icon-size-standard`）
 
 播放条左下角封面加亚克力包边（hero 同款 ultraThinMaterial，外框 54/封面 48，0.6pt 灰发丝线+轻阴影，不参与播放页转场）；Dock 三种状态图标（白色/黑色/专辑封面）与启动台图标统一缩到 macOS 标准网格占比（内容 87.5%→80.5%，1024 母版留 10% 透明边，PNG/icns 重新生成；封面模式 512 渲染整体缩到 440 居中），与系统其他 App 图标同档。纯资源与展示层改动。
