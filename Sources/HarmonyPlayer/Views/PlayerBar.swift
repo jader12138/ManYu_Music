@@ -60,12 +60,19 @@ struct PlayerBar: View {
     }
 
     private var compactContent: some View {
+        // 窄屏布局与宽屏同构：两侧定宽、中央控件靠 Spacer 居中。
+        // 旧实现把曲目区设为 infinity，标题与格式徽标之间被撑出巨大空隙，
+        // 控件也被挤到右侧——窗口 840~1040pt 时播放条看起来像"变形"。
         HStack(spacing: 12) {
             nowPlaying
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .frame(width: 240, alignment: .leading)
+
+            Spacer(minLength: 8)
 
             controls
-                .frame(minWidth: 270, idealWidth: 320, maxWidth: 350)
+                .frame(maxWidth: 380)
+
+            Spacer(minLength: 8)
 
             compactUtilities
                 .frame(width: 78, alignment: .trailing)
