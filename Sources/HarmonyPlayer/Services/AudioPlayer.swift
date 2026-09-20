@@ -155,23 +155,14 @@ final class AudioPlayer: ObservableObject {
         return min(max(stored, range.lowerBound), range.upperBound)
     }
 
-    /// 十段图形均衡器：参数共享给音频 tap，预设与自定义曲线也由它持久化。
+    /// 三十一段图形均衡器：参数共享给音频 tap，预设与自定义曲线也由它持久化；
+    /// 同一份 tap 还为实时频谱喂送下混采样。
     let equalizer = Equalizer()
 
-    /// 均衡器开关（设置里切换）：对当前两个引擎上的 item 实时挂/摘 tap。
+    /// 均衡器开关：tap 已常驻所有播放条目（EQ 关闭时直通），开关即时生效，
+    /// 无需重新挂/摘 tap。
     func setEQEnabled(_ enabled: Bool) {
         equalizer.isEnabled = enabled
-        if enabled {
-            if let item = activeEngine.currentItem {
-                EQTap.attach(to: item, equalizer: equalizer)
-            }
-            if let item = standbyEngine.currentItem {
-                EQTap.attach(to: item, equalizer: equalizer)
-            }
-        } else {
-            EQTap.detach(from: activeEngine.currentItem)
-            EQTap.detach(from: standbyEngine.currentItem)
-        }
     }
 
     init(defaults: UserDefaults = .standard) {
@@ -248,8 +239,8 @@ final class AudioPlayer: ObservableObject {
         currentTime = max(0, min(savedTime, track.duration > 0 ? track.duration : savedTime))
 
         let item = Self.makePlaybackItem(url: track.url)
-        // 均衡器开启时为恢复的条目挂 tap。
-        EQTap.attachIfEnabled(to: item, equalizer: equalizer)
+        // 为恢复的条目挂常驻音频 tap（EQ + 频谱，与开关无关）。
+        EQTap.attach(to: item, equalizer: equalizer)
         player.replaceCurrentItem(with: item)
         applyVolume(to: player)
         player.seek(
@@ -563,8 +554,8 @@ final class AudioPlayer: ObservableObject {
         // 本地文件按需读取，无需长前向缓冲：限制解码缓冲上限，
         // 避免播放器为每首曲目驻留过多解码数据。
         item.preferredForwardBufferDuration = 45
-        // 均衡器开启时为新条目挂音频处理 tap（cut / crossfade 新曲路径）。
-        EQTap.attachIfEnabled(to: item, equalizer: equalizer)
+        // 为新条目挂常驻音频 tap（cut / crossfade 新曲路径，EQ + 频谱）。
+        EQTap.attach(to: item, equalizer: equalizer)
         player.replaceCurrentItem(with: item)
         setGain(player, 1)
 
@@ -759,8 +750,8 @@ final class AudioPlayer: ObservableObject {
         let next = standbyEngine
         let item = Self.makePlaybackItem(url: track.url)
         item.preferredForwardBufferDuration = 45
-        // 均衡器开启时为预载条目挂 tap，接管后 EQ 无缝延续。
-        EQTap.attachIfEnabled(to: item, equalizer: equalizer)
+        // 为预载条目挂常驻音频 tap，接管后 EQ 与频谱无缝延续。
+        EQTap.attach(to: item, equalizer: equalizer)
         next.replaceCurrentItem(with: item)
         setGain(next, 1)
         observeStatus(of: item)
