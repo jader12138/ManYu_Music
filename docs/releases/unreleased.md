@@ -5,6 +5,10 @@
 - 上一稳定版本：`v3.12.0`
 - 当前 `VERSION`：`3.13.0-beta2`（合并后未递进，下次发版时调整）
 
+## 本轮摘要（2026-09-20 合并，分支 `codex/default-light-theme`）
+
+软件默认主题从「夜间模式」改为「跟随系统」，并将 `AppIcon` 资源对齐白色版（`AppIconLight`），使首次安装呈现白色（白天）模式、DMG 图标永远白色、Dock 图标与界面随系统外观切换。纯默认值与资源对齐改动，未触碰播放逻辑与既有图标切换流程。
+
 ## 本轮摘要（2026-09-20 合并，分支 `codex/playback-ui-polish`）
 
 主页进播放页的交互优化 + 播放页底部渐变色效果调整；均为 UI 层改动，未触碰任何播放逻辑（AudioPlayer / PlaybackClock / LyricsCache / 队列 / seek / 恢复均未受影响）。

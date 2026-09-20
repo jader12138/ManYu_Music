@@ -47,7 +47,9 @@ final class ThemeStore: ObservableObject {
 
     init() {
         let rawValue = UserDefaults.standard.string(forKey: Self.appearanceKey)
-        appearance = AppAppearance(rawValue: rawValue ?? "") ?? .dark
+        // 默认跟随系统：首次安装时系统为浅色则软件呈白色模式（白天），
+        // 系统为深色则软件呈夜间模式。用户可在设置里手动固定为白天/夜间。
+        appearance = AppAppearance(rawValue: rawValue ?? "") ?? .system
     }
 
     func toggleDayNight() {
