@@ -149,7 +149,10 @@ final class AudioPlayer: ObservableObject {
     }
     var crossfadeDuration: TimeInterval {
         let stored = defaults.object(forKey: Self.crossfadeDurationKey) as? Double
-        return stored ?? Self.defaultCrossfadeDuration
+        guard let stored else { return Self.defaultCrossfadeDuration }
+        // 存量值钳制在滑块区间内，外部写入的垃圾值不会产生 0 秒或超长淡变。
+        let range = Self.crossfadeDurationRange
+        return min(max(stored, range.lowerBound), range.upperBound)
     }
 
     init(defaults: UserDefaults = .standard) {
@@ -227,7 +230,7 @@ final class AudioPlayer: ObservableObject {
 
         let item = Self.makePlaybackItem(url: track.url)
         player.replaceCurrentItem(with: item)
-        player.volume = Float(volume)
+        applyVolume(to: player)
         player.seek(
             to: CMTime(seconds: currentTime, preferredTimescale: 600),
             toleranceBefore: .zero,
@@ -253,6 +256,9 @@ final class AudioPlayer: ObservableObject {
     }
 
     func play(_ track: Track, in tracks: [Track]) {
+        // 队列即将被整体替换：已预载的 gapless 下一首索引指向旧队列，
+        // 不撤销会在接管时取出错的歌曲。先撤，之后 tick 会按新队列重新预排。
+        disarmGapless()
         let playableQueue = tracks.isEmpty ? [track] : tracks
         queue = playableQueue
         currentIndex = playableQueue.firstIndex(where: { $0.id == track.id }) ?? 0
@@ -684,13 +690,16 @@ final class AudioPlayer: ObservableObject {
               repeatMode != .one   // 单曲循环：结尾重播同一首，绝不预载下一首
         else { return }
         if !crossfadeEnabled && !gaplessEnabled { return }
-        if armedGaplessIndex != nil { return }
 
         let remaining = duration - currentTime
         guard remaining >= 0 else { return }
+        // 曲目刚起播的前 0.5 秒不预排：避免比淡变窗口还短的曲目在
+        // 起播瞬间就开始淡出（听众几乎听不到这首歌独立的部分）。
+        guard currentTime >= 0.5 else { return }
 
         if crossfadeEnabled {
             // 自动连播也走 crossfade（主人选定：crossfade 优先于 gapless）。
+            // beginCrossfade 内部会撤销已存在的 gapless 预载。
             guard remaining <= crossfadeDuration else { return }
             guard let idx = nextAutoPlaybackIndex() else { return }
             let track = queue[idx]
@@ -698,6 +707,7 @@ final class AudioPlayer: ObservableObject {
             beginCrossfade(to: track)
             if isShuffle { shuffleRemainingQueue() }
         } else {
+            guard armedGaplessIndex == nil else { return }
             guard remaining <= gaplessArmAhead else { return }
             guard let idx = nextAutoPlaybackIndex() else { return }
             armGapless(to: idx)
