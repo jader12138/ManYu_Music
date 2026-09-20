@@ -89,16 +89,18 @@ final class EQSpectrumAnalyzer: ObservableObject {
     @Published private(set) var trailing: [Double] =
         [Double](repeating: 0, count: EQSpectrumAnalyzer.pointCount)
 
-    static let pointCount = 96
+    static let pointCount = 384
     static let minHz: Double = 20
     static let maxHz: Double = 20_000
     /// dB 归一化窗口：低于下限视为静音，高于上限视为满格。
-    private static let dBMin = -72.0
-    private static let dBMax = -6.0
+    /// 上限取 0dB（FFT 归一化后满摆幅正弦的峰 ≈ 幅度 1.0）；
+    /// 旧版上限 -6dB 配合未归一化的 FFT 输出，正常音乐几乎全轴 clamp 满格（平顶高原）。
+    static let dBMin = -70.0
+    static let dBMax = 0.0
     /// 高频倾斜补偿上限（dB）：按对数频率位置线性抬升高频。
-    private static let trebleTiltDB = 10.0
+    static let trebleTiltDB = 8.0
     /// 对比拉伸幂次：>1 时中低电平被压低、峰值保留，拉大峰谷反差。
-    private static let contrastExponent = 1.35
+    static let contrastExponent = 1.5
 
     private weak var ring: EQSpectrumRing?
     private var timer: Timer?
@@ -139,6 +141,37 @@ final class EQSpectrumAnalyzer: ObservableObject {
     func stop() {
         timer?.invalidate()
         timer = nil
+    }
+
+    /// 纯计算：把 FFT 幅度谱按对数频率轴聚合（每点取 [f0, f1) 频段峰值），
+    /// dB 域叠加高频倾斜补偿后归一化到 0...1，再做幂次对比拉伸。
+    /// `magnitudes` 需已做 FFT 归一化（满摆幅正弦的峰 bin ≈ 幅度 1.0）。
+    static func computeLevels(
+        magnitudes: [Float],
+        sampleRate: Double,
+        fftSize: Int
+    ) -> [Double] {
+        let half = fftSize / 2
+        let binHz = sampleRate / Double(fftSize)
+        let ratio = maxHz / minHz
+        let logSpan = log(maxHz / minHz)
+        var levels = [Double](repeating: 0.0, count: pointCount)
+        for index in 0..<pointCount {
+            let f0 = minHz * pow(ratio, Double(index) / Double(pointCount))
+            let f1 = minHz * pow(ratio, Double(index + 1) / Double(pointCount))
+            let bin0 = max(1, Int(f0 / binHz))
+            let bin1 = max(bin0 + 1, min(half, Int(f1 / binHz)))
+            var peak: Float = 0
+            for bin in bin0..<min(bin1, half) where magnitudes[bin] > peak {
+                peak = magnitudes[bin]
+            }
+            let dB = 20 * log10(Double(max(peak, 1e-7)))
+            let tilt = trebleTiltDB * log(max(f0, minHz) / minHz) / logSpan
+            let normalized = (dB + tilt - dBMin) / (dBMax - dBMin)
+            let clamped = min(max(normalized, 0), 1)
+            levels[index] = pow(clamped, contrastExponent)
+        }
+        return levels
     }
 
     private func preparePipelineIfNeeded() {
@@ -195,28 +228,18 @@ final class EQSpectrumAnalyzer: ObservableObject {
             }
         }
 
-        // 对数频率轴聚合：每个点取 [f0, f1) 频段内的峰值。
-        // dB 域叠加高频倾斜补偿（对数频率位置线性 +0 ~ +10dB），
-        // 归一化后再做幂次对比拉伸，让峰更突出、谷更深，呈山峰错落。
-        let binHz = ring.sampleRate / Double(fftSize)
-        let ratio = Self.maxHz / Self.minHz
-        let logSpan = log(Self.maxHz / Self.minHz)
-        var newLevels = [Double](repeating: 0.0, count: EQSpectrumAnalyzer.pointCount)
-        for index in 0..<EQSpectrumAnalyzer.pointCount {
-            let f0 = Self.minHz * pow(ratio, Double(index) / Double(EQSpectrumAnalyzer.pointCount))
-            let f1 = Self.minHz * pow(ratio, Double(index + 1) / Double(EQSpectrumAnalyzer.pointCount))
-            let bin0 = max(1, Int(f0 / binHz))
-            let bin1 = max(bin0 + 1, min(half, Int(f1 / binHz)))
-            var peak: Float = 0
-            for bin in bin0..<min(bin1, half) where magnitudes[bin] > peak {
-                peak = magnitudes[bin]
-            }
-            let dB = 20 * log10(Double(max(peak, 1e-7)))
-            let tilt = Self.trebleTiltDB * log(max(f0, Self.minHz) / Self.minHz) / logSpan
-            let normalized = (dB + tilt - Self.dBMin) / (Self.dBMax - Self.dBMin)
-            let clamped = min(max(normalized, 0), 1)
-            newLevels[index] = pow(clamped, Self.contrastExponent)
-        }
+        // FFT 幅度归一化：Hann DENORM 窗下满摆幅正弦的峰 bin ≈ N/2 × 0.5，
+        // 乘 2/N 恢复到信号真实幅度（≈1.0），dB 窗口不再随 fftSize 缩放；
+        // 否则正常音乐全部频段都远超归一化上限，曲线被 clamp 成平顶高原。
+        var normFactor = 2.0 / Float(fftSize)
+        vDSP_vsmul(magnitudes, 1, &normFactor, &magnitudes, 1, vDSP_Length(half))
+
+        // 对数频率轴聚合 + 高频倾斜补偿 + 幂次对比拉伸（纯函数，见 computeLevels）。
+        let newLevels = Self.computeLevels(
+            magnitudes: magnitudes,
+            sampleRate: ring.sampleRate,
+            fftSize: fftSize
+        )
 
         // 快攻慢放：新值更高立刻跟上，回落时保留余晖（比旧版更快落谷，
         // 避免慢放把所有点拖成一片高原）。

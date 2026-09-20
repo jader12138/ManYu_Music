@@ -205,7 +205,7 @@ struct EqualizerPanelView: View {
                 .font(.system(size: 11, weight: .semibold))
                 .foregroundStyle(Color.hpTextPrimary.opacity(0.7))
             EQSpectrumView(analyzer: analyzer)
-                .frame(height: 120)
+                .frame(height: 180)
 
             // 预设
             Text("预设")
@@ -534,8 +534,8 @@ struct EQSpectrumView: View {
                     let count = analyzer.levels.count
                     guard count > 1 else { return }
 
-                    // 水平参考线
-                    for fraction in [0.25, 0.5, 0.75] {
+                    // 水平参考线（Y 轴五等分，划分更细）
+                    for fraction in [0.2, 0.4, 0.6, 0.8] {
                         let y = size.height * fraction
                         var grid = Path()
                         grid.move(to: CGPoint(x: 0, y: y))

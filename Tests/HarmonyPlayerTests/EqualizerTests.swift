@@ -220,4 +220,39 @@ final class EqualizerTests: XCTestCase {
         XCTAssertTrue(small.prefix(1000).allSatisfy { $0 == 0 })
         XCTAssertEqual(small[1000], written[0])
     }
+
+    func testSpectrumComputeLevelsDistribution() {
+        // 模拟 48kHz / 4096 点 FFT 归一化后的幅度谱：
+        // 445Hz（bin 38）强峰 0.5、8kHz（bin 683）弱峰 0.1、其余近静音。
+        let fftSize = 4096
+        let sampleRate = 48_000.0
+        let binHz = sampleRate / Double(fftSize)
+        var magnitudes = [Float](repeating: 0.0001, count: fftSize / 2)
+        magnitudes[Int(445 / binHz)] = 0.5
+        magnitudes[Int(8000 / binHz)] = 0.1
+
+        let levels = EQSpectrumAnalyzer.computeLevels(
+            magnitudes: magnitudes,
+            sampleRate: sampleRate,
+            fftSize: fftSize
+        )
+
+        XCTAssertEqual(levels.count, EQSpectrumAnalyzer.pointCount)
+        // 无满格平顶：全轴最多个别点接近 1，绝大多数在 1 以下。
+        XCTAssertLessThan(levels.max() ?? 1, 0.999)
+        XCTAssertLessThanOrEqual(levels.filter { $0 > 0.95 }.count, 20)
+
+        func peakIn(_ range: ClosedRange<Int>) -> Double {
+            range.compactMap { levels.indices.contains($0) ? levels[$0] : nil }.max() ?? 0
+        }
+        // 445Hz 强峰区显著隆起。
+        let lowPeak = peakIn(165...180)
+        XCTAssertGreaterThan(lowPeak, 0.5)
+        // 8kHz 弱峰区可辨，但明显低于强峰。
+        let highPeak = peakIn(320...345)
+        XCTAssertGreaterThan(highPeak, 0.3)
+        XCTAssertLessThan(highPeak, lowPeak - 0.1)
+        // 超高频静区贴地（山谷）。
+        XCTAssertLessThan(peakIn(370...383), 0.05)
+    }
 }
