@@ -504,6 +504,20 @@ final class MenuBarPlayerController: NSObject {
 
     static let enabledKey = "ManyuMusic.menuBarPlayer"
     static let lyricTransitionKey = "ManyuMusic.lyricTransition"
+    /// 用户是否在菜单栏显示歌词（由播放条歌词按钮切换）。
+    static let lyricsVisibleKey = "ManyuMusic.menuBarLyricsVisible"
+
+    /// 用户偏好的歌词可见性，默认开启。
+    static var isLyricsVisible: Bool {
+        get {
+            UserDefaults.standard.object(forKey: lyricsVisibleKey) == nil
+                ? true
+                : UserDefaults.standard.bool(forKey: lyricsVisibleKey)
+        }
+        set {
+            UserDefaults.standard.set(newValue, forKey: lyricsVisibleKey)
+        }
+    }
 
     fileprivate static let lyricFont = NSFont.systemFont(ofSize: 13, weight: .medium)
     fileprivate static let lyricColor = NSColor.white
@@ -758,6 +772,11 @@ final class MenuBarPlayerController: NSObject {
             lastLyricText = text
         }
         guard let lyricItem, let lyricView else { return }
+        // 用户关闭了歌词显示时，无论有无歌词都隐藏。
+        guard Self.isLyricsVisible else {
+            lyricItem.isVisible = false
+            return
+        }
         if !lastLyricText.isEmpty {
             let w = Self.lyricWidth(for: lastLyricText)
             lyricItem.length = w
@@ -766,6 +785,15 @@ final class MenuBarPlayerController: NSObject {
         } else {
             lyricView.setLyricWithTransition("")
             lyricItem.isVisible = false
+        }
+    }
+
+    /// 切换菜单栏歌词的显示/隐藏（由播放条歌词按钮调用）。
+    func toggleLyricsVisible() {
+        Self.isLyricsVisible.toggle()
+        // 立即刷新歌词项可见性。
+        if let lyricItem {
+            lyricItem.isVisible = Self.isLyricsVisible && !lastLyricText.isEmpty
         }
     }
 
