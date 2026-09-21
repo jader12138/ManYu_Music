@@ -7,7 +7,7 @@
 #### 新增（关闭窗口后继续后台播放）
 
 - 设置 → 播放新增「关闭窗口后继续后台播放」开关（默认关闭）。开启后点击窗口红叉不再退出应用，音乐继续在后台播放；点击 Dock 图标可重新打开主窗口。实现方式：`applicationShouldTerminateAfterLastWindowClosed` 根据 UserDefaults 键 `ManyuMusic.keepPlayingAfterWindowClose` 返回布尔值；新增 `applicationShouldHandleReopen` 在无可见窗口时重新唤出主窗口。
-- 底部播放条右侧工具区新增「歌词」开关按钮（`text.alignleft` 图标）：一键显示/隐藏菜单栏实时歌词，开启时按钮高亮，状态自动持久化（默认显示），重启后保持。
+- 底部播放条右侧工具区新增「歌词」开关按钮（「词」字图标）：一键显示/隐藏菜单栏实时歌词，开启时按钮高亮，状态自动持久化（默认显示），重启后保持。
 
 #### 改进（菜单栏迷你播放器打磨）
 

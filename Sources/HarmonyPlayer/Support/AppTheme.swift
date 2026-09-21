@@ -378,7 +378,8 @@ struct PlaybackStateBadge: View {
 }
 
 struct IconButton: View {
-    let systemName: String
+    var systemName: String? = nil
+    var textLabel: String? = nil
     var isActive = false
     var activeColor: Color = .hpAccent
     var help: String
@@ -388,14 +389,22 @@ struct IconButton: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var isHovering = false
 
+    @ViewBuilder
+    private var glyph: some View {
+        if let textLabel {
+            Text(verbatim: textLabel)
+        } else {
+            Image(systemName: systemName ?? "")
+        }
+    }
+
     var body: some View {
         Button(action: action) {
-            Image(systemName: systemName)
+            glyph
                 .font(.system(size: size, weight: .semibold))
                 .frame(width: 32, height: 32)
                 .foregroundStyle(isActive ? activeColor : Color.hpTextPrimary.opacity(0.78))
-                .contentTransition(reduceMotion ? .identity : .symbolEffect(.replace))
-                .animation(reduceMotion ? nil : .easeInOut(duration: 0.18), value: systemName)
+                .modifier(GlyphTransition(reduceMotion: reduceMotion, systemName: systemName))
                 .background {
                     RoundedRectangle(cornerRadius: 9, style: .continuous)
                         .fill(
@@ -410,6 +419,22 @@ struct IconButton: View {
         .buttonStyle(PlaybackPressButtonStyle(reduceMotion: reduceMotion))
         .onHover { isHovering = $0 }
         .help(help)
+    }
+}
+
+/// SF Symbol 切换时的符号过渡动画；纯文字图标不加 symbolEffect（对 Text 无意义）。
+private struct GlyphTransition: ViewModifier {
+    let reduceMotion: Bool
+    let systemName: String?
+
+    func body(content: Content) -> some View {
+        if systemName != nil {
+            content
+                .contentTransition(reduceMotion ? .identity : .symbolEffect(.replace))
+                .animation(reduceMotion ? nil : .easeInOut(duration: 0.18), value: systemName)
+        } else {
+            content
+        }
     }
 }
 

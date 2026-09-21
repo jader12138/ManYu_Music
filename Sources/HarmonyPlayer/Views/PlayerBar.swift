@@ -264,7 +264,7 @@ struct PlayerBar: View {
     /// 菜单栏歌词开关：点击切换菜单栏歌词的显示/隐藏。
     private var lyricsButton: some View {
         IconButton(
-            systemName: "text.alignleft",
+            textLabel: "词",
             isActive: menuBarLyricsVisible,
             help: menuBarLyricsVisible ? "隐藏菜单栏歌词" : "显示菜单栏歌词",
             size: 13
