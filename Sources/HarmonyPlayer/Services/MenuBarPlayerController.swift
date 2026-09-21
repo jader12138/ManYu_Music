@@ -15,7 +15,6 @@ final class MenuBarPlayerController: NSObject {
     fileprivate static let lyricWidth: CGFloat = 160
 
     private var lyricItem: NSStatusItem?
-    private var lyricView: LyricStatusView?
     private var iconItem: NSStatusItem?
     private var menu: NSMenu?
     private var cancellables: Set<AnyCancellable> = []
@@ -52,26 +51,42 @@ final class MenuBarPlayerController: NSObject {
     private func install() {
         guard iconItem == nil else { return }
 
-        // 歌词项：纯文本自定义视图，不经过 NSButton/NSCell 的
-        // 高亮与 bezel 绘制路径，点击零反应、零底色。
-        let lyricItem = NSStatusBar.system.statusItem(withLength: Self.lyricWidth)
-        let lyricView = LyricStatusView(frame: NSRect(x: 0, y: 0, width: Self.lyricWidth, height: NSStatusBar.system.thickness))
-        lyricView.setAccessibilityLabel("当前歌词")
-        lyricItem.view = lyricView
-        self.lyricItem = lyricItem
-        self.lyricView = lyricView
+        // 延迟创建：启动早期菜单栏尚未完成布局，过早注册状态项会被系统忽略。
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self] in
+            guard let self, self.iconItem == nil else { return }
 
-        // 图标项：挂常驻菜单，左右键点击均可弹出，弹出前现做内容。
-        let iconItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
-        iconItem.button?.image = MenuBarLogo.makeIcon()
-        let menu = NSMenu()
-        menu.autoenablesItems = false
-        menu.delegate = self
-        iconItem.menu = menu
-        self.iconItem = iconItem
-        self.menu = menu
+            // 歌词项：用 button 而非自定义 view（NSStatusItem.view 在当前
+            // macOS 版本下创建后状态项完全不可见）。去掉 isBordered 和
+            // showsBorderOnlyWhileMouseInside 消除点击黑底，contentTintColor
+            // 跟随 labelColor 自动适配深浅色菜单栏。
+            let lyricItem = NSStatusBar.system.statusItem(withLength: Self.lyricWidth)
+            if let button = lyricItem.button {
+                button.isBordered = false
+                button.showsBorderOnlyWhileMouseInside = false
+                button.bezelStyle = .regularSquare
+                button.imagePosition = .noImage
+                button.font = NSFont.menuBarFont(ofSize: 0)
+                button.contentTintColor = NSColor.labelColor
+                button.lineBreakMode = .byTruncatingTail
+                button.allowsExpansionToolTips = true
+            }
+            self.lyricItem = lyricItem
 
-        observeLyrics()
+            // 图标项：挂常驻菜单，左右键点击均可弹出，弹出前现做内容。
+            let iconItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+            iconItem.button?.image = MenuBarLogo.makeIcon()
+            iconItem.button?.image?.isTemplate = true
+            iconItem.button?.imagePosition = .imageOnly
+            iconItem.button?.isBordered = false
+            let menu = NSMenu()
+            menu.autoenablesItems = false
+            menu.delegate = self
+            iconItem.menu = menu
+            self.iconItem = iconItem
+            self.menu = menu
+
+            self.observeLyrics()
+        }
     }
 
     private func remove() {
@@ -80,7 +95,6 @@ final class MenuBarPlayerController: NSObject {
         if let lyricItem {
             NSStatusBar.system.removeStatusItem(lyricItem)
             self.lyricItem = nil
-            lyricView = nil
         }
         if let iconItem {
             NSStatusBar.system.removeStatusItem(iconItem)
@@ -118,56 +132,8 @@ final class MenuBarPlayerController: NSObject {
         } else if !text.isEmpty {
             lastLyricText = text
         }
-        lyricView?.text = lastLyricText
+        lyricItem?.button?.title = lastLyricText
         lyricItem?.isVisible = !lastLyricText.isEmpty
-    }
-}
-
-/// 歌词状态项的自定义视图：只绘制文本，不绘制任何背景，
-/// 不经过 NSButton/NSCell 的高亮与 bezel 路径——点击零反应、零底色。
-/// 文字颜色用 labelColor 随菜单栏深浅外观自动切换。
-private final class LyricStatusView: NSView {
-    var text: String = "" {
-        didSet { needsDisplay = true }
-    }
-
-    override var intrinsicContentSize: NSSize {
-        NSSize(width: MenuBarPlayerController.lyricWidth, height: NSStatusBar.system.thickness)
-    }
-
-    override func viewDidChangeEffectiveAppearance() {
-        super.viewDidChangeEffectiveAppearance()
-        needsDisplay = true
-    }
-
-    override func draw(_ dirtyRect: NSRect) {
-        guard !text.isEmpty else { return }
-        let style = NSMutableParagraphStyle()
-        style.alignment = .left
-        style.lineBreakMode = .byTruncatingTail
-        let attributes: [NSAttributedString.Key: Any] = [
-            .font: NSFont.menuBarFont(ofSize: 0),
-            .foregroundColor: NSColor.labelColor,
-            .paragraphStyle: style,
-        ]
-        let rect = NSRect(x: 0, y: 0, width: bounds.width, height: bounds.height)
-        let size = (text as NSString).boundingRect(
-            with: rect.size,
-            options: [.usesLineFragmentOrigin],
-            attributes: attributes
-        ).size
-        // 单行文本在状态项高度内垂直居中。
-        let centered = NSRect(
-            x: 0,
-            y: (bounds.height - size.height) / 2,
-            width: bounds.width,
-            height: size.height
-        )
-        (text as NSString).draw(
-            with: centered,
-            options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine],
-            attributes: attributes
-        )
     }
 }
 
