@@ -11,6 +11,12 @@
 - Dock 右键菜单顶部不再显示系统自动附加的窗口标题项（应用名 + 对勾）：主窗口已排除出窗口列表。
 - 两处入口均不依赖主窗口：播放/暂停等操作直接作用于全局播放器。
 
+#### 修复（菜单栏歌词底色与图标形状，分支 codex/menubar-icon-fix）
+
+- 歌词区不再有黑色背景板：放弃 `NSStatusItem.view` 自定义视图方案（当前 macOS 版本下设 view 后状态项完全不可见），改用 `NSStatusItem.button` 并设置 `isBordered = false`、`showsBorderOnlyWhileMouseInside = false` 消除边框和点击高亮，`contentTintColor = .labelColor` 跟随菜单栏深浅色自动切换，与亚克力背景完全融合、零底色、点击零反应。
+- 状态栏状态项延迟创建：启动早期菜单栏尚未完成布局，过早注册状态项会被系统静默忽略；改为 `DispatchQueue.main.asyncAfter` 延迟 3 秒创建，确保状态项稳定出现。
+- 菜单栏图标恢复为主人设计的原样：此前 SVG 转 Swift 时曲线控制点漏做 y 轴翻转，导致图标形状完全走样；现已修正并重新生成，图标与原始设计一致（模板图，深浅色自动反色）。
+
 ## v3.13.0-beta4（2026-09-20，内部测试版）
 
 ### 均衡器与音效（本版重点）

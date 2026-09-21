@@ -319,13 +319,29 @@ struct SettingsView: View {
 
             // 菜单栏播放器
             row(title: "菜单栏播放控制",
-                subtitle: "在系统菜单栏实时显示当前歌词与播放图标，点击图标弹出播放/暂停菜单，歌词仅展示") {
+                subtitle: "在系统菜单栏实时显示当前歌词与播放图标，点击图标弹出菜单") {
                 Toggle("", isOn: Binding(
                     get: { menuBarPlayer },
                     set: { menuBarPlayer = $0; MenuBarPlayerController.shared.syncWithSetting() }
                 ))
                 .toggleStyle(.switch)
                 .labelsHidden()
+            }
+
+            // 歌词切换效果：下拉菜单
+            row(title: "歌词切换效果",
+                subtitle: "菜单栏歌词切换时的过渡动画") {
+                Picker("", selection: Binding(
+                    get: { MenuBarPlayerController.lyricTransition },
+                    set: { MenuBarPlayerController.lyricTransition = $0 }
+                )) {
+                    ForEach(MenuBarPlayerController.LyricTransition.allCases) { t in
+                        Text(t.label).tag(t)
+                    }
+                }
+                .pickerStyle(.menu)
+                .labelsHidden()
+                .controlSize(.small)
             }
 
             Divider().opacity(0.08)

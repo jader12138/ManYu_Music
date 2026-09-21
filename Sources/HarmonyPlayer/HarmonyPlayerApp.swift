@@ -81,6 +81,13 @@ struct HarmonyPlayerApp: App {
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // —— 状态栏黑底根因级修复 ——
+        // 告诉系统整个 App 是深色 appearance，系统就不会给状态栏宿主 window
+        // 的 NSNextStepFrame 画 0.129 gray 深灰胶囊（状态栏"黑色蒙版"来源）。
+        // SwiftUI 的 .preferredColorScheme() 仍会覆盖 individual window 的 appearance，
+        // 所以主页浅色、播放页深色正常显示。
+        NSApp.appearance = NSAppearance(named: .darkAqua)
+
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
         // 启动第一步固定 Dock 图标为上一次会话的具体样式（深色/浅色），
