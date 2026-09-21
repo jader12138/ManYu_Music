@@ -48,6 +48,7 @@ struct SettingsView: View {
     @AppStorage(AudioPlayer.gaplessPlaybackKey) private var gaplessPlayback = false
     @AppStorage(AudioPlayer.crossfadeEnabledKey) private var crossfadeEnabled = false
     @AppStorage(AudioPlayer.crossfadeDurationKey) private var crossfadeDuration = AudioPlayer.defaultCrossfadeDuration
+    @AppStorage(AudioPlayer.keepPlayingAfterWindowCloseKey) private var keepPlayingAfterWindowClose = false
     @AppStorage(RecommendationSettings.frequencyKey)
     private var recommendationFrequencyRaw = RecommendationFrequency.daily.rawValue
     @AppStorage(RecommendationSettings.independentKey)
@@ -355,6 +356,16 @@ struct SettingsView: View {
                 ))
                 .toggleStyle(.switch)
                 .labelsHidden()
+            }
+
+            Divider().opacity(0.08)
+
+            // 关闭窗口后继续播放
+            row(title: "关闭窗口后继续后台播放",
+                subtitle: "开启后点击窗口红叉不会退出应用，音乐继续播放；点击 Dock 图标可重新打开窗口") {
+                Toggle("", isOn: $keepPlayingAfterWindowClose)
+                    .toggleStyle(.switch)
+                    .labelsHidden()
             }
 
             Divider().opacity(0.08)
