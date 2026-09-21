@@ -412,6 +412,7 @@ final class MiniPlayerView: NSView {
             b.isBordered = false
             b.imagePosition = .imageOnly
             b.contentTintColor = NSColor.labelColor
+            b.wantsLayer = true
             let cfg = NSImage.SymbolConfiguration(pointSize: ptSize, weight: weight)
             b.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)?
                 .withSymbolConfiguration(cfg)
@@ -439,9 +440,40 @@ final class MiniPlayerView: NSView {
 
     // MARK: - Actions
 
-    @objc private func playPauseTapped() { onPlayPause?() }
-    @objc private func prevTapped() { onPrevious?() }
-    @objc private func nextTapped() { onNext?() }
+    @objc private func playPauseTapped(_ sender: NSButton) {
+        animateButtonPress(sender)
+        onPlayPause?()
+    }
+    @objc private func prevTapped(_ sender: NSButton) {
+        animateButtonPress(sender)
+        onPrevious?()
+    }
+    @objc private func nextTapped(_ sender: NSButton) {
+        animateButtonPress(sender)
+        onNext?()
+    }
+
+    /// 按钮点击反馈：先缩到 0.88 再弹回 1.0，轻微的按压回弹效果。
+    private func animateButtonPress(_ button: NSButton) {
+        guard let layer = button.layer else { return }
+        let scaleDown = CABasicAnimation(keyPath: "transform.scale")
+        scaleDown.fromValue = 1.0
+        scaleDown.toValue = 0.88
+        scaleDown.duration = 0.07
+        scaleDown.timingFunction = CAMediaTimingFunction(name: .easeIn)
+
+        let scaleUp = CABasicAnimation(keyPath: "transform.scale")
+        scaleUp.fromValue = 0.88
+        scaleUp.toValue = 1.0
+        scaleUp.beginTime = 0.07
+        scaleUp.duration = 0.12
+        scaleUp.timingFunction = CAMediaTimingFunction(name: .easeOut)
+
+        let group = CAAnimationGroup()
+        group.animations = [scaleDown, scaleUp]
+        group.duration = 0.19
+        layer.add(group, forKey: "press")
+    }
 
     // MARK: - Public 更新方法
 
