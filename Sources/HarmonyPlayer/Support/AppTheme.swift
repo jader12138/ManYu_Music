@@ -378,9 +378,12 @@ struct PlaybackStateBadge: View {
 }
 
 struct IconButton: View {
-    let systemName: String
+    var systemName: String? = nil
+    var textLabel: String? = nil
     var isActive = false
     var activeColor: Color = .hpAccent
+    /// 开启态不使用高亮底色与着色，改为图标底部一枚小圆点（与播放模式按钮同款）。
+    var showsActivityDot = false
     var help: String
     var size: CGFloat = 15
     let action: () -> Void
@@ -388,18 +391,43 @@ struct IconButton: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var isHovering = false
 
+    @ViewBuilder
+    private var glyph: some View {
+        if let textLabel {
+            Text(verbatim: textLabel)
+        } else {
+            Image(systemName: systemName ?? "")
+        }
+    }
+
+    /// 圆点模式下开启态不着色、不铺高亮底色，状态只由底部小点表达。
+    private var showsActiveFill: Bool { isActive && !showsActivityDot }
+
     var body: some View {
         Button(action: action) {
-            Image(systemName: systemName)
+            glyph
                 .font(.system(size: size, weight: .semibold))
                 .frame(width: 32, height: 32)
-                .foregroundStyle(isActive ? activeColor : Color.hpTextPrimary.opacity(0.78))
-                .contentTransition(reduceMotion ? .identity : .symbolEffect(.replace))
-                .animation(reduceMotion ? nil : .easeInOut(duration: 0.18), value: systemName)
+                .foregroundStyle(showsActiveFill ? activeColor : Color.hpTextPrimary.opacity(0.78))
+                .modifier(GlyphTransition(reduceMotion: reduceMotion, systemName: systemName))
+                .overlay(alignment: .bottom) {
+                    if showsActivityDot {
+                        Circle()
+                            .fill(activeColor)
+                            .frame(width: 3.5, height: 3.5)
+                            .offset(y: -2.5)
+                            .scaleEffect(isActive ? 1 : 0.4, anchor: .center)
+                            .opacity(isActive ? 1 : 0)
+                            .animation(reduceMotion
+                                       ? nil
+                                       : .spring(response: 0.22, dampingFraction: 0.55),
+                                       value: isActive)
+                    }
+                }
                 .background {
                     RoundedRectangle(cornerRadius: 9, style: .continuous)
                         .fill(
-                            isActive
+                            showsActiveFill
                                 ? activeColor.opacity(0.15)
                                 : Color.hpTextPrimary.opacity(isHovering ? 0.08 : 0)
                         )
@@ -410,6 +438,22 @@ struct IconButton: View {
         .buttonStyle(PlaybackPressButtonStyle(reduceMotion: reduceMotion))
         .onHover { isHovering = $0 }
         .help(help)
+    }
+}
+
+/// SF Symbol 切换时的符号过渡动画；纯文字图标不加 symbolEffect（对 Text 无意义）。
+private struct GlyphTransition: ViewModifier {
+    let reduceMotion: Bool
+    let systemName: String?
+
+    func body(content: Content) -> some View {
+        if systemName != nil {
+            content
+                .contentTransition(reduceMotion ? .identity : .symbolEffect(.replace))
+                .animation(reduceMotion ? nil : .easeInOut(duration: 0.18), value: systemName)
+        } else {
+            content
+        }
     }
 }
 

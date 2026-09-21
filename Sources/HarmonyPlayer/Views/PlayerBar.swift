@@ -15,6 +15,7 @@ struct PlayerBar: View {
 
     @AppStorage(Equalizer.enabledKey) private var eqEnabled = false
     @State private var showEQPopover = false
+    @AppStorage(MenuBarPlayerController.lyricsVisibleKey) private var menuBarLyricsVisible = true
 
     var body: some View {
         GeometryReader { geometry in
@@ -189,7 +190,7 @@ struct PlayerBar: View {
                             Circle()
                                 .fill(Color.hpAccent)
                                 .frame(width: 3.5, height: 3.5)
-                                .offset(y: 2.5)
+                                .offset(y: -2.5)
                         }
                         .contentTransition(reduceMotion ? .identity : .symbolEffect(.replace))
                         .animation(reduceMotion ? nil : .easeInOut(duration: 0.18),
@@ -238,6 +239,8 @@ struct PlayerBar: View {
                     }
                 }
                 .disabled(player.currentTrack == nil)
+
+                lyricsButton
             }
 
             PlaybackProgressRow(
@@ -258,6 +261,20 @@ struct PlayerBar: View {
             .padding(.horizontal, 6)
             .padding(.vertical, 3)
             .background(color.opacity(0.14), in: RoundedRectangle(cornerRadius: 4))
+    }
+
+    /// 菜单栏歌词开关：位于「喜欢」爱心右侧；开启时「词」字底部出现小蓝点，
+    /// 关闭时蓝点消失（无高亮底色）。
+    private var lyricsButton: some View {
+        IconButton(
+            textLabel: "词",
+            isActive: menuBarLyricsVisible,
+            showsActivityDot: true,
+            help: menuBarLyricsVisible ? "隐藏菜单栏歌词" : "显示菜单栏歌词",
+            size: 13
+        ) {
+            MenuBarPlayerController.shared.toggleLyricsVisible()
+        }
     }
 
     /// 均衡器按钮：点击弹出轻量 EQ 面板（与设置页共用 EqualizerPanelView）。

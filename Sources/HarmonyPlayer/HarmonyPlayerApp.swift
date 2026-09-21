@@ -253,7 +253,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
-        true
+        // 开启"关闭窗口后继续后台播放"时，点红叉只隐藏窗口、不退出应用，
+        // 音乐继续播放；用户可通过点击 Dock 图标重新打开窗口。
+        let keepPlaying = UserDefaults.standard.bool(
+            forKey: AudioPlayer.keepPlayingAfterWindowCloseKey
+        )
+        return !keepPlaying
+    }
+
+    /// 点击 Dock 图标重新打开主窗口（后台播放模式下关闭窗口后，Dock 仍可唤回）。
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        if !flag {
+            for window in sender.windows {
+                window.makeKeyAndOrderFront(nil)
+            }
+        }
+        return true
     }
 
     /// Dock 图标右键菜单：每次右键系统都会重新取一份新菜单，
