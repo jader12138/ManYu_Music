@@ -3,16 +3,18 @@
 - 发布状态：截至 2026-09-20 的均衡器/音效增强/连播增强/频谱山峰/包边图标等改动已随 **`v3.13.0-beta4`** 内测预发布版发布（GitHub Releases，prerelease，不顶替 3.12.0 稳定版）；`CHANGELOG.md` 已归档 beta4 区块，本文件保留过程摘要与发布附录。
 - 已发布内测：`v3.13.0-beta1`、`v3.13.0-beta2`、`v3.13.0-beta3`、`v3.13.0-beta4`（见文末附录）
 - 上一稳定版本：`v3.12.0`
-- 当前 `VERSION`：`3.13.0-beta4`
+- 当前 `VERSION`：`3.13.0-beta5`
 
-## 本轮摘要（2026-09-21，分支 `codex/background-playback`）
+## 本轮摘要（2026-09-21，分支 `codex/background-playback`，2026-09-22 从备份恢复合入）
 
-新增「关闭窗口后继续后台播放」设置项。
+新增「关闭窗口后继续后台播放」设置项、播放条菜单栏歌词开关，以及菜单栏迷你播放器的进度条与按钮动效打磨。
 
-- **功能**：设置 → 播放新增「关闭窗口后继续后台播放」开关（UserDefaults 键 `ManyuMusic.keepPlayingAfterWindowClose`，默认关闭）。开启后点击主窗口红叉不再退出应用，音乐继续在后台播放；点击 Dock 图标可重新打开主窗口。
-- **实现**：`AppDelegate.applicationShouldTerminateAfterLastWindowClosed` 改为读取该设置决定是否退出（开启时返回 false）；新增 `applicationShouldHandleReopen(_:hasVisibleWindows:)` 在无可见窗口时遍历 `NSApp.windows` 调用 `makeKeyAndOrderFront` 唤回主窗口。
-- **兼容性**：默认关闭，原有行为（关窗即退出）不变；无数据迁移。
-- **验证**：`swift build -c release` 通过；`swift test` 86/86 通过；`./scripts/build-app.sh` 打包签名成功。
+- **功能（后台播放）**：设置 → 播放新增「关闭窗口后继续后台播放」开关（UserDefaults 键 `ManyuMusic.keepPlayingAfterWindowClose`，默认关闭）。开启后点击主窗口红叉不再退出应用，音乐继续在后台播放；点击 Dock 图标可重新打开主窗口。
+- **实现（后台播放）**：`AppDelegate.applicationShouldTerminateAfterLastWindowClosed` 改为读取该设置决定是否退出（开启时返回 false）；新增 `applicationShouldHandleReopen(_:hasVisibleWindows:)` 在无可见窗口时遍历 `NSApp.windows` 调用 `makeKeyAndOrderFront` 唤回主窗口。
+- **功能（歌词开关）**：底部播放条右侧工具区新增「歌词」按钮（`text.alignleft` 图标），点击切换菜单栏实时歌词显示/隐藏，开启时按钮高亮；偏好持久化（UserDefaults 键 `ManyuMusic.menuBarLyricsVisible`），歌词刷新逻辑尊重用户偏好。
+- **改进（迷你播放器打磨）**：菜单栏迷你播放器进度条 thumb 从空心圆环改为实心蓝色圆点 + 柔和阴影；非拖动时进度推进加 0.25s ease-out 动画，拖动时禁用动画严格跟手且仅在 mouseUp 时 seek，避免频繁 seek 卡顿；播放/暂停/上一首/下一首按钮新增 0.19s 按压缩放回弹（0.88 → 1.0）。
+- **兼容性**：后台播放默认关闭，原有行为（关窗即退出）不变；歌词开关与动效无数据迁移。
+- **验证**：见本次恢复合入后的构建与测试记录（本分支提交）。
 
 ## 本轮摘要（2026-09-21，分支 `codex/menubar-icon-fix`）
 
