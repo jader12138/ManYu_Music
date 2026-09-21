@@ -5,6 +5,15 @@
 - 上一稳定版本：`v3.12.0`
 - 当前 `VERSION`：`3.13.0-beta4`
 
+## 本轮摘要（2026-09-21，分支 `codex/background-playback`）
+
+新增「关闭窗口后继续后台播放」设置项。
+
+- **功能**：设置 → 播放新增「关闭窗口后继续后台播放」开关（UserDefaults 键 `ManyuMusic.keepPlayingAfterWindowClose`，默认关闭）。开启后点击主窗口红叉不再退出应用，音乐继续在后台播放；点击 Dock 图标可重新打开主窗口。
+- **实现**：`AppDelegate.applicationShouldTerminateAfterLastWindowClosed` 改为读取该设置决定是否退出（开启时返回 false）；新增 `applicationShouldHandleReopen(_:hasVisibleWindows:)` 在无可见窗口时遍历 `NSApp.windows` 调用 `makeKeyAndOrderFront` 唤回主窗口。
+- **兼容性**：默认关闭，原有行为（关窗即退出）不变；无数据迁移。
+- **验证**：`swift build -c release` 通过；`swift test` 86/86 通过；`./scripts/build-app.sh` 打包签名成功。
+
 ## 本轮摘要（2026-09-21，分支 `codex/menubar-icon-fix`）
 
 菜单栏双状态项的内测问题修复（主人截图反馈：歌词区出现黑色背景板、图标形状与原设计完全不符）。

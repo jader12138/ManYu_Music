@@ -15,6 +15,7 @@ struct PlayerBar: View {
 
     @AppStorage(Equalizer.enabledKey) private var eqEnabled = false
     @State private var showEQPopover = false
+    @AppStorage(MenuBarPlayerController.lyricsVisibleKey) private var menuBarLyricsVisible = true
 
     var body: some View {
         GeometryReader { geometry in
@@ -260,6 +261,18 @@ struct PlayerBar: View {
             .background(color.opacity(0.14), in: RoundedRectangle(cornerRadius: 4))
     }
 
+    /// 菜单栏歌词开关：点击切换菜单栏歌词的显示/隐藏。
+    private var lyricsButton: some View {
+        IconButton(
+            systemName: "text.alignleft",
+            isActive: menuBarLyricsVisible,
+            help: menuBarLyricsVisible ? "隐藏菜单栏歌词" : "显示菜单栏歌词",
+            size: 13
+        ) {
+            MenuBarPlayerController.shared.toggleLyricsVisible()
+        }
+    }
+
     /// 均衡器按钮：点击弹出轻量 EQ 面板（与设置页共用 EqualizerPanelView）。
     /// EQ 开启时按钮保持高亮，位于「定时」左侧。
     private var eqButton: some View {
@@ -304,6 +317,8 @@ struct PlayerBar: View {
 
     private var compactUtilities: some View {
         HStack(spacing: 2) {
+            lyricsButton
+
             eqButton
 
             sleepTimerMenu
@@ -343,6 +358,8 @@ struct PlayerBar: View {
 
     private var utilities: some View {
         HStack(spacing: 8) {
+            lyricsButton
+
             eqButton
 
             sleepTimerMenu

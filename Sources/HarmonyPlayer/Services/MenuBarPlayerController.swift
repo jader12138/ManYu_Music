@@ -217,7 +217,6 @@ final class DraggableProgressView: NSView {
         // 颜色
         let blue = NSColor.systemBlue.cgColor
         let gray = NSColor(calibratedWhite: 0.78, alpha: 1).cgColor
-        let panelBG = NSColor.windowBackgroundColor.cgColor
 
         // track layer（灰色轨道）
         let track = CALayer()
@@ -233,26 +232,16 @@ final class DraggableProgressView: NSView {
         fill.backgroundColor = blue
         layer?.addSublayer(fill)
 
-        // thumb layer（蓝色小圆圈 + 白圈 + 蓝点）
+        // thumb layer（实心蓝色圆 + 柔和阴影）
         let thumb = CALayer()
         thumb.name = "thumb"
         thumb.cornerRadius = thumbSize / 2
         thumb.backgroundColor = blue
+        thumb.shadowColor = NSColor.systemBlue.withAlphaComponent(0.5).cgColor
+        thumb.shadowOpacity = 0.6
+        thumb.shadowOffset = CGSize(width: 0, height: 0)
+        thumb.shadowRadius = 3
         layer?.addSublayer(thumb)
-
-        // thumb 白圈内层
-        let inner = CALayer()
-        inner.name = "inner"
-        inner.cornerRadius = (thumbSize - 4) / 2
-        inner.backgroundColor = panelBG
-        thumb.addSublayer(inner)
-
-        // thumb 蓝色中心点
-        let dot = CALayer()
-        dot.name = "dot"
-        dot.cornerRadius = 2
-        dot.backgroundColor = blue
-        thumb.addSublayer(dot)
     }
 
     override func layout() {
@@ -276,16 +265,6 @@ final class DraggableProgressView: NSView {
                 break
             }
         }
-        // 子层定位
-        if let thumb = layer?.sublayers?.first(where: { $0.name == "thumb" }) {
-            // thumb 内部层位置
-            if let inner = thumb.sublayers?.first(where: { $0.name == "inner" }) {
-                inner.frame = NSRect(x: 2, y: 2, width: thumbSize - 4, height: thumbSize - 4)
-            }
-            if let dot = thumb.sublayers?.first(where: { $0.name == "dot" }) {
-                dot.frame = NSRect(x: thumbSize / 2 - 2, y: thumbSize / 2 - 2, width: 4, height: 4)
-            }
-        }
     }
 
     private func layoutThumbAndFill() {
@@ -293,6 +272,16 @@ final class DraggableProgressView: NSView {
         let w = bounds.width
         let trackY = (bounds.height - trackHeight) / 2
         let progressW = w * CGFloat(min(max(value, 0), 1))
+
+        // 拖动时禁用隐式动画，保证 thumb 严格跟手；
+        // 非拖动（播放自动推进 / seek 完成）时加短动画，进度条丝滑过渡。
+        let animated = !isDragging
+        CATransaction.begin()
+        CATransaction.setDisableActions(!animated)
+        if animated {
+            CATransaction.setAnimationDuration(0.25)
+            CATransaction.setAnimationTimingFunction(CAMediaTimingFunction(name: .easeOut))
+        }
 
         if let fill = sublayers.first(where: { $0.name == "fill" }) {
             fill.frame = NSRect(x: 0, y: trackY, width: progressW, height: trackHeight)
@@ -303,6 +292,8 @@ final class DraggableProgressView: NSView {
             thumb.frame = NSRect(x: thumbX, y: thumbY, width: thumbSize, height: thumbSize)
             thumb.isHidden = progressW <= 0 || w <= 0
         }
+
+        CATransaction.commit()
     }
 
     override func mouseDown(with event: NSEvent) {
@@ -326,9 +317,8 @@ final class DraggableProgressView: NSView {
         let rawX = localPoint.x
         let v = Double(min(max(rawX / max(bounds.width, 1), 0), 1))
         value = v
-        if isDragging {
-            onSeek?(v)
-        }
+        // 拖动过程中只更新 UI 不实时 seek，避免频繁跳转音频造成卡顿；
+        // 真正的 seek 放在 mouseUp 时执行。
     }
 }
 
@@ -422,6 +412,7 @@ final class MiniPlayerView: NSView {
             b.isBordered = false
             b.imagePosition = .imageOnly
             b.contentTintColor = NSColor.labelColor
+            b.wantsLayer = true
             let cfg = NSImage.SymbolConfiguration(pointSize: ptSize, weight: weight)
             b.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)?
                 .withSymbolConfiguration(cfg)
@@ -449,9 +440,40 @@ final class MiniPlayerView: NSView {
 
     // MARK: - Actions
 
-    @objc private func playPauseTapped() { onPlayPause?() }
-    @objc private func prevTapped() { onPrevious?() }
-    @objc private func nextTapped() { onNext?() }
+    @objc private func playPauseTapped(_ sender: NSButton) {
+        animateButtonPress(sender)
+        onPlayPause?()
+    }
+    @objc private func prevTapped(_ sender: NSButton) {
+        animateButtonPress(sender)
+        onPrevious?()
+    }
+    @objc private func nextTapped(_ sender: NSButton) {
+        animateButtonPress(sender)
+        onNext?()
+    }
+
+    /// 按钮点击反馈：先缩到 0.88 再弹回 1.0，轻微的按压回弹效果。
+    private func animateButtonPress(_ button: NSButton) {
+        guard let layer = button.layer else { return }
+        let scaleDown = CABasicAnimation(keyPath: "transform.scale")
+        scaleDown.fromValue = 1.0
+        scaleDown.toValue = 0.88
+        scaleDown.duration = 0.07
+        scaleDown.timingFunction = CAMediaTimingFunction(name: .easeIn)
+
+        let scaleUp = CABasicAnimation(keyPath: "transform.scale")
+        scaleUp.fromValue = 0.88
+        scaleUp.toValue = 1.0
+        scaleUp.beginTime = 0.07
+        scaleUp.duration = 0.12
+        scaleUp.timingFunction = CAMediaTimingFunction(name: .easeOut)
+
+        let group = CAAnimationGroup()
+        group.animations = [scaleDown, scaleUp]
+        group.duration = 0.19
+        layer.add(group, forKey: "press")
+    }
 
     // MARK: - Public 更新方法
 
@@ -482,6 +504,20 @@ final class MenuBarPlayerController: NSObject {
 
     static let enabledKey = "ManyuMusic.menuBarPlayer"
     static let lyricTransitionKey = "ManyuMusic.lyricTransition"
+    /// 用户是否在菜单栏显示歌词（由播放条歌词按钮切换）。
+    static let lyricsVisibleKey = "ManyuMusic.menuBarLyricsVisible"
+
+    /// 用户偏好的歌词可见性，默认开启。
+    static var isLyricsVisible: Bool {
+        get {
+            UserDefaults.standard.object(forKey: lyricsVisibleKey) == nil
+                ? true
+                : UserDefaults.standard.bool(forKey: lyricsVisibleKey)
+        }
+        set {
+            UserDefaults.standard.set(newValue, forKey: lyricsVisibleKey)
+        }
+    }
 
     fileprivate static let lyricFont = NSFont.systemFont(ofSize: 13, weight: .medium)
     fileprivate static let lyricColor = NSColor.white
@@ -736,6 +772,11 @@ final class MenuBarPlayerController: NSObject {
             lastLyricText = text
         }
         guard let lyricItem, let lyricView else { return }
+        // 用户关闭了歌词显示时，无论有无歌词都隐藏。
+        guard Self.isLyricsVisible else {
+            lyricItem.isVisible = false
+            return
+        }
         if !lastLyricText.isEmpty {
             let w = Self.lyricWidth(for: lastLyricText)
             lyricItem.length = w
@@ -744,6 +785,15 @@ final class MenuBarPlayerController: NSObject {
         } else {
             lyricView.setLyricWithTransition("")
             lyricItem.isVisible = false
+        }
+    }
+
+    /// 切换菜单栏歌词的显示/隐藏（由播放条歌词按钮调用）。
+    func toggleLyricsVisible() {
+        Self.isLyricsVisible.toggle()
+        // 立即刷新歌词项可见性。
+        if let lyricItem {
+            lyricItem.isVisible = Self.isLyricsVisible && !lastLyricText.isEmpty
         }
     }
 

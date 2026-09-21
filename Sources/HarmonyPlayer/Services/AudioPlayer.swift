@@ -30,6 +30,8 @@ final class AudioPlayer: ObservableObject {
     static let crossfadeDurationKey = "ManyuMusic.crossfadeDuration"
     static let defaultCrossfadeDuration: TimeInterval = 6
     static let crossfadeDurationRange: ClosedRange<Double> = 3...12
+    /// 关闭主窗口后继续在后台播放：开启时点红叉不退出应用，音乐继续。
+    static let keepPlayingAfterWindowCloseKey = "ManyuMusic.keepPlayingAfterWindowClose"
     @Published private(set) var currentTrack: Track?
     @Published private(set) var isPlaying = false
     @Published private(set) var artwork: NSImage?
