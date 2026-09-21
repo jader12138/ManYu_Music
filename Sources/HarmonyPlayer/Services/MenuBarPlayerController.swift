@@ -51,8 +51,9 @@ final class MenuBarPlayerController: NSObject {
     private func install() {
         guard iconItem == nil else { return }
 
-        // 延迟创建：启动早期菜单栏尚未完成布局，过早注册状态项会被系统忽略。
-        DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self] in
+        // 延迟到下一轮 run loop 再创建：启动早期菜单栏尚未完成布局，
+        // 过早注册状态项会被系统静默忽略。
+        DispatchQueue.main.async { [weak self] in
             guard let self, self.iconItem == nil else { return }
 
             // 歌词项：用 button 而非自定义 view（NSStatusItem.view 在当前
