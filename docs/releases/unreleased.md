@@ -11,7 +11,7 @@
 
 - **功能（后台播放）**：设置 → 播放新增「关闭窗口后继续后台播放」开关（UserDefaults 键 `ManyuMusic.keepPlayingAfterWindowClose`，默认关闭）。开启后点击主窗口红叉不再退出应用，音乐继续在后台播放；点击 Dock 图标可重新打开主窗口。
 - **实现（后台播放）**：`AppDelegate.applicationShouldTerminateAfterLastWindowClosed` 改为读取该设置决定是否退出（开启时返回 false）；新增 `applicationShouldHandleReopen(_:hasVisibleWindows:)` 在无可见窗口时遍历 `NSApp.windows` 调用 `makeKeyAndOrderFront` 唤回主窗口。
-- **功能（歌词开关）**：底部播放条右侧工具区新增「歌词」按钮（「词」字图标，IconButton 新增 textLabel 文字形态），点击切换菜单栏实时歌词显示/隐藏，开启时按钮高亮；偏好持久化（UserDefaults 键 `ManyuMusic.menuBarLyricsVisible`），歌词刷新逻辑尊重用户偏好。
+- **功能（歌词开关）**：底部播放条中央控制区「喜欢」爱心右侧放置「歌词」按钮（「词」字图标，IconButton 新增 textLabel 文字形态），点击切换菜单栏实时歌词显示/隐藏；开启态不铺高亮底色，而在「词」字底部显示一枚主题色小圆点（IconButton 新增 showsActivityDot 形态，与播放模式按钮同款 3.5pt 圆点，带弹性出现动画），关闭时圆点消失；偏好持久化（UserDefaults 键 `ManyuMusic.menuBarLyricsVisible`），歌词刷新逻辑尊重用户偏好。
 - **改进（迷你播放器打磨）**：菜单栏迷你播放器进度条 thumb 从空心圆环改为实心蓝色圆点 + 柔和阴影；非拖动时进度推进加 0.25s ease-out 动画，拖动时禁用动画严格跟手且仅在 mouseUp 时 seek，避免频繁 seek 卡顿；播放/暂停/上一首/下一首按钮新增 0.19s 按压缩放回弹（0.88 → 1.0）。
 - **兼容性**：后台播放默认关闭，原有行为（关窗即退出）不变；歌词开关与动效无数据迁移。
 - **验证**：见本次恢复合入后的构建与测试记录（本分支提交）。

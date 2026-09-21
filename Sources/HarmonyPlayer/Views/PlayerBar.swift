@@ -239,6 +239,8 @@ struct PlayerBar: View {
                     }
                 }
                 .disabled(player.currentTrack == nil)
+
+                lyricsButton
             }
 
             PlaybackProgressRow(
@@ -261,11 +263,13 @@ struct PlayerBar: View {
             .background(color.opacity(0.14), in: RoundedRectangle(cornerRadius: 4))
     }
 
-    /// 菜单栏歌词开关：点击切换菜单栏歌词的显示/隐藏。
+    /// 菜单栏歌词开关：位于「喜欢」爱心右侧；开启时「词」字底部出现小蓝点，
+    /// 关闭时蓝点消失（无高亮底色）。
     private var lyricsButton: some View {
         IconButton(
             textLabel: "词",
             isActive: menuBarLyricsVisible,
+            showsActivityDot: true,
             help: menuBarLyricsVisible ? "隐藏菜单栏歌词" : "显示菜单栏歌词",
             size: 13
         ) {
@@ -317,8 +321,6 @@ struct PlayerBar: View {
 
     private var compactUtilities: some View {
         HStack(spacing: 2) {
-            lyricsButton
-
             eqButton
 
             sleepTimerMenu
@@ -358,8 +360,6 @@ struct PlayerBar: View {
 
     private var utilities: some View {
         HStack(spacing: 8) {
-            lyricsButton
-
             eqButton
 
             sleepTimerMenu
