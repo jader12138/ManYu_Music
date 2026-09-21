@@ -12,10 +12,10 @@ final class MenuBarPlayerController: NSObject {
 
     /// 歌词区固定宽度：逐句更新只改文本、不改变状态项宽度，
     /// 避免可变宽度下菜单栏区域反复伸缩造成的闪烁。
-    private static let lyricWidth: CGFloat = 160
+    fileprivate static let lyricWidth: CGFloat = 160
 
     private var lyricItem: NSStatusItem?
-    private var lyricButton: NSStatusBarButton?
+    private var lyricView: LyricStatusView?
     private var iconItem: NSStatusItem?
     private var menu: NSMenu?
     private var cancellables: Set<AnyCancellable> = []
@@ -52,17 +52,14 @@ final class MenuBarPlayerController: NSObject {
     private func install() {
         guard iconItem == nil else { return }
 
-        // 歌词项：按钮换上吞掉高亮的 cell，点击无任何视觉反应。
+        // 歌词项：纯文本自定义视图，不经过 NSButton/NSCell 的
+        // 高亮与 bezel 绘制路径，点击零反应、零底色。
         let lyricItem = NSStatusBar.system.statusItem(withLength: Self.lyricWidth)
-        if let button = lyricItem.button {
-            let cell = LyricButtonCell()
-            cell.font = .menuBarFont(ofSize: 0)
-            cell.alignment = .left
-            button.cell = cell
-            button.title = ""
-        }
+        let lyricView = LyricStatusView(frame: NSRect(x: 0, y: 0, width: Self.lyricWidth, height: NSStatusBar.system.thickness))
+        lyricView.setAccessibilityLabel("当前歌词")
+        lyricItem.view = lyricView
         self.lyricItem = lyricItem
-        lyricButton = lyricItem.button
+        self.lyricView = lyricView
 
         // 图标项：挂常驻菜单，左右键点击均可弹出，弹出前现做内容。
         let iconItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
@@ -83,7 +80,7 @@ final class MenuBarPlayerController: NSObject {
         if let lyricItem {
             NSStatusBar.system.removeStatusItem(lyricItem)
             self.lyricItem = nil
-            lyricButton = nil
+            lyricView = nil
         }
         if let iconItem {
             NSStatusBar.system.removeStatusItem(iconItem)
@@ -121,26 +118,56 @@ final class MenuBarPlayerController: NSObject {
         } else if !text.isEmpty {
             lastLyricText = text
         }
-        lyricButton?.title = lastLyricText
+        lyricView?.text = lastLyricText
         lyricItem?.isVisible = !lastLyricText.isEmpty
     }
 }
 
-/// 歌词按钮专用 cell：吞掉按压高亮与按压样式，
-/// 点击歌词区域不产生任何视觉反应（无黑底、无闪动）。
-private final class LyricButtonCell: NSButtonCell {
-    override func highlight(_ flag: Bool, withFrame cellFrame: NSRect, in controlView: NSView) {}
-
-    init() {
-        super.init(textCell: "")
-        isBordered = false
-        isBezeled = false
-        highlightsBy = []
-        showsStateBy = []
+/// 歌词状态项的自定义视图：只绘制文本，不绘制任何背景，
+/// 不经过 NSButton/NSCell 的高亮与 bezel 路径——点击零反应、零底色。
+/// 文字颜色用 labelColor 随菜单栏深浅外观自动切换。
+private final class LyricStatusView: NSView {
+    var text: String = "" {
+        didSet { needsDisplay = true }
     }
 
-    required init(coder: NSCoder) {
-        super.init(coder: coder)
+    override var intrinsicContentSize: NSSize {
+        NSSize(width: MenuBarPlayerController.lyricWidth, height: NSStatusBar.system.thickness)
+    }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        needsDisplay = true
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        guard !text.isEmpty else { return }
+        let style = NSMutableParagraphStyle()
+        style.alignment = .left
+        style.lineBreakMode = .byTruncatingTail
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: NSFont.menuBarFont(ofSize: 0),
+            .foregroundColor: NSColor.labelColor,
+            .paragraphStyle: style,
+        ]
+        let rect = NSRect(x: 0, y: 0, width: bounds.width, height: bounds.height)
+        let size = (text as NSString).boundingRect(
+            with: rect.size,
+            options: [.usesLineFragmentOrigin],
+            attributes: attributes
+        ).size
+        // 单行文本在状态项高度内垂直居中。
+        let centered = NSRect(
+            x: 0,
+            y: (bounds.height - size.height) / 2,
+            width: bounds.width,
+            height: size.height
+        )
+        (text as NSString).draw(
+            with: centered,
+            options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine],
+            attributes: attributes
+        )
     }
 }
 

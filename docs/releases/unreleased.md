@@ -5,13 +5,22 @@
 - 上一稳定版本：`v3.12.0`
 - 当前 `VERSION`：`3.13.0-beta4`
 
+## 本轮摘要（2026-09-21，分支 `codex/menubar-icon-fix`）
+
+菜单栏双状态项的内测问题修复（主人截图反馈：歌词区出现黑色背景板、图标形状与原设计完全不符）。
+
+- **歌词区消除黑色背景板**：根因是歌词项用 NSButton + 自定义 NSButtonCell，AppKit 的点击高亮直接写 `highlighted` 属性、绕过方法覆写，黑底色板仍会出现。歌词项改为纯自定义 `LyricStatusView`（NSView）：只覆写 `draw(_:)` 绘制单行文本（`NSFont.menuBarFont` + `labelColor` 随菜单栏深浅外观切换 + 截断省略），不经过 NSButton/NSCell 的高亮与 bezel 绘制路径，点击零反应、零底色，与菜单栏亚克力背景完全融合；`viewDidChangeEffectiveAppearance` 触发重绘。`lyricWidth` 提为 `fileprivate` 供视图取固定宽度。
+- **图标恢复主人设计原样**：根因是 SVG→Swift 转换脚本只翻转了 M（move）命令的 y 坐标、漏翻 C（curve）命令的控制点与终点，导致图形一半翻转、形状完全走样（渲染成窄"S"形）。修正 `/tmp/gen_menubar_logo.js` 的 C 分支（y = 2048 − y）后重新生成 `MenuBarLogo.swift`（114 段，全部 y 翻转，nonZero 填充、18pt 模板图不变），转换后用 qlmanage 渲染调试 SVG 与主人原图比对一致。
+- **兼容性**：无数据/设置迁移；菜单栏开关（`ManyuMusic.menuBarPlayer`）与交互（图标左/右键弹播放/暂停菜单、歌词纯展示）均不变。
+- **验证**：`swift build` / `swift test` 86/86 通过；`swift build -c release` 通过；`./scripts/build-app.sh` 打包替换签名成功；实机冒烟——重启 dist 应用后菜单栏截图（整条 + 局部放大）确认歌词文本直接落在亚克力菜单栏上、无任何底色板，图标渲染为主人设计的书法 swirl 原样；点击图标弹菜单交互待主人验收。
+
 ## 本轮摘要（2026-09-21，分支 `codex/dock-menu`）
 
 系统集成两项：macOS 菜单栏实时歌词/播放控制 + Dock 图标右键菜单。目标是不开主窗口也能看当前歌词、随手控制播放。菜单栏方案按主人要求两度改版：初版为「应用图标 + 点击弹出迷你播放面板（封面/歌名/歌词预览/进度条/切歌）」，弹出面板代码（`MiniPlayerView`、`appIconDidChange` 通知链路、`nextLyricText`）已删除；二版为「单状态项：歌词（左）+ `play.fill` 占位图标（右）」；最终版修复内测问题后定稿为下述「双状态项 + 主人正式图标」设计。
 
 - **Dock 右键菜单**：`applicationDockMenu(_:)` 每次右键现做新菜单（系统每次都重新取，无需常驻观察者），内容为歌曲名（加粗）+ 歌手·专辑（次色）+ 播放/暂停（文案与 SF Symbol 随播放状态切换）+ 上一首/下一首；无曲目时显示「未在播放」占位且三条命令置灰。菜单规格抽成纯数据 `PlayerMenuSpec`（无 AppKit 依赖），标题/占位/禁用逻辑由单元测试覆盖；`DockMenuController` 把 spec 渲染为 NSMenu，target-action 直接调 `AudioPlayer.shared`。菜单顶部的「漫域音乐 + 对勾」是系统自动附加的窗口列表项（WindowGroup 默认以应用名为窗口标题），已通过 `window.isExcludedFromWindowsMenu = true` 移除。
 - **菜单栏双状态项（最终版）**：拆为两个相邻 `NSStatusItem`——
-  - **歌词项（左）**：固定宽度 160pt，逐句更新只改文本、宽度不变，消除可变宽度下菜单栏整块伸缩的「一闪一闪」；LRC 整句留白的间隙沿用上一句（`lastLyricText`），无歌词时整项 `isVisible = false` 隐藏。按钮换自定义 `LyricButtonCell`（`isBordered/isBezeled = false` + `highlightsBy/showsStateBy = []` + 覆写 `highlight(_:withFrame:inView:)` 为空），点击歌词区域零高亮、零底色、零反应。
+  - **歌词项（左）**：固定宽度 160pt，逐句更新只改文本、宽度不变，消除可变宽度下菜单栏整块伸缩的「一闪一闪」；LRC 整句留白的间隙沿用上一句（`lastLyricText`），无歌词时整项 `isVisible = false` 隐藏。~~按钮换自定义 `LyricButtonCell`~~（该方案后被 `codex/menubar-icon-fix` 取代：AppKit 点击高亮直接写 `highlighted` 属性、绕过方法覆写，黑底色板仍会出现；最终改为纯自定义 `LyricStatusView`，见上方修复摘要），点击歌词区域零高亮、零底色、零反应。
   - **图标项（右）**：主人设计的任务栏图标（`macOS任务栏图标.svg` 主体 path 代码化为 `MenuBarLogo`：SVG 的 M/C/Z 命令转 `NSBezierPath` 段落数组、y 轴翻成 AppKit 上正方向、nonZero 填充、18pt 模板图），模板图自动适配深浅色菜单栏（旧版整块黑底问题的另一半根因即非模板底色）。挂常驻 NSMenu，左/右键点击图标弹「播放 / 暂停」（`NSMenuDelegate.menuNeedsUpdate` 每次弹出前重建，`autoenablesItems = false` 手动控制两项可用态）。
   - 歌词取 `AudioPlayer.currentLyricText`，订阅 `currentTrack`/`lyricLines`/`clock.currentTime`（0.25s tick）三流 CombineLatest 重算，`LyricState`（Equatable）`removeDuplicates` 防重绘。
 - **开关**：设置 → 播放新增「菜单栏播放控制」（UserDefaults 键 `ManyuMusic.menuBarPlayer`，未记录默认开启），切换即时装卸两个状态项（`syncWithSetting()`），关闭时同时移除歌词订阅。
