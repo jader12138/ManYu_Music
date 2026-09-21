@@ -415,7 +415,7 @@ struct IconButton: View {
                         Circle()
                             .fill(activeColor)
                             .frame(width: 3.5, height: 3.5)
-                            .offset(y: 2.5)
+                            .offset(y: -2.5)
                             .scaleEffect(isActive ? 1 : 0.4, anchor: .center)
                             .opacity(isActive ? 1 : 0)
                             .animation(reduceMotion

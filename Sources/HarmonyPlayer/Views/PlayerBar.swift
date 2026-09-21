@@ -190,7 +190,7 @@ struct PlayerBar: View {
                             Circle()
                                 .fill(Color.hpAccent)
                                 .frame(width: 3.5, height: 3.5)
-                                .offset(y: 2.5)
+                                .offset(y: -2.5)
                         }
                         .contentTransition(reduceMotion ? .identity : .symbolEffect(.replace))
                         .animation(reduceMotion ? nil : .easeInOut(duration: 0.18),
