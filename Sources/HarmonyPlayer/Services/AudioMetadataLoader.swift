@@ -36,6 +36,9 @@ enum AudioMetadataLoader {
         let metadataAlbum = await stringValue(for: .commonKeyAlbumName, in: metadata)
         let album = embedded?.album ?? metadataAlbum
 
+        // 音频技术参数：从首个音频轨道取 estimatedDataRate 与 AudioStreamBasicDescription
+        let audioTech = await loadAudioTechParameters(from: asset)
+
         return Track(
             id: id,
             url: standardizedURL,
@@ -43,8 +46,46 @@ enum AudioMetadataLoader {
             artist: artist ?? "",
             album: album ?? "",
             duration: duration.isFinite ? max(0, duration) : 0,
-            dateAdded: dateAdded
+            dateAdded: dateAdded,
+            bitrate: audioTech.bitrate,
+            sampleRate: audioTech.sampleRate,
+            channels: audioTech.channels
         )
+    }
+
+    /// 从 AVAsset 的首个音频轨道读取比特率/采样率/声道数。
+    /// - estimatedDataRate 单位是 bits per second；VBR 文件为平均值。
+    /// - 采样率与声道数取自首个 CMAudioFormatDescription 的 AudioStreamBasicDescription。
+    private static func loadAudioTechParameters(
+        from asset: AVURLAsset
+    ) async -> (bitrate: Int?, sampleRate: Int?, channels: Int?) {
+        guard let audioTracks = try? await asset.loadTracks(withMediaType: .audio),
+              let audioTrack = audioTracks.first else {
+            return (nil, nil, nil)
+        }
+        var bitrate: Int?
+        var sampleRate: Int?
+        var channels: Int?
+
+        if let dataRate = try? await audioTrack.load(.estimatedDataRate), dataRate > 0 {
+            bitrate = Int(dataRate.rounded())
+        }
+
+        let formatDescriptions = (try? await audioTrack.load(.formatDescriptions)) ?? []
+        for desc in formatDescriptions {
+            guard let audioDesc = desc as? CMAudioFormatDescription,
+                  let asbdPtr = CMAudioFormatDescriptionGetStreamBasicDescription(audioDesc) else { continue }
+            let asbd = asbdPtr.pointee
+            if sampleRate == nil, asbd.mSampleRate > 0 {
+                sampleRate = Int(asbd.mSampleRate)
+            }
+            if channels == nil, asbd.mChannelsPerFrame > 0 {
+                channels = Int(asbd.mChannelsPerFrame)
+            }
+            if sampleRate != nil && channels != nil { break }
+        }
+
+        return (bitrate, sampleRate, channels)
     }
 
     static func lyrics(for track: Track) async -> String? {

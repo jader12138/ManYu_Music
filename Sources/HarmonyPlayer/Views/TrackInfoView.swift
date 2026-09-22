@@ -39,6 +39,9 @@ struct TrackInfoView: View {
                     .textSelection(.enabled)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
+            infoRow("比特率", formattedBitrate)
+            infoRow("采样率", formattedSampleRate)
+            infoRow("通道", formattedChannels)
             infoRow("播放次数", "\(library.playCount(for: track))")
             infoRow("文件大小", fileSize)
             infoRow("文件位置", track.url.path)
@@ -67,5 +70,33 @@ struct TrackInfoView: View {
             return "未知"
         }
         return ByteCountFormatter.string(fromByteCount: Int64(bytes), countStyle: .file)
+    }
+
+    /// 比特率：bps → kbps / Mbps。320 kbps MP3、1411 kbps CD- WAV、≥1 Mbps 用 Mbps。
+    private var formattedBitrate: String {
+        guard let bps = track.bitrate, bps > 0 else { return "未知" }
+        if bps >= 1_000_000 {
+            return String(format: "%.2f Mbps", Double(bps) / 1_000_000)
+        }
+        return "\(Int((Double(bps) / 1000).rounded())) kbps"
+    }
+
+    /// 采样率：Hz → kHz。44100 → "44.1 kHz"，48000 → "48 kHz"，96000 → "96 kHz"。
+    private var formattedSampleRate: String {
+        guard let hz = track.sampleRate, hz > 0 else { return "未知" }
+        if hz % 1000 == 0 {
+            return "\(hz / 1000) kHz"
+        }
+        return String(format: "%.1f kHz", Double(hz) / 1000)
+    }
+
+    /// 通道：1 → 单声道，2 → 立体声，其他 → "N 声道"。
+    private var formattedChannels: String {
+        guard let ch = track.channels, ch > 0 else { return "未知" }
+        switch ch {
+        case 1: return "单声道"
+        case 2: return "立体声"
+        default: return "\(ch) 声道"
+        }
     }
 }

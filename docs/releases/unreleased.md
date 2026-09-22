@@ -14,6 +14,16 @@
 - **兼容性**：无设置/数据迁移；音量调节途径不变（控件滚轮/滑块、系统音量键）。
 - **验证**：Release 编译通过、单元测试全绿、应用启动后人工核对顶栏无搜索框、播放条音量控件展开/收起/滚轮调节正常。
 
+## 本轮摘要（2026-09-22，分支 `codex/track-audio-info`：歌曲信息弹层新增音频技术参数）
+
+歌曲信息弹层（三个点 → 歌曲信息）补充三项音频工程参数，便于查看每首曲目的码率/采样率/声道规格。
+
+- **新增（弹层展示）**：`TrackInfoView` 在"格式"行后插入三行——**比特率**（"320 kbps"，≥1 Mbps 用 Mbps，如 CD-WAV 的 "1.41 Mbps"）、**采样率**（Hz → kHz，44100 显示 "44.1 kHz"、48000 显示 "48 kHz"、96000 显示 "96 kHz"）、**通道**（1 → "单声道"、2 → "立体声"、其他 → "N 声道"）。未读取到时显示"未知"。
+- **实现**：`Track` 模型新增 `bitrate: Int?`（bps）/ `sampleRate: Int?`（Hz）/ `channels: Int?`（声道数）三个可选字段；`init` 增加三个默认 `nil` 参数，老调用点零改动；`Codable` 走 synthesized `decodeIfPresent`，旧 library.json 缺键解码为 nil。
+- **抽取来源**：[AudioMetadataLoader.swift](Sources/HarmonyPlayer/Services/AudioMetadataLoader.swift) 的 `loadAudioTechParameters(from:)` 用 `asset.loadTracks(withMediaType: .audio)` 取首条音频轨道 → `audioTrack.load(.estimatedDataRate)` 取比特率（VBR 为平均值）→ `audioTrack.load(.formatDescriptions)` 取 `[CMFormatDescription]`，逐项 `as? CMAudioFormatDescription` 后用 `CMAudioFormatDescriptionGetStreamBasicDescription` 读 ASBD 的 `mSampleRate` / `mChannelsPerFrame`。读取与现有 `duration` / `commonMetadata` 在同一 async 上下文，不新增磁盘 I/O。
+- **兼容性**：无设置/数据迁移；老库缺三字段显示"未知"，重新扫描后自动填充；不影响播放、队列、歌词、恢复、推荐、均衡器任何业务路径。文件大小行不变（`ByteCountFormatter` 已以 MB 显示典型音频文件）。
+- **验证**：`swift test --disable-sandbox` 94/94 通过；`swift build -c release --disable-sandbox` 通过；dist 重启后人工核对三个新字段（MP3 应见 "320 kbps / 44.1 kHz / 立体声"）。
+
 ## 本轮摘要（2026-09-22，分支 `codex/search-pinyin`：搜索回归 + 拼音检索）
 
 顶栏搜索框回归原位置并新增拼音检索。

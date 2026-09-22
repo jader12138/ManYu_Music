@@ -8,6 +8,10 @@ struct Track: Identifiable, Codable, Hashable, Sendable {
     var album: String
     var duration: Double
     let dateAdded: Date
+    // 音频技术参数：首次扫描写入，老 library.json 缺键解码为 nil（弹层显示"未知"）
+    var bitrate: Int?       // bits per second
+    var sampleRate: Int?    // Hz
+    var channels: Int?      // 声道数
 
     init(
         id: UUID = UUID(),
@@ -16,7 +20,10 @@ struct Track: Identifiable, Codable, Hashable, Sendable {
         artist: String,
         album: String,
         duration: Double,
-        dateAdded: Date = .now
+        dateAdded: Date = .now,
+        bitrate: Int? = nil,
+        sampleRate: Int? = nil,
+        channels: Int? = nil
     ) {
         self.id = id
         self.url = url
@@ -25,6 +32,9 @@ struct Track: Identifiable, Codable, Hashable, Sendable {
         self.album = album
         self.duration = duration
         self.dateAdded = dateAdded
+        self.bitrate = bitrate
+        self.sampleRate = sampleRate
+        self.channels = channels
     }
 
     var displayTitle: String {
