@@ -717,6 +717,8 @@ struct BarVolumeControl: View {
     @EnvironmentObject private var player: AudioPlayer
     @State private var controlFrame: CGRect?
     @State private var volumeScrollMonitor: Any?
+    /// 静音前记忆的音量（仅会话内有效）：再次点击喇叭时恢复。
+    @State private var preMuteVolume: Double?
 
     var body: some View {
         HStack(spacing: 2) {
@@ -724,6 +726,18 @@ struct BarVolumeControl: View {
                 .font(.system(size: 13, weight: .medium))
                 .foregroundStyle(Color.hpTextPrimary.opacity(0.55))
                 .frame(width: 32, height: 32)
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    // 点击喇叭：静音 / 取消静音（记住静音前的音量）。
+                    // 图标自带手势后内层优先于祖先层，不会误触"进播放页"。
+                    if player.volume > 0 {
+                        preMuteVolume = player.volume
+                        player.volume = 0
+                    } else if let restored = preMuteVolume, restored > 0 {
+                        player.volume = restored
+                        preMuteVolume = nil
+                    }
+                }
                 .overlay(alignment: .bottom) {
                     Text("\(Int((player.volume * 100).rounded()))")
                         .font(.system(size: 7, weight: .medium))
@@ -737,7 +751,7 @@ struct BarVolumeControl: View {
             ))
         }
         .background(VolumeFrameReporter { controlFrame = $0 })
-        .help("拖动滑条或悬停滚轮调整音量")
+        .help("点击喇叭静音/取消静音；拖动滑条或悬停滚轮调整音量")
         .onAppear { installScrollMonitor() }
         .onDisappear { removeScrollMonitor() }
     }
