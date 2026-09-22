@@ -239,8 +239,8 @@ struct NowPlayingView: View {
                 }
                 .disabled(player.currentTrack == nil)
 
-                // 音量控件（与播放条同一控件；播放页样式=从喇叭右方弹出横向滑块）。
-                PlayerVolumeControl(direction: .trailing)
+                // 音量控件（播放页专用：点击喇叭从右方弹出横向滑块）。
+                PlayerVolumeControl()
             }
         }
         .padding(.horizontal, 4)
