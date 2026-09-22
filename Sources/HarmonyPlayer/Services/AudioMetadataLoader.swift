@@ -1,5 +1,6 @@
 import AppKit
 import AVFoundation
+import AudioToolbox
 
 enum AudioMetadataLoader {
     static let supportedExtensions: Set<String> = [
@@ -36,8 +37,10 @@ enum AudioMetadataLoader {
         let metadataAlbum = await stringValue(for: .commonKeyAlbumName, in: metadata)
         let album = embedded?.album ?? metadataAlbum
 
-        // 音频技术参数：从首个音频轨道取 estimatedDataRate 与 AudioStreamBasicDescription
-        let audioTech = await loadAudioTechParameters(from: asset)
+        // 音频技术参数：用 AudioFile API（与 afinfo 同款），同步函数放后台线程跑
+        let audioTech = await Task.detached(priority: .utility) {
+            loadAudioTechParameters(from: standardizedURL)
+        }.value
 
         return Track(
             id: id,
@@ -54,7 +57,7 @@ enum AudioMetadataLoader {
     }
 
     /// 从 URL 现场抽取音频技术参数（用于 TrackInfoView 弹层，避免强制重新扫描 library）。
-    /// 优先返回 Track 已持久化的字段（重新扫描后会有），缺失则现场从 AVAsset 读取。
+    /// 优先返回 Track 已持久化的字段（重新扫描后会有），缺失则现场用 AudioFile API 读取。
     static func loadAudioTechParameters(
         for track: Track
     ) async -> (bitrate: Int?, sampleRate: Int?, channels: Int?) {
@@ -62,9 +65,10 @@ enum AudioMetadataLoader {
         if track.bitrate != nil, track.sampleRate != nil, track.channels != nil {
             return (track.bitrate, track.sampleRate, track.channels)
         }
-        let asset = AVURLAsset(url: track.url, options: [AVURLAssetPreferPreciseDurationAndTimingKey: true])
-        let live = await loadAudioTechParameters(from: asset)
-        // 与 Track 持久化字段取并集（Track 有就用 Track 的，缺的用现场读的）
+        // 现场读取放后台线程，避免阻塞 UI
+        let live = await Task.detached(priority: .utility) {
+            loadAudioTechParameters(from: track.url)
+        }.value
         return (
             track.bitrate ?? live.bitrate,
             track.sampleRate ?? live.sampleRate,
@@ -72,36 +76,42 @@ enum AudioMetadataLoader {
         )
     }
 
-    /// 从 AVAsset 的首个音频轨道读取比特率/采样率/声道数。
-    /// - estimatedDataRate 单位是 bits per second；VBR 文件为平均值。
-    /// - 采样率与声道数取自首个 CMAudioFormatDescription 的 AudioStreamBasicDescription。
-    private static func loadAudioTechParameters(
-        from asset: AVURLAsset
-    ) async -> (bitrate: Int?, sampleRate: Int?, channels: Int?) {
-        guard let audioTracks = try? await asset.loadTracks(withMediaType: .audio),
-              let audioTrack = audioTracks.first else {
+    /// 用 AudioFile API（与 macOS `afinfo` 同款）从音频文件读取比特率/采样率/声道数。
+    /// - `kAudioFilePropertyBitRate`：整轨平均比特率（bps），VBR 文件也是平均值，与 afinfo 一致。
+    /// - `kAudioFilePropertyDataFormat`：AudioStreamBasicDescription，取 `mSampleRate` / `mChannelsPerFrame`。
+    /// 该函数同步、可能涉及少量磁盘 I/O，调用方应在后台线程跑。
+    static func loadAudioTechParameters(
+        from url: URL
+    ) -> (bitrate: Int?, sampleRate: Int?, channels: Int?) {
+        var audioFile: AudioFileID?
+        let status = AudioFileOpenURL(url as CFURL, .readPermission, 0, &audioFile)
+        guard status == noErr, let file = audioFile else {
             return (nil, nil, nil)
         }
+        defer { AudioFileClose(file) }
+
         var bitrate: Int?
         var sampleRate: Int?
         var channels: Int?
 
-        if let dataRate = try? await audioTrack.load(.estimatedDataRate), dataRate > 0 {
-            bitrate = Int(dataRate.rounded())
+        // 比特率（bps）
+        var bitRate: UInt32 = 0
+        var bitRateSize = UInt32(MemoryLayout<UInt32>.size)
+        if AudioFileGetProperty(file, kAudioFilePropertyBitRate, &bitRateSize, &bitRate) == noErr,
+           bitRate > 0 {
+            bitrate = Int(bitRate)
         }
 
-        let formatDescriptions = (try? await audioTrack.load(.formatDescriptions)) ?? []
-        for desc in formatDescriptions {
-            guard let audioDesc = desc as? CMAudioFormatDescription,
-                  let asbdPtr = CMAudioFormatDescriptionGetStreamBasicDescription(audioDesc) else { continue }
-            let asbd = asbdPtr.pointee
-            if sampleRate == nil, asbd.mSampleRate > 0 {
+        // 数据格式（ASBD）：采样率 + 声道数
+        var asbd = AudioStreamBasicDescription()
+        var asbdSize = UInt32(MemoryLayout<AudioStreamBasicDescription>.size)
+        if AudioFileGetProperty(file, kAudioFilePropertyDataFormat, &asbdSize, &asbd) == noErr {
+            if asbd.mSampleRate > 0 {
                 sampleRate = Int(asbd.mSampleRate)
             }
-            if channels == nil, asbd.mChannelsPerFrame > 0 {
+            if asbd.mChannelsPerFrame > 0 {
                 channels = Int(asbd.mChannelsPerFrame)
             }
-            if sampleRate != nil && channels != nil { break }
         }
 
         return (bitrate, sampleRate, channels)
