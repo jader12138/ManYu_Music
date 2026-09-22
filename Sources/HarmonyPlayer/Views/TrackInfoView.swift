@@ -88,28 +88,22 @@ struct TrackInfoView: View {
         return ByteCountFormatter.string(fromByteCount: Int64(bytes), countStyle: .file)
     }
 
-    /// 比特率：bps → kbps / Mbps。320 kbps MP3、1411 kbps CD- WAV、≥1 Mbps 用 Mbps。
+    /// 比特率：bps → KBPS（千比特每秒）。320 kbps MP3 → "320 KBPS"，FLAC 1592745 bps → "1593 KBPS"。
     private var formattedBitrate: String {
         let bps = track.bitrate ?? liveBitrate
         guard let bps, bps > 0 else {
             return isLoadingAudioTech ? "读取中…" : "未知"
         }
-        if bps >= 1_000_000 {
-            return String(format: "%.2f Mbps", Double(bps) / 1_000_000)
-        }
-        return "\(Int((Double(bps) / 1000).rounded())) kbps"
+        return "\(Int((Double(bps) / 1000).rounded())) KBPS"
     }
 
-    /// 采样率：Hz → kHz。44100 → "44.1 kHz"，48000 → "48 kHz"，96000 → "96 kHz"。
+    /// 采样率：直接以 Hz 显示。44100 → "44100 Hz"，48000 → "48000 Hz"，96000 → "96000 Hz"。
     private var formattedSampleRate: String {
         let hz = track.sampleRate ?? liveSampleRate
         guard let hz, hz > 0 else {
             return isLoadingAudioTech ? "读取中…" : "未知"
         }
-        if hz % 1000 == 0 {
-            return "\(hz / 1000) kHz"
-        }
-        return String(format: "%.1f kHz", Double(hz) / 1000)
+        return "\(hz) Hz"
     }
 
     /// 通道：1 → 单声道，2 → 立体声，其他 → "N 声道"。

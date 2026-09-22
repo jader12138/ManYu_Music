@@ -13,9 +13,10 @@
 
 #### 新增（音频技术参数展示）
 
-- 歌曲信息弹层（三个点 → 歌曲信息）"格式"行后新增三行：**比特率**（"320 kbps"、≥1 Mbps 用 "1.41 Mbps"）、**采样率**（"44.1 kHz"、"48 kHz"、"96 kHz"）、**通道**（"单声道" / "立体声" / "N 声道"）。
+- 歌曲信息弹层（三个点 → 歌曲信息）"格式"行后新增三行：**比特率**（"320 KBPS"、FLAC 1593 KBPS）、**采样率**（"44100 Hz"、"48000 Hz"、"96000 Hz"）、**通道**（"单声道" / "立体声" / "N 声道"）。
 - Track 模型新增 `bitrate / sampleRate / channels` 三个可选字段（旧 library.json 缺键解码为 nil，弹层显示"未知"）；首次扫描写入并随库持久化。
-- 实现来源：`AVURLAsset.loadTracks(withMediaType: .audio)` 首轨 → `estimatedDataRate`（bps）+ `CMAudioFormatDescriptionGetStreamBasicDescription` 取 ASBD 的 `mSampleRate` / `mChannelsPerFrame`。
+- 实现来源：`AudioFileOpenURL` + `kAudioFilePropertyBitRate` + `kAudioFilePropertyDataFormat`（与 macOS 自带 `afinfo` 同款 AudioFile API，可靠支持 MP3/M4A/FLAC/WAV/AIFF/CAF），同步函数包在 `Task.detached(.utility)` 中跑不阻塞 UI。
+- TrackInfoView 弹层用 `.task(id: track.id)` 现场抽取，老库无需重新扫描即可显示真实值；加载中显示"读取中…"，读取失败显示"未知"。
 - 文件大小行保持不变（`ByteCountFormatter` 已以 MB 显示典型音频文件）。
 
 ### 界面调整（分支 codex/search-volume-rework）
