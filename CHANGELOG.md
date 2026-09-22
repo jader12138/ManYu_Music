@@ -2,6 +2,14 @@
 
 ## Unreleased（3.13.0 正式版准备中）
 
+### 主窗口固定启动位置与尺寸（分支 codex/fixed-window-frame）
+
+#### 新增（每次打开都在同一位置、同一尺寸）
+
+- 主窗口每次启动固定为 **1060×706、左上角 (568, 193)**（以主屏左上角为原点，逻辑点），不再恢复上次会话的位置/尺寸，彻底解决窗口老是跑到屏幕右上角的问题。使用期间手动拖动/缩放不受影响，下次启动重新回到固定布局。
+- 修复：旧的窗口框架自动存档中存在一个被写坏的 185×24 畸形框架（`NSWindow Frame ManyuMusic.mainWindow`，疑似旧外接屏残留），旧逻辑每次启动先 `setFrameUsingName` 恢复它再钳制，是窗口乱跑的直接原因。现已移除框架恢复逻辑，启动时按窗口所在屏幕换算固定坐标（换屏/改分辨率仍正确），窗口大于可见区域时收缩并夹回可见区，菜单栏/Dock 不会裁边。
+- 一次性迁移（标记键 `ManyuMusic.fixedWindowLayout.v1`）：删除历史 `ManyuMusic.mainWindow` / `ManyuMusic.statsWindow` 框架存档以及 SwiftUI 按视图类型名自存的框架键；启动后在 0s / 0.25s / 0.9s 三个时基强制校正，覆盖 SwiftUI WindowGroup 的延迟状态恢复。WindowGroup 默认尺寸同步改为 1060×706，首帧即正确。
+
 ### 重复歌曲检测（分支 codex/duplicate-detect）
 
 #### 新增（设置-资料库开关 + 手动选择保留 + 隐藏过滤）

@@ -17,7 +17,7 @@ struct HarmonyPlayerApp: App {
                 .preferredColorScheme(theme.appearance.colorScheme)
         }
         .windowStyle(.hiddenTitleBar)
-        .defaultSize(width: 1080, height: 650)
+        .defaultSize(width: FixedWindowLayout.size.width, height: FixedWindowLayout.size.height)
         .commands {
             CommandGroup(replacing: .appSettings) {
                 Button("设置…") {
@@ -106,10 +106,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         MenuBarPlayerController.shared.syncWithSetting()
 
+        // 一次性清掉历史窗口自动存档（含被写坏的 185×24 框架与
+        // SwiftUI 按视图类型名自存的框架），之后窗口一律按固定布局启动。
+        Self.migrateLegacyWindowFramesIfNeeded()
+
         DispatchQueue.main.async {
             Self.fitWindowsToVisibleScreen()
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+            Self.fitWindowsToVisibleScreen()
+        }
+        // SwiftUI WindowGroup 的状态恢复可能晚于首屏再写一次框架，
+        // 0.9 秒再校正一次，保证每次启动都落在固定位置与尺寸。
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.9) {
             Self.fitWindowsToVisibleScreen()
         }
     }
@@ -159,11 +168,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private static func fitWindowsToVisibleScreen() {
-        guard let screen = NSScreen.main else { return }
-        let visible = screen.visibleFrame
-        let maxWidth = max(840, visible.width - 32)
-        let maxHeight = max(520, visible.height - 32)
-
         for window in NSApp.windows where window.isVisible {
             window.toolbar = nil
             window.titlebarAppearsTransparent = true
@@ -181,40 +185,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 frameView.layer?.isOpaque = false
             }
             window.minSize = NSSize(width: 840, height: 520)
-            // 记住上次窗口大小与位置：有存档时先恢复，再做超屏收缩兜底；
-            // 无存档（首次启动）时 setFrameUsingName 返回 false，保留默认 1080x650。
-            // frameAutosaveName 在当前 SDK 是只读属性，用同名方法设置。
-            window.setFrameUsingName(Self.windowFrameAutosaveName)
-            window.setFrameAutosaveName(Self.windowFrameAutosaveName)
             offsetTrafficLights(of: window)
 
-            let current = window.frame
-            // 存档可能来自老版本或被外部写坏：恢复后双向钳制——超屏收缩，
-            // 小于最小尺寸（840×520）则放大，避免播放条落入异常窄宽布局。
-            let targetWidth = min(max(current.width, 840), maxWidth)
-            let targetHeight = min(max(current.height, 520), maxHeight)
-            guard targetWidth != current.width || targetHeight != current.height else { continue }
-
-            // 尺寸被钳制时（存档过小）整体居中；仅超屏收缩时保留原位置锚点。
-            let needsCentering = current.width < 840 || current.height < 520
-            let target: NSRect
-            if needsCentering {
-                target = NSRect(
-                    x: visible.minX + (visible.width - targetWidth) / 2,
-                    y: visible.minY + (visible.height - targetHeight) / 2,
-                    width: targetWidth,
-                    height: targetHeight
-                )
-            } else {
-                // NSRect 原点在左下：保持左上角不动，仅从右/下边收缩。
-                target = NSRect(
-                    x: current.minX,
-                    y: current.maxY - targetHeight,
-                    width: targetWidth,
-                    height: targetHeight
-                )
+            // 主窗口（titled 常规窗口；状态栏等 NSPanel 不含 titled）每次启动
+            // 强制落到固定位置与固定尺寸，不读取任何自动存档。
+            if window.styleMask.contains(.titled) {
+                applyFixedFrame(to: window)
             }
-            window.setFrame(target, display: true, animate: false)
         }
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
@@ -222,8 +199,50 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    /// 窗口大小/位置存档名（NSWindow 自动在 UserDefaults 保存与恢复）。
-    private static let windowFrameAutosaveName = "ManyuMusic.mainWindow"
+    /// 把窗口放到用户指定的固定布局：1060×706，屏幕左上角起 (568, 193)。
+    /// 位置按窗口当前所在屏幕换算（换屏/分辨率变化仍正确），放不下时
+    /// 等比收缩并夹回可见区域（菜单栏/Dock 内），保证任何环境下窗口完整可见。
+    private static func applyFixedFrame(to window: NSWindow) {
+        let screen = window.screen ?? NSScreen.main
+        guard let screen else { return }
+        let visible = screen.visibleFrame
+
+        let targetWidth = min(FixedWindowLayout.size.width, visible.width)
+        let targetHeight = min(FixedWindowLayout.size.height, visible.height)
+
+        // 固定位置以「屏幕左上角」为原点计量（System Events 坐标系）；
+        // NSWindow 原点在左下角，用屏幕全框（含菜单栏高度）换算。
+        var origin = NSPoint(
+            x: screen.frame.minX + FixedWindowLayout.topLeft.x,
+            y: screen.frame.maxY - FixedWindowLayout.topLeft.y - targetHeight
+        )
+        // 夹到可见区域内：窗口任何边都不允许被菜单栏、Dock 或屏幕边缘裁掉。
+        origin.x = min(max(origin.x, visible.minX), visible.maxX - targetWidth)
+        origin.y = min(max(origin.y, visible.minY), visible.maxY - targetHeight)
+
+        let target = NSRect(origin: origin, size: NSSize(width: targetWidth, height: targetHeight))
+        if window.frame != target {
+            window.setFrame(target, display: true, animate: false)
+        }
+    }
+
+    /// 删除被写坏的历史窗口框架存档，只执行一次。
+    /// 旧逻辑曾从 `ManyuMusic.mainWindow` 恢复出一个 185×24 的畸形框架
+    /// （疑似旧外接屏残留），是窗口启动后跑到屏幕右上角的直接原因。
+    private static func migrateLegacyWindowFramesIfNeeded() {
+        let defaults = UserDefaults.standard
+        let migrationKey = "ManyuMusic.fixedWindowLayout.v1"
+        guard !defaults.bool(forKey: migrationKey) else { return }
+
+        defaults.removeObject(forKey: "NSWindow Frame ManyuMusic.mainWindow")
+        defaults.removeObject(forKey: "NSWindow Frame ManyuMusic.statsWindow")
+        // SwiftUI WindowGroup 按根视图类型名自动保存的框架键。
+        for key in defaults.dictionaryRepresentation().keys
+        where key.hasPrefix("NSWindow Frame SwiftUI.ModifiedContent<") {
+            defaults.removeObject(forKey: key)
+        }
+        defaults.set(true, forKey: migrationKey)
+    }
 
     /// 窗口尺寸变化后重新应用交通灯偏移（带 identifier 防止重复累加）。
     private static let trafficLightResizeObserver: Void = {
@@ -286,4 +305,12 @@ private extension RepeatMode {
         case .one: "单曲循环"
         }
     }
+}
+
+/// 主窗口固定启动布局（2026-09-22 由用户按实际摆放确认）。
+/// 位置以主屏左上角为原点（与 System Events 量到的坐标一致）：
+/// 左上角 (568, 193)，尺寸 1060×706。每次启动强制套用，不记忆用户改动。
+enum FixedWindowLayout {
+    static let size = NSSize(width: 1060, height: 706)
+    static let topLeft = NSPoint(x: 568, y: 193)
 }
