@@ -5,6 +5,15 @@
 - 上一稳定版本：`v3.12.0`
 - 当前 `VERSION`：`3.13.0-beta5`
 
+## 本轮摘要（2026-09-22，分支 `codex/search-volume-rework`）
+
+主界面顶栏搜索框移除与音量控件搬家两项界面调整。
+
+- **调整（搜索框）**：移除主界面顶栏搜索框（`MainView` 头部 236pt 搜索胶囊整体删除）。搜索功能将重新设计，`searchText` 过滤逻辑与 `.focusLibrarySearch` 焦点通知暂时保留，供新搜索入口直接复用。
+- **调整（音量控件搬家）**：底部播放条右侧原音量控件（窄屏：喇叭+数字+滚轮；宽屏：喇叭+76pt 滑杆）删除，替换为原播放页同款浮出式控件——新增 `PlayerVolumeControl`（封装原 `volumeButton` 与展开/收起状态、NSEvent 点击外部收起监视器），点击喇叭展开横向滑块、再点收起，收起时悬停滚轮调节、喇叭下方显示音量数字；加 `zIndex(1)` 保证悬浮滑块绘制在右侧相邻控件之上。播放页（`NowPlayingView`）控制行删除音量按钮及相关状态，监视器挂载/卸载随控件迁入 `PlayerVolumeControl`；`HorizontalVolumeSlider`/`VolumeFrameReporter`/`VolumeScrollCatcher` 三个辅助视图仍留在 NowPlayingView.swift（模块内访问）。
+- **兼容性**：无设置/数据迁移；音量调节途径不变（控件滚轮/滑块、系统音量键）。
+- **验证**：Release 编译通过、单元测试全绿、应用启动后人工核对顶栏无搜索框、播放条音量控件展开/收起/滚轮调节正常。
+
 ## 本轮摘要（2026-09-21，分支 `codex/background-playback`，2026-09-22 从备份恢复合入）
 
 新增「关闭窗口后继续后台播放」设置项、播放条菜单栏歌词开关，以及菜单栏迷你播放器的进度条与按钮动效打磨。
