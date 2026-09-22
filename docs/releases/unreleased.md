@@ -5,6 +5,15 @@
 - 上一稳定版本：`v3.12.0`
 - 当前 `VERSION`：`3.13.0-beta5`
 
+## 本轮摘要（2026-09-22，分支 `codex/tooltip-appearance`：修复控件悬停 tooltip 文字不显示）
+
+用户反馈：鼠标悬停在控件（上一首/下一首/返回等）上时，tooltip 显示为黑色或灰色小方块，没有文字。
+
+- **根因**：`HarmonyPlayerApp.applicationDidFinishLaunching` 中 `NSApp.appearance = NSAppearance(named: .darkAqua)`（菜单栏黑底修复的早期方案，现已由 CALayer.setBackgroundColor: swizzle 根因层兜底）让整个 App 被系统视为深色。系统 tooltip 窗口（类 `NSToolTip`，由 `.help()` / `IconButton(help:)` 触发）的 `effectiveAppearance` 回退到 `NSApp.appearance`（darkAqua），其文字颜色与背景在浅色主题下错乱——背景呈深灰、文字也偏深，最终表现为没有文字的黑/灰方块。与搜索框输入文字不可见（已用 SearchTextField 原生 NSTextField 绕过）同属 darkAqua 全局强制的副作用。
+- **修复（定向、不动菜单栏逻辑）**：新增 `installTooltipAppearanceFixer()`（在 `applicationDidFinishLaunching` 中，`installScrollbarHider()` 之后调用）。内部 `Timer` 每 0.25s 执行 `applyTooltipAppearance()`，并监听 `NSWindow.didBecomeMainNotification` 立即补一次。`applyTooltipAppearance()` 以主窗口（`styleMask.contains(.titled)` 的第一个窗口）的 `effectiveAppearance.bestMatch(from: [.darkAqua, .aqua])` 判断当前实际主题（主窗口经 `.preferredColorScheme(theme.appearance.colorScheme)` 覆盖，故不能用 `NSApp.effectiveAppearance`），遍历 `NSApp.windows`，对 `className.localizedCaseInsensitiveContains("tooltip")` 的窗口把 `appearance` 设为 `.aqua`（白天）或 `.darkAqua`（夜间），仅在与当前值不同时赋值避免无谓重绘。0.25s 内即可把新出现的 tooltip 校正到正确外观。
+- **配套**：`fitWindowsToVisibleScreen()` 的窗口遍历增加 `!className.localizedCaseInsensitiveContains("tooltip")` 守卫，避免启动时若有 tooltip 可见被误设 `backgroundColor = .clear`。
+- **验证**：`swift build -c release` 通过；AX 检查确认各按钮 `help` 属性正常（"上一首"/"播放"/"返回资料库"等）。自动化鼠标移动（CGEvent / cliclick）无法稳定触发 SwiftUI 的 NSTrackingArea tooltip，最终需用户手动悬停确认 tooltip 文字已正常显示、且昼夜切换时 tooltip 配色跟随。菜单栏黑底由 CALayer swizzle 独立保障，未改动。
+
 ## 本轮摘要（2026-09-22，分支 `codex/play-stats`：侧栏统计入口 + 主窗口内统计页 + 天/周/月/年维度统计）
 
 按用户三段式需求中的「1. 入口设置」+「2. 播放统计」实现（「3. 年度回顾」本轮不做）。侧栏底部新增「统计」按钮，点击与其他侧栏项一样在主窗口内容区切换到 StatsView（**首版曾做成独立 NSWindow，因用户反馈「不需要新开界面、白天模式背景却是黑色」改为内嵌页面**：独立窗口被强制 darkAqua appearance 导致 adaptive 的 hpNavy 永远解析成深色）；统计页按天/周/月/年切换时间维度，统计总播放次数与每首歌的具体播放次数，按次数从多到少排列，背景与配色全部跟随白天/夜间主题。

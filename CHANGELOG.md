@@ -2,6 +2,13 @@
 
 ## Unreleased（3.13.0 正式版准备中）
 
+### 修复：控件 tooltip（悬停提示）文字不显示（分支 codex/tooltip-appearance）
+
+- **根因**：为修菜单栏黑底，全局 `NSApp.appearance` 被强制设为 `.darkAqua`。系统 tooltip（`.help("上一首")` 等）继承该深色外观，在浅色界面上文字与背景配色错乱，表现为黑/灰空方块、没有可见文字。
+- **修复**：新增 `installTooltipAppearanceFixer()`，以 0.25s 定时器 + `NSWindow.didBecomeMainNotification` 双触发，扫描 `NSApp.windows` 中类名含 `tooltip` 的窗口（系统 tooltip 窗口类固定为 `NSToolTip`），把它们的 `appearance` 改成与主窗口实际主题一致（主窗口通过 `preferredColorScheme` 反映用户选择的白天/夜间，故用主窗口 `effectiveAppearance` 判断亮/暗，而非 `NSApp.effectiveAppearance`）。
+- `fitWindowsToVisibleScreen()` 跳过 tooltip 窗口，避免把 tooltip 的 `backgroundColor` 误设为 `.clear`。
+- 不改动菜单栏黑底修复（CALayer swizzle 根因层仍保留），tooltip 修复独立于菜单栏逻辑。
+
 ### 主窗口固定启动位置与尺寸（分支 codex/fixed-window-frame）
 
 #### 新增（每次打开都在同一位置、同一尺寸）
