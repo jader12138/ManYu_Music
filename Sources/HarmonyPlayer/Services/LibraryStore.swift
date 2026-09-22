@@ -614,19 +614,73 @@ final class LibraryStore: ObservableObject {
     func recordPlay(_ track: Track) {
         guard canEdit else { return }
 
+        let now = Date()
         if let index = history.firstIndex(where: { $0.trackID == track.id }) {
-            history[index].lastPlayedAt = .now
+            history[index].lastPlayedAt = now
             history[index].playCount += 1
+            history[index].recentEvents.append(now)
+            // 每次追加后裁剪到 365 天，避免 recentEvents 无限增长。
+            trimRecentEvents(&history[index].recentEvents)
         } else {
             history.append(
-                PlayHistoryEntry(trackID: track.id, lastPlayedAt: .now, playCount: 1)
+                PlayHistoryEntry(trackID: track.id, lastPlayedAt: now, playCount: 1, recentEvents: [now])
             )
         }
         history.sort { $0.lastPlayedAt > $1.lastPlayedAt }
-        if history.count > 300 {
-            history.removeLast(history.count - 300)
+        if history.count > 1000 {
+            history.removeLast(history.count - 1000)
         }
         libraryContentDidChange()
+    }
+
+    /// 把 recentEvents 裁剪到最近 365 天内。
+    private func trimRecentEvents(_ events: inout [Date]) {
+        guard !events.isEmpty else { return }
+        let cutoff = Date().addingTimeInterval(-365 * 24 * 3600)
+        // 期望事件已按时间升序追加；从头部丢弃早于截止时刻的项。
+        while let first = events.first, first < cutoff {
+            events.removeFirst()
+        }
+    }
+
+    /// 播放统计：返回指定时间范围内每首歌的播放次数，按次数降序。
+    /// 仅返回在 `tracks` 中仍存在的歌曲；播放数为 0 的不返回。
+    func playStats(for range: StatsRange) -> [(track: Track, count: Int)] {
+        let start = range.intervalStart
+        var counts: [UUID: Int] = [:]
+        for entry in history {
+            // 老数据（recentEvents 为空）跳过：本次无法归入任何时间窗口。
+            for event in entry.recentEvents where event >= start {
+                counts[entry.trackID, default: 0] += 1
+            }
+        }
+        // 仅保留当前曲库仍存在的歌曲，并按次数降序、id 升序稳定排序。
+        var result: [(track: Track, count: Int)] = []
+        result.reserveCapacity(counts.count)
+        for (id, count) in counts {
+            if let track = derivedCache.tracksByID[id] {
+                result.append((track: track, count: count))
+            }
+        }
+        result.sort { lhs, rhs in
+            if lhs.count == rhs.count {
+                return lhs.track.id.uuidString < rhs.track.id.uuidString
+            }
+            return lhs.count > rhs.count
+        }
+        return result
+    }
+
+    /// 指定时间范围内的总播放次数（含已不在曲库的歌曲，仍反映真实播放量）。
+    func totalPlayCount(for range: StatsRange) -> Int {
+        let start = range.intervalStart
+        var total = 0
+        for entry in history {
+            for event in entry.recentEvents where event >= start {
+                total += 1
+            }
+        }
+        return total
     }
 
     func recentlyPlayedTracks(limit: Int = 20) -> [Track] {

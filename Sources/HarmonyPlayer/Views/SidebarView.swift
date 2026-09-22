@@ -88,6 +88,9 @@ struct SidebarView: View {
                         .padding(.horizontal, 18)
                         .padding(.vertical, 10)
 
+                    statsButton
+                        .padding(.bottom, 4)
+
                     settingsButton
                         .padding(.bottom, 14)
                 }
@@ -257,6 +260,24 @@ struct SidebarView: View {
         .buttonStyle(HoverHighlightButtonStyle(cornerRadius: 10, hoverOpacity: 0.12))
         .padding(.horizontal, 10)
         .help("设置")
+    }
+
+    /// 「统计」入口：在主窗口内容区切换到播放统计页（与其他侧栏项一致）。
+    private var statsButton: some View {
+        Button {
+            select(.stats)
+        } label: {
+            sidebarLabel(
+                title: "统计",
+                systemImage: "chart.bar.fill",
+                iconColor: Color.hpMint,
+                count: library.history.reduce(0) { $0 + $1.recentEvents.count },
+                selected: destination == .stats
+            )
+        }
+        .buttonStyle(HoverHighlightButtonStyle(cornerRadius: 10, hoverOpacity: 0.12))
+        .padding(.horizontal, 10)
+        .help("播放统计")
     }
 
     private func select(_ newDestination: LibraryDestination) {

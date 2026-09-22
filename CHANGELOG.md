@@ -2,6 +2,17 @@
 
 ## Unreleased（3.13.0 正式版准备中）
 
+### 播放统计入口与时间维度统计（分支 codex/play-stats）
+
+#### 新增（侧栏统计入口 + 主窗口内统计页 + 天/周/月/年维度）
+
+- 主页左侧侧栏底部「设置」按钮上方新增「统计」入口（图标 `chart.bar.fill`，着色 hpMint，右侧角标显示总播放事件数）。点击与其他侧栏项一样在主窗口内容区切换到 `StatsView`（`LibraryDestination.stats`），复用主界面统一的大标题栏与背景，完整跟随白天/夜间主题——不再另开独立窗口。
+- 统计页顶部「今天 / 本周 / 本月 / 本年」四段切换（默认本周），点击切换立即重算；右侧有「重新统计」按钮（Cmd+R）与「更新于 HH:mm」时间戳。三张汇总卡片：总播放次数、覆盖歌曲数、区间起点（按 `Calendar.current` 的 startOfDay / weekOfYear / month / year 区间）。
+- 主体列表按播放次数从多到少排列，行与行之间无底板直接依次排列：每行展示排名、36pt 封面（`LazyArtworkView`，缓存未命中自动异步加载）、标题 + 歌手·专辑、右侧「N 次」次数（hpAccent 加粗）+ 「播放」圆按钮（点击以当前可见列表为队列从该曲开始播放，双击行同效）。空状态显示「{区间}还没有播放记录」+ 引导文案。
+- 数据扩展：`PlayHistoryEntry` 新增 `recentEvents: [Date]` 字段记录每次播放时间戳，老 library.json 无该字段解码为空数组（自定义 init(from:) 兼容，旧的 lastPlayedAt/playCount 仍保留）。`recordPlay` 在更新 lastPlayedAt + playCount 同时往 recentEvents 追加 `.now`，每次追加后裁剪到最近 365 天；history 上限由 300 提到 1000 首不同的歌。
+- 查询接口：`LibraryStore.playStats(for: StatsRange)` 返回 `[(track: Track, count: Int)]`，按次数降序、id 升序稳定排序，仅返回当前曲库仍存在的歌曲；`totalPlayCount(for:)` 返回区间内总播放次数（含已不在曲库的歌曲）。`StatsView` 内部独立 reload 抓 history 快照避免并发修改，监听 `library.revision` 自动刷新（`recordPlay` 会 bump revision，播放完一首歌后统计即时更新）。
+- 修复：统计行封面改为统一的 `LazyArtworkView`（36pt、7:48 全局圆角）——原实现只同步读 `ArtworkCache.small` 档，未命中就永久停在占位符、从不发起异步加载，导致个别歌曲（如刚播放、未预载或缓存被淘汰）封面缺失；现在缓存未命中会自动从文件抽取封面并刷新。列表行去掉灰色圆角底板，歌曲直接依次排列。
+
 ### 重复歌曲检测（分支 codex/duplicate-detect）
 
 #### 新增（设置-资料库开关 + 手动选择保留 + 隐藏过滤）
