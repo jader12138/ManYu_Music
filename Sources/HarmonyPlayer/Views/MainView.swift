@@ -357,6 +357,66 @@ struct MainView: View {
         }
     }
 
+    /// 搜索输入文字颜色：浅色主题蓝色偏黑（深藏青），深色主题浅灰白。
+    private var searchTextColor: Color {
+        theme.appearance == .dark
+            ? Color(red: 0.92, green: 0.92, blue: 0.92)
+            : Color(red: 0.07, green: 0.13, blue: 0.26)
+    }
+
+    /// 顶栏搜索框：支持歌名/艺人/专辑原文，以及全拼（"zhoujielun"）与
+    /// 首字母（"zjl"）两种拼音检索。匹配在 LibraryBrowseSnapshot 后台执行。
+    private var searchField: some View {
+        HStack(spacing: 7) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(Color.hpTextPrimary.opacity(0.40))
+
+            // 原生 NSTextField 只负责输入与焦点；可见文字由下方 overlay 的
+            // SwiftUI Text 实时镜像渲染——字段编辑器（窗口级共享 NSTextView）
+            // 在本应用的绘制环境下文字不显示（固定色值也无效，根因待查，
+            // 诊断日志见 /tmp/search-editor.log），SwiftUI Text 绘制不受影响。
+            SearchTextField(
+                text: $searchText,
+                isFocused: $searchIsFocused,
+                textColor: theme.appearance == .dark
+                    ? NSColor(calibratedWhite: 0.92, alpha: 1)
+                    : NSColor(srgbRed: 0.07, green: 0.13, blue: 0.26, alpha: 1),
+                placeholderColor: theme.appearance == .dark
+                    ? NSColor(calibratedWhite: 0.60, alpha: 1)
+                    : NSColor(calibratedWhite: 0.45, alpha: 1)
+            )
+            .frame(maxWidth: .infinity)
+            .overlay(alignment: .leading) {
+                if !searchText.isEmpty {
+                    Text(searchText)
+                        .font(.system(size: 12))
+                        .foregroundStyle(searchTextColor)
+                        .lineLimit(1)
+                        .allowsHitTesting(false)
+                }
+            }
+
+            if !searchText.isEmpty {
+                Button {
+                    searchText = ""
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(Color.hpTextPrimary.opacity(0.32))
+                }
+                .buttonStyle(.plain)
+                .help("清空搜索")
+            }
+        }
+        .padding(.horizontal, 11)
+        .frame(width: 236, height: 34)
+        .background(Color.hpTextPrimary.opacity(0.055), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .stroke(searchIsFocused ? Color.hpAccent.opacity(0.62) : Color.hpTextPrimary.opacity(0.07), lineWidth: 1)
+        }
+    }
+
     private var header: some View {
         HStack(spacing: 14) {
             if selectedAlbum != nil || selectedArtist != nil || activePlaylist != nil {
@@ -391,6 +451,10 @@ struct MainView: View {
             }
 
             Spacer(minLength: 18)
+
+            if destination != .settings {
+                searchField
+            }
 
             IconButton(
                 systemName: theme.appearance == .dark ? "sun.max.fill" : "moon.stars.fill",

@@ -52,15 +52,14 @@ struct LibraryBrowseSnapshot: Sendable {
         default: source = tracks
         }
         let query = request.search.trimmingCharacters(in: .whitespacesAndNewlines)
+        let loweredQuery = query.lowercased()
         // Normalize display fields once per song, not on every comparison in O(n log n) sorting.
         var rows: [SearchRow] = []
         rows.reserveCapacity(source.count)
         for track in source {
             guard !Task.isCancelled else { return result }
             let row = SearchRow(track: track)
-            if query.isEmpty || row.title.localizedStandardContains(query)
-                || row.artist.localizedStandardContains(query)
-                || row.album.localizedStandardContains(query) {
+            if query.isEmpty || row.matches(query: query, loweredQuery: loweredQuery) {
                 rows.append(row)
             }
         }
@@ -106,6 +105,19 @@ struct LibraryBrowseSnapshot: Sendable {
             title = track.displayTitle
             artist = track.displayArtist
             album = track.displayAlbum
+        }
+
+        /// 原文包含、全拼包含、首字母包含，三者任一命中即匹配。
+        /// 拼音键由 PinyinIndex 按原文缓存，重复按键零转换开销。
+        func matches(query: String, loweredQuery: String) -> Bool {
+            if title.localizedStandardContains(query)
+                || artist.localizedStandardContains(query)
+                || album.localizedStandardContains(query) {
+                return true
+            }
+            return PinyinIndex.keys(for: title).matches(loweredQuery)
+                || PinyinIndex.keys(for: artist).matches(loweredQuery)
+                || PinyinIndex.keys(for: album).matches(loweredQuery)
         }
     }
 
