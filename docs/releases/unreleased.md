@@ -11,12 +11,14 @@
 
 - **根因**：`HarmonyPlayerApp.applicationDidFinishLaunching` 中 `NSApp.appearance = NSAppearance(named: .darkAqua)`（菜单栏黑底修复）让系统 tooltip 在浅色主题下文字/背景配色错乱，表现为无文字的黑/灰方块。
 - **第一轮尝试（已弃用）**：0.25s 定时器扫描 NSToolTip 窗口、把 appearance 校正为主窗口实际主题。实测用户反馈仍不显示字，放弃。
-- **最终方案（全局禁用）**：`disableAllToolTips()`（启动时、SwiftUI 窗口创建视图前调用一次）用 method swizzling 拦截 NSView 的两个 tooltip 入口：
+- **最终方案（全局禁用，窗口层拦截）**：`disableAllToolTips()`（启动时、SwiftUI 窗口创建视图前调用一次）做多层 method swizzling：
   1. `-[NSView setToolTip:]`（`toolTip` 属性 setter）→ no-op；
-  2. `-[NSView addToolTip:rect:]`（tracking rect 老式 API）→ no-op 并返回 tag 0。SwiftUI `.help()` 的 AppKit 后端实际走 `addToolTip:rect:`——第一轮只拦 setter 后，CGWindow 枚举仍可见 owner=漫域音乐、layer=103（NSToolTip 窗口层）的小窗口（35×19）；两个入口都拦后该窗口不再创建。
-  均用 `method_setImplementation + imp_implementationWithBlock`，新增 `import ObjectiveC`。`fitWindowsToVisibleScreen()` 中第一轮加的 tooltip 守卫已还原。
+  2. `-[NSView addToolTip:rect:]`（tracking rect 老式 API）→ no-op 并返回 tag 0；
+  3. `-[NSView addTrackingArea:]` → userInfo 键名含 tooltip 的追踪区直接丢弃，普通 hover 追踪区（按钮高亮等）放行；
+  4. **真正生效的关键层**：`-[NSWindow orderWindow:relativeTo:]`（mode 1=above / 2=below / 0=out；只拦上屏、放行 orderOut）连同 `orderFront:` / `orderFrontRegardless` / `makeKeyAndOrderFront:` 一起，对类名含 "tooltip" 的窗口拒绝上屏。
+- **定位过程（修正第一轮误判）**：第 1~3 层经文件诊断日志证实对 SwiftUI `.help()` **全部零命中**——`.help()` 的 AppKit 后端绕过 NSView 基类直接操作。窗口扫描（Timer 需挂 `RunLoop.common`，否则悬停的 eventTracking 模式下扫描暂停）+ `class_copyMethodList` 确认：系统 tooltip 窗口真实类为 `NSToolTipPanel`（windowLevel 103），系统在首次悬停时预创建该对象复用（创建时 `isVisible=false`）；它自身只实现 `setToolTipString:` 等 13 个方法、**不重写** `orderWindow:relativeTo:`，故窗口层拦截是必经之路。第一轮曾误报"layer=103 已消失"，根因是 `CGWindowListCopyWindowInfo([.optionAll])` 会列出从未上屏的预创建窗口；改用 `.optionOnScreenOnly` + app 内 `isVisible` + 截图三重验证后才确认拦截真实生效。
 - **不受影响项（已验证）**：菜单栏歌词用自定义 `LyricBarView`（NSTextField + CATransition）渲染、`NSStatusItem.view` 承载，完全不经过 tooltip，禁用后顶部歌词滚动正常；菜单栏黑底 CALayer swizzle 未改动。代码里各 `.help("…")` 保留（界面不再生效），将来恢复提示只需删除 swizzle。
-- **验证**：`swift build -c release` 通过；cliclick 真实悬停播放/上一首/下一首/爱心按钮，截图确认无任何弹层；CGWindowList 枚举确认 owner=漫域音乐 的窗口中 layer=103 tooltip 窗口从有变无；菜单栏歌词全程正常。
+- **验证**：`swift build -c release` 通过、`codesign -v` 签名正常；cliclick 真实悬停播放/上一首/下一首等按钮，`CGWindowListCopyWindowInfo([.optionOnScreenOnly])` 枚举 owner=漫域音乐 的窗口中无 layer=103 窗口，截图确认无任何弹层；菜单栏歌词全程正常。诊断设施（spy 定时器、/tmp 日志、SwizzleDiag）已全部移除，仅保留干净的拦截实现。
 
 ## 本轮摘要（2026-09-22，分支 `codex/play-stats`：侧栏统计入口 + 主窗口内统计页 + 天/周/月/年维度统计）
 
