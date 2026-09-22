@@ -55,6 +55,7 @@ struct SettingsView: View {
     private var recommendationIsIndependent = true
     @Environment(\.colorScheme) private var colorScheme
     @State private var selectedTab: SettingsTab = .appearance
+    @State private var showDuplicateReviewSheet = false
 
     var body: some View {
         HStack(spacing: 0) {
@@ -68,6 +69,18 @@ struct SettingsView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .sheet(isPresented: $showDuplicateReviewSheet) {
+            DuplicateReviewSheet(
+                groups: library.detectDuplicateGroups(),
+                hiddenCount: library.hiddenDuplicateIDs.count,
+                onApply: { toHide in
+                    library.hideDuplicates(toHide)
+                },
+                onResetHidden: {
+                    library.clearHiddenDuplicates()
+                }
+            )
+        }
     }
 
     // MARK: - 侧边栏（纯文字列表 + 左侧蓝色竖线选中）
@@ -474,6 +487,44 @@ struct SettingsView: View {
 
             Divider().opacity(0.08)
 
+            // 3. 重复歌曲过滤
+            row(title: "过滤重复歌曲",
+                subtitle: "标题去尾缀数字后相同且歌手/专辑一致、时长±2 秒视为重复；开启后可手动选择保留哪首，其余隐藏") {
+                Toggle("", isOn: $library.duplicateFilterEnabled)
+                    .toggleStyle(.switch)
+                    .labelsHidden()
+            }
+
+            if library.duplicateFilterEnabled {
+                Divider().opacity(0.08)
+
+                HStack(spacing: 10) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(library.hiddenDuplicateIDs.isEmpty
+                             ? "暂未隐藏任何重复歌曲"
+                             : "已隐藏 \(library.hiddenDuplicateIDs.count) 首重复歌曲")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(Color.hpTextPrimary.opacity(0.6))
+                        Text("隐藏仅作用于显示，不从资料库删除")
+                            .font(.system(size: 10))
+                            .foregroundStyle(Color.hpTextPrimary.opacity(0.35))
+                    }
+                    Spacer()
+                    Button {
+                        showDuplicateReviewSheet = true
+                    } label: {
+                        Label("重新检测", systemImage: "arrow.clockwise")
+                            .font(.system(size: 11, weight: .semibold))
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(Color.hpAccent)
+                    .disabled(library.tracks.count < 2 || library.isLoading)
+                }
+                .padding(.vertical, 8)
+            }
+
+            Divider().opacity(0.08)
+
             // 3. 屏蔽文件夹
             VStack(alignment: .leading, spacing: 10) {
                 HStack {
@@ -828,3 +879,236 @@ private extension AppAppearance {
         }
     }
 }
+
+// MARK: - 重复歌曲审查面板
+
+/// 重复歌曲检测与手动保留选择面板。
+///
+/// 一次列出所有检测到的重复组，用户对每组单选「保留哪一首」；
+/// 未被保留的歌曲 id 在「应用」时一次性加入隐藏集合，从浏览列表中隐藏。
+struct DuplicateReviewSheet: View {
+    let groups: [[Track]]
+    let hiddenCount: Int
+    let onApply: (Set<UUID>) -> Void
+    let onResetHidden: () -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var selections: [Int: UUID] = [:]
+    @State private var didInitSelections = false
+
+    var body: some View {
+        VStack(spacing: 0) {
+            header
+
+            Divider().opacity(0.12)
+
+            if groups.isEmpty {
+                emptyState
+            } else {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 16) {
+                        ForEach(Array(groups.enumerated()), id: \.offset) { idx, group in
+                            groupView(idx: idx, group: group)
+                        }
+                    }
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 14)
+                }
+            }
+
+            Divider().opacity(0.12)
+
+            footer
+        }
+        .frame(width: 600, height: 520)
+        .background(Color.hpSurface)
+        .onAppear {
+            if !didInitSelections {
+                for (idx, group) in groups.enumerated() {
+                    selections[idx] = group.first?.id
+                }
+                didInitSelections = true
+            }
+        }
+    }
+
+    private var header: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 10) {
+            Image(systemName: "rectangle.stack.badge.plus")
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(Color.hpAccent)
+            Text("重复歌曲检测")
+                .font(.system(size: 16, weight: .bold, design: .rounded))
+                .foregroundStyle(Color.hpTextPrimary)
+            Spacer()
+            if hiddenCount > 0 {
+                Text("已隐藏 \(hiddenCount) 首")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(Color.hpTextPrimary.opacity(0.55))
+            }
+        }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 16)
+    }
+
+    private var emptyState: some View {
+        VStack(spacing: 8) {
+            Image(systemName: "checkmark.seal.fill")
+                .font(.system(size: 36))
+                .foregroundStyle(Color.hpAccent.opacity(0.7))
+            Text("未发现重复歌曲")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(Color.hpTextPrimary.opacity(0.7))
+            if hiddenCount > 0 {
+                Text("已隐藏的 \(hiddenCount) 首不在本次检测范围内")
+                    .font(.system(size: 11))
+                    .foregroundStyle(Color.hpTextPrimary.opacity(0.4))
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(.vertical, 30)
+    }
+
+    private var footer: some View {
+        HStack(spacing: 10) {
+            if hiddenCount > 0 {
+                Button {
+                    onResetHidden()
+                    dismiss()
+                } label: {
+                    Text("重置已隐藏")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(Color.red.opacity(0.75))
+                }
+                .buttonStyle(.plain)
+            }
+            Spacer()
+            Button("取消") {
+                dismiss()
+            }
+            .keyboardShortcut(.escape)
+            .buttonStyle(.plain)
+            .font(.system(size: 12, weight: .medium))
+
+            if !groups.isEmpty {
+                Button {
+                    var toHide: Set<UUID> = []
+                    for (idx, group) in groups.enumerated() {
+                        let keepID = selections[idx] ?? group.first?.id
+                        guard let keepID else { continue }
+                        for track in group where track.id != keepID {
+                            toHide.insert(track.id)
+                        }
+                    }
+                    if !toHide.isEmpty {
+                        onApply(toHide)
+                    }
+                    dismiss()
+                } label: {
+                    Text("应用并隐藏未选中项")
+                        .font(.system(size: 12, weight: .semibold))
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(Color.hpAccent.opacity(0.12),
+                                    in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(Color.hpAccent)
+                .keyboardShortcut(.return)
+            }
+        }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 14)
+    }
+
+    private func groupView(idx: Int, group: [Track]) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Text("第 \(idx + 1) 组")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(Color.hpAccent)
+                Text("\(group.count) 首可能重复")
+                    .font(.system(size: 10))
+                    .foregroundStyle(Color.hpTextPrimary.opacity(0.5))
+                Spacer()
+                if let representative = group.first {
+                    Text(representative.displayTitle)
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(Color.hpTextPrimary.opacity(0.7))
+                        .lineLimit(1)
+                }
+            }
+
+            VStack(spacing: 4) {
+                ForEach(group) { track in
+                    rowView(track: track,
+                           isSelected: selections[idx] == track.id) {
+                        selections[idx] = track.id
+                    }
+                }
+            }
+        }
+        .padding(12)
+        .background(Color.hpAccent.opacity(0.04),
+                    in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(Color.hpAccent.opacity(0.12), lineWidth: 0.5)
+        )
+    }
+
+    private func rowView(
+        track: Track,
+        isSelected: Bool,
+        onTap: @escaping () -> Void
+    ) -> some View {
+        Button(action: onTap) {
+            HStack(spacing: 10) {
+                Image(systemName: isSelected ? "largecircle.fill.circle" : "circle")
+                    .font(.system(size: 14))
+                    .foregroundStyle(isSelected ? Color.hpAccent : Color.hpTextPrimary.opacity(0.3))
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(track.displayTitle)
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(Color.hpTextPrimary)
+                        .lineLimit(1)
+                    HStack(spacing: 6) {
+                        Text(track.displayArtist)
+                            .font(.system(size: 10))
+                            .foregroundStyle(Color.hpTextPrimary.opacity(0.55))
+                            .lineLimit(1)
+                        Text("·").font(.system(size: 10))
+                            .foregroundStyle(Color.hpTextPrimary.opacity(0.3))
+                        Text(track.displayAlbum)
+                            .font(.system(size: 10))
+                            .foregroundStyle(Color.hpTextPrimary.opacity(0.55))
+                            .lineLimit(1)
+                        Text("·").font(.system(size: 10))
+                            .foregroundStyle(Color.hpTextPrimary.opacity(0.3))
+                        Text(track.formattedDuration)
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(Color.hpTextPrimary.opacity(0.7))
+                    }
+                    Text(track.url.lastPathComponent)
+                        .font(.system(size: 9, design: .monospaced))
+                        .foregroundStyle(Color.hpTextPrimary.opacity(0.32))
+                        .lineLimit(1)
+                }
+
+                Spacer()
+                Text(track.dateAdded.formatted(date: .abbreviated, time: .shortened))
+                    .font(.system(size: 9))
+                    .foregroundStyle(Color.hpTextPrimary.opacity(0.4))
+            }
+            .padding(.vertical, 6)
+            .padding(.horizontal, 10)
+            .background(
+                isSelected ? Color.hpAccent.opacity(0.1) : Color.clear,
+                in: RoundedRectangle(cornerRadius: 6, style: .continuous)
+            )
+        }
+        .buttonStyle(.plain)
+    }
+}
+

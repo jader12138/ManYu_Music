@@ -5,6 +5,21 @@
 - 上一稳定版本：`v3.12.0`
 - 当前 `VERSION`：`3.13.0-beta5`
 
+## 本轮摘要（2026-09-22，分支 `codex/duplicate-detect`：重复歌曲检测 + 手动保留 + 显示过滤）
+
+设置 → 资料库新增「过滤重复歌曲」开关；开启后可点「重新检测」唤起审查面板，对所有重复组手动选择保留哪一首，未保留项从浏览列表隐藏（不从 library.json 删除、不删源文件，可逆）。
+
+- **判定规则（用户 2026-09-22 确认）**：歌名去掉尾缀数字与空白后相同（「海阔天空」与「海阔天空 2」「海阔天空2」视为同名；非数字尾缀如「(Live)」保持原样不归一），歌手/专辑去首尾空格并忽略大小写后一致，时长容差 ±2 秒；满足以上全部条件归为同一重复组。同名但歌手/专辑/时长超容差不判为重复。
+- **算法（纯函数）**：`Sources/HarmonyPlayer/Services/DuplicateDetector.swift` 提供 `normalizeTitle(_:)` / `normalizeField(_:)` / `detectGroups(in:) -> [[Track]]`——按 `(normTitle, normArtist, normAlbum)` 分桶后桶内按时长升序聚类（相邻差 ≤2 秒归簇、超容差拆簇），每个 ≥2 首的簇作为一组返回；组内按 `dateAdded` 降序、组间按组首 `dateAdded` 降序稳定排序。无类状态、无 I/O，便于单测覆盖。
+- **接入（LibraryStore）**：新增 `@Published var duplicateFilterEnabled`（持久化 `ManyuMusic.duplicateFilter`，`didSet` 触发 `revision &+= 1` 让浏览快照刷新）、`@Published private(set) var hiddenDuplicateIDs: Set<UUID>`（init 从 UserDefaults 字符串数组恢复，`hideDuplicates(_:)` / `clearHiddenDuplicates()` 写回）；`detectDuplicateGroups()` 仅对**未隐藏**的 tracks 调用 `DuplicateDetector.detectGroups`，避免每次弹同样的旧组；`clearLibrary()` 一并清空隐藏集合防止悬空 id。
+- **接入（LibraryBrowseSnapshot）**：`build` 新增 `hiddenDuplicateIDs: Set<UUID> = []` 参数（默认空集合，所有现有调用零改动）；空集合时直接走原数组不拷贝（快速路径），非空时一次性 filter 出 `visibleTracks`/`visibleRecent`，所有段（home/favorites/history/all/albums/artists/folders）都基于过滤后的集合构建。
+- **接入（MainView）**：`refreshBrowseSnapshot` 读 `library.duplicateFilterEnabled ? library.hiddenDuplicateIDs : []` 透传给 `LibraryBrowseSnapshot.build`——开关关闭时永远不过滤，开关打开时按用户选择过滤；开关切换或隐藏集合变化通过 `revision` 自增触发 `browseRequest` 变化 → 快照重建。
+- **审查面板（`DuplicateReviewSheet`，SettingsView.swift 末尾）**：点「重新检测」按钮唤起 `.sheet`，列出所有重复组——每组卡片显示「第 N 组 · 首数 · 代表曲标题」标题与组内每行的 radio button + 标题 + 歌手/专辑/时长/文件名/添加时间；`selections: [Int: UUID]` 在 `onAppear` 默认选每组第一首，用户点击切换单选；底部「应用并隐藏未选中项」一次性把所有组未选中的 id 经 `library.hideDuplicates(_:)` 加入隐藏集合，「重置已隐藏」调 `clearHiddenDuplicates()` 清空历史决定，「取消」(`.escape`) 不改动。键盘：回车 = 应用，Esc = 取消。
+- **设置页布局**：`SettingsView.libraryPane` 在「不扫描 60 秒以下音频」与「屏蔽文件夹」之间插入「过滤重复歌曲」开关行；开关打开时下挂一行显示已隐藏数量（`已隐藏 N 首重复歌曲` 或 `暂未隐藏任何重复歌曲`）+ 副提示「隐藏仅作用于显示，不从资料库删除」+ 「重新检测」按钮（`tracks.count < 2` 或 `isLoading` 时禁用）。
+- **测试**：新增 `Tests/HarmonyPlayerTests/DuplicateDetectorTests.swift`（13 例：normalizeTitle 4 例覆盖纯文本/尾缀数字/非数字尾缀，detectGroups 9 例覆盖同名+全字段一致分组、歌手/专辑不同不分组、时长容差 ±2 秒内分组、超容差拆组、多组排序、单首不构成组、桶内时长簇拆分、大小写/空白归一）；`swift test` 全部 110/110 通过（含 13 新增）。
+- **兼容性**：无数据/设置迁移；开关默认关闭，关闭时浏览行为与历史完全一致（`hiddenDuplicateIDs` 传空集合走快速路径不 filter）；新增 UserDefaults 键 `ManyuMusic.duplicateFilter`（默认 false）、`ManyuMusic.hiddenDuplicateIDs`（默认 []），老版本偏好不受影响；隐藏集合只作用于显示，library.json 与磁盘文件不动，关闭开关立即恢复全部可见。
+- **验证**：`swift test` 110/110 通过（8.1 秒）；`swift build -c release` 通过（仅既有非新增 warning）；dist 副本 `dist/漫域音乐-duplicate-detect.app`（CFBundleVersion 250）已替换签名并 `pkill` + `open` 重启，等主人验收开关、检测面板与列表过滤效果。
+
 ## 本轮摘要（2026-09-22，分支 `codex/bilingual-lyrics`：播放页双语歌词识别 + 右下角开关）
 
 播放页歌词支持识别双语 LRC 文件，并加一个右下角开关控制是否显示译文。
