@@ -692,9 +692,11 @@ struct VolumeFrameReporter: NSViewRepresentable {
 }
 
 /// 横向音量滑块（播放页音量控件用）：点击轨道跳转、按住拖动均可调整
-/// （右侧为最大音量）。
+/// （右侧为最大音量）。静音态（isMuted）整条变灰、几何不变。
 struct HorizontalVolumeSlider: View {
     @Binding var value: Double
+    /// 静音态：滑条保持原位仅变灰（显示静音前音量），默认非静音。
+    var isMuted: Bool = false
 
     var body: some View {
         GeometryReader { proxy in
@@ -707,12 +709,12 @@ struct HorizontalVolumeSlider: View {
                     .frame(height: 3.5)
 
                 Capsule()
-                    .fill(Color.hpAccent)
+                    .fill(isMuted ? Color.hpTextPrimary.opacity(0.3) : Color.hpAccent)
                     .frame(width: max(4, trackWidth * value), height: 3.5)
                     .frame(maxWidth: .infinity, alignment: .leading)
 
                 Circle()
-                    .fill(Color.gray)
+                    .fill(isMuted ? Color.gray.opacity(0.5) : Color.gray)
                     .frame(width: thumbSize, height: thumbSize)
                     .shadow(color: Color.black.opacity(0.2), radius: 2, y: 1)
                     .offset(x: (trackWidth - thumbSize) * (value - 0.5))
@@ -725,6 +727,8 @@ struct HorizontalVolumeSlider: View {
                         value = min(1, max(0, gesture.location.x / trackWidth))
                     }
             )
+            // 仅灰化颜色平滑过渡；静音时显示值不变、几何不动。
+            .animation(.easeInOut(duration: 0.18), value: isMuted)
         }
         .frame(width: 65, height: 14)
         .contentShape(Rectangle())

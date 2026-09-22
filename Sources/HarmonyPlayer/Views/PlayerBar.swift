@@ -720,35 +720,52 @@ struct BarVolumeControl: View {
     /// 静音前记忆的音量（仅会话内有效）：再次点击喇叭时恢复。
     @State private var preMuteVolume: Double?
 
+    /// 是否处于静音态（点击喇叭后、尚未恢复）。
+    private var isMuted: Bool { preMuteVolume != nil && player.volume == 0 }
+
     var body: some View {
         HStack(spacing: 2) {
-            Image(systemName: volumeIconName)
-                .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(Color.hpTextPrimary.opacity(0.55))
-                .frame(width: 32, height: 32)
-                .contentShape(Rectangle())
-                .onTapGesture {
-                    // 点击喇叭：静音 / 取消静音（记住静音前的音量）。
-                    // 图标自带手势后内层优先于祖先层，不会误触"进播放页"。
-                    if player.volume > 0 {
-                        preMuteVolume = player.volume
-                        player.volume = 0
-                    } else if let restored = preMuteVolume, restored > 0 {
-                        player.volume = restored
-                        preMuteVolume = nil
-                    }
+            ZStack {
+                Image(systemName: volumeIconName)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(Color.hpTextPrimary.opacity(0.55))
+                    // id 随图标名变化：旧图标缩小淡出、新图标放大淡入。
+                    .id(volumeIconName)
+                    .transition(.scale(scale: 0.4).combined(with: .opacity))
+            }
+            .frame(width: 32, height: 32)
+            .contentShape(Rectangle())
+            .onTapGesture {
+                // 点击喇叭：静音 / 取消静音（记住静音前的音量）。
+                // 图标自带手势后内层优先于祖先层，不会误触"进播放页"。
+                if player.volume > 0 {
+                    preMuteVolume = player.volume
+                    player.volume = 0
+                } else if let restored = preMuteVolume, restored > 0 {
+                    player.volume = restored
+                    preMuteVolume = nil
                 }
-                .overlay(alignment: .bottom) {
-                    Text("\(Int((player.volume * 100).rounded()))")
-                        .font(.system(size: 7, weight: .medium))
-                        .foregroundStyle(Color.hpTextPrimary.opacity(0.42))
-                        .offset(y: 5)
-                }
+            }
+            .overlay(alignment: .bottom) {
+                Text("\(Int((player.volume * 100).rounded()))")
+                    .font(.system(size: 7, weight: .medium))
+                    .foregroundStyle(Color.hpTextPrimary.opacity(0.42))
+                    .offset(y: 5)
+            }
+            .animation(.spring(response: 0.3, dampingFraction: 0.7), value: volumeIconName)
 
-            HorizontalVolumeSlider(value: Binding(
-                get: { player.volume },
-                set: { player.volume = $0 }
-            ))
+            // 静音时滑条几何不动（仍显示静音前音量），仅整条变灰。
+            HorizontalVolumeSlider(
+                value: Binding(
+                    get: { isMuted ? (preMuteVolume ?? 0) : player.volume },
+                    set: { newValue in
+                        // 静音中拖动 → 直接脱离静音态并落到新音量。
+                        preMuteVolume = nil
+                        player.volume = newValue
+                    }
+                ),
+                isMuted: isMuted
+            )
         }
         .background(VolumeFrameReporter { controlFrame = $0 })
         .help("点击喇叭静音/取消静音；拖动滑条或悬停滚轮调整音量")
@@ -770,9 +787,12 @@ struct BarVolumeControl: View {
         volumeScrollMonitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { event in
             if event.scrollingDeltaY != 0,
                controlFrame?.contains(event.locationInWindow) == true {
+                // 静音中滚动 → 以滑条显示值（静音前音量）为基准脱离静音态。
+                let base = isMuted ? (preMuteVolume ?? 0) : player.volume
+                preMuteVolume = nil
                 let delta = -event.scrollingDeltaY / (event.hasPreciseScrollingDeltas ? 40 : 8)
                 let clamped = min(0.15, max(-0.15, delta))
-                player.volume = min(1, max(0, player.volume + clamped))
+                player.volume = min(1, max(0, base + clamped))
                 return nil
             }
             return event
