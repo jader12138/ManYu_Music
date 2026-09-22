@@ -14,6 +14,16 @@
 - **兼容性**：无设置/数据迁移；音量调节途径不变（控件滚轮/滑块、系统音量键）。
 - **验证**：Release 编译通过、单元测试全绿、应用启动后人工核对顶栏无搜索框、播放条音量控件展开/收起/滚轮调节正常。
 
+## 本轮摘要（2026-09-22，分支 `codex/search-pinyin`：搜索回归 + 拼音检索）
+
+顶栏搜索框回归原位置并新增拼音检索。
+
+- **新增（搜索框回归）**：`MainView` header 恢复 236pt 搜索胶囊（放大镜 + `TextField` + 清空按钮，位于夜间模式按钮左侧，`destination != .settings` 时显示），`searchText` → `LibraryBrowseRequest.search` 链路复用原过滤逻辑。**修复历史 bug**：macOS 上 `.foregroundStyle` 对 `TextField` 输入文字不可靠，改用 `.foregroundColor(colorScheme == .dark ? .white : .black)` 显式设色。
+- **新增（拼音检索）**：`PinyinIndex`（Sources/Support/PinyinIndex.swift）基于 `CFStringTransform`（`kCFStringTransformMandarinLatin` + `kCFStringTransformStripDiacritics`）生成 `PinyinKeys{full, initials}`——汉字逐字转拼音后去声调、去空白拼接为全拼（"周杰伦"→"zhoujielun"），取每个 token 首字母为首字母键（"zjl"；英文按词："Jay Chou"→"jc"），数字保留；结果按原文缓存（`NSLock` 保护的 static let 缓存盒，后台线程安全，重复按键零转换开销）。`LibraryBrowseSnapshot.SearchRow.matches(query:loweredQuery:)` 三通道匹配：原文包含 / 全拼包含 / 首字母包含（均含子串），title/artist/album 三字段任一命中即匹配；拼音转换仅在查询非空时进行。
+- **测试**：新增 `PinyinIndexTests`（9 例：中文全拼/首字母、英文词、数字保留、空串与纯符号、缓存一致性、`LibraryBrowseSnapshot` 端到端 zjl/zhoujielun 命中与未命中）。
+- **兼容性**：无设置/数据迁移；搜索入口与交互不变，仅匹配能力增强。
+- **验证**：单元测试全绿（86+9=95 预期）、Release 编译通过、应用启动后人工核对搜索框样式/输入文字可见/拼音与首字母过滤结果。
+
 ## 本轮摘要（2026-09-21，分支 `codex/background-playback`，2026-09-22 从备份恢复合入）
 
 新增「关闭窗口后继续后台播放」设置项、播放条菜单栏歌词开关，以及菜单栏迷你播放器的进度条与按钮动效打磨。

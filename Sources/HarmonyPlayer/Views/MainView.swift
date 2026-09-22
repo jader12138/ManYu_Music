@@ -6,6 +6,7 @@ struct MainView: View {
     @EnvironmentObject private var player: AudioPlayer
     @EnvironmentObject private var theme: ThemeStore
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.colorScheme) private var colorScheme
 
     @State private var destination: LibraryDestination = .section(.home)
     @State private var selectedAlbum: AlbumGroup?
@@ -357,6 +358,42 @@ struct MainView: View {
         }
     }
 
+    /// 顶栏搜索框：支持歌名/艺人/专辑原文，以及全拼（"zhoujielun"）与
+    /// 首字母（"zjl"）两种拼音检索。匹配在 LibraryBrowseSnapshot 后台执行。
+    private var searchField: some View {
+        HStack(spacing: 7) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(Color.hpTextPrimary.opacity(0.40))
+
+            TextField("搜索歌曲、艺人和专辑", text: $searchText)
+                .textFieldStyle(.plain)
+                .font(.system(size: 12))
+                // macOS 上 .foregroundStyle 对 TextField 输入文字不可靠，
+                // 必须用 .foregroundColor 按外观显式设色（深色白/浅色黑）。
+                .foregroundColor(colorScheme == .dark ? .white : .black)
+                .focused($searchIsFocused)
+
+            if !searchText.isEmpty {
+                Button {
+                    searchText = ""
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(Color.hpTextPrimary.opacity(0.32))
+                }
+                .buttonStyle(.plain)
+                .help("清空搜索")
+            }
+        }
+        .padding(.horizontal, 11)
+        .frame(width: 236, height: 34)
+        .background(Color.hpTextPrimary.opacity(0.055), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .stroke(searchIsFocused ? Color.hpAccent.opacity(0.62) : Color.hpTextPrimary.opacity(0.07), lineWidth: 1)
+        }
+    }
+
     private var header: some View {
         HStack(spacing: 14) {
             if selectedAlbum != nil || selectedArtist != nil || activePlaylist != nil {
@@ -391,6 +428,10 @@ struct MainView: View {
             }
 
             Spacer(minLength: 18)
+
+            if destination != .settings {
+                searchField
+            }
 
             IconButton(
                 systemName: theme.appearance == .dark ? "sun.max.fill" : "moon.stars.fill",
