@@ -18,6 +18,16 @@
 - **验证**：`swift build -c release` 通过（无新增警告）；dist 副本 `dist/漫域音乐-play-stats.app` 已签名并 `pkill` + `open` 重启，等主人验收内嵌统计页的昼夜主题、侧栏选中态、四段切换、按次数降序列表与播放按钮。
 - **验收反馈修复（同日第二轮）**：① 个别歌曲（Time (remix)）统计行封面缺失——根因是行内直接同步读 `ArtworkCache.shared.image(for:tier:.small)`，未命中只画占位符且从不发起异步加载（播放条等其他位置走各自的加载路径，所以不是文件问题）；改为统一的 `LazyArtworkView(track:size:36, cornerRadius: ArtworkLayout.cornerRadius(for:36))`，缓存未命中时 `.task` 调 `AudioMetadataLoader.artwork` 从文件抽取后刷新。② 去掉每行 `Color.hpTextPrimary.opacity(0.03)` 的灰色圆角底板，歌曲直接依次往下排列（保留 contentShape 保证双击播放热区）。release 重新构建并重启，截图确认封面与列表样式均正常。
 
+## 本轮摘要（2026-09-22，分支 `codex/fixed-window-frame`：主窗口固定启动位置与尺寸）
+
+用户要求软件每次打开都在固定位置、固定尺寸，不要跑到屏幕右上角。System Events 实测确认目标布局：窗口左上角 (568, 193)（主屏左上角原点，逻辑点）、尺寸 1060×706（主屏 1920×1080 逻辑空间，可见区 1920×1055）。
+
+- **病根**：UserDefaults 里 `NSWindow Frame ManyuMusic.mainWindow` 存的是 `"649 -24 185 24 0 -900 1440 875"`——一个 185×24 的畸形框架（疑似旧外接屏 1440×875 时代残留）。旧 `fitWindowsToVisibleScreen()` 每次启动先 `setFrameUsingName` 恢复该框架再钳制到最小 840×520，恢复/钳制与 SwiftUI 自身窗口状态恢复（按根视图类型名存的 `NSWindow Frame SwiftUI.ModifiedContent<…>` 键）互相打架，窗口最终位置不稳定、表现为跑到右上角。
+- **固定布局**：新增文件级 `enum FixedWindowLayout { static let size = NSSize(1060, 706); static let topLeft = NSPoint(568, 193) }`；`WindowGroup.defaultSize` 同步改为 1060×706（首帧尺寸即正确）。`fitWindowsToVisibleScreen()` 删除 `setFrameUsingName` / `setFrameAutosaveName` 恢复逻辑，改为对所有 visible 且 `styleMask.contains(.titled)` 的窗口（状态栏 NSPanel 不含 titled，天然排除）调用新私有方法 `applyFixedFrame(to:)`：按 `window.screen`（兜底 `NSScreen.main`）的 **screen.frame**（含菜单栏全框，与 System Events 左上角原点一致）换算 origin = `(frame.minX + 568, frame.maxY − 193 − height)`，再夹进 `screen.visibleFrame`（窗口大于可见区时先收缩到可见区尺寸），与目标不同才 `setFrame(_:display:animate:false)`，避免无谓布局。
+- **强制时基**：启动后 0s（下一个 runloop）/ 0.25s / 0.9s 三次执行 `fitWindowsToVisibleScreen()`；新增的 0.9s 一轮用于覆盖 SwiftUI WindowGroup 晚于首屏的状态恢复。
+- **一次性迁移**：`migrateLegacyWindowFramesIfNeeded()` 以 `ManyuMusic.fixedWindowLayout.v1` 为标记，首轮删除 `NSWindow Frame ManyuMusic.mainWindow`、`NSWindow Frame ManyuMusic.statsWindow`（统计独立窗口遗留）及全部前缀 `NSWindow Frame SwiftUI.ModifiedContent<` 的键。SwiftUI 退出时仍会重写自己的内部键，但应用不再读取，强制校正保证其无效。仅删单个键，未做整域删除。
+- **验证**：`swift build -c release` 通过；分支副本 `dist/漫域音乐-fixed-window-frame.app` 签名后 `pkill` + `open`，System Events 读回 `position=(568,193) size=(1060,706)`；彻底退出进程后再次打开仍为 `568,193 / 1060×706`；迁移标记为 1，旧畸形键与 statsWindow 键均已消失。
+
 ## 本轮摘要（2026-09-22，分支 `codex/duplicate-detect`：重复歌曲检测 + 手动保留 + 显示过滤）
 
 设置 → 资料库新增「过滤重复歌曲」开关；开启后可点「重新检测」唤起审查面板，对所有重复组手动选择保留哪一首，未保留项从浏览列表隐藏（不从 library.json 删除、不删源文件，可逆）。
