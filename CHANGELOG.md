@@ -2,12 +2,13 @@
 
 ## Unreleased（3.13.0 正式版准备中）
 
-### 修复：控件 tooltip（悬停提示）文字不显示（分支 codex/tooltip-appearance）
+### 移除：全局禁用控件悬停提示 tooltip（分支 codex/tooltip-appearance）
 
-- **根因**：为修菜单栏黑底，全局 `NSApp.appearance` 被强制设为 `.darkAqua`。系统 tooltip（`.help("上一首")` 等）继承该深色外观，在浅色界面上文字与背景配色错乱，表现为黑/灰空方块、没有可见文字。
-- **修复**：新增 `installTooltipAppearanceFixer()`，以 0.25s 定时器 + `NSWindow.didBecomeMainNotification` 双触发，扫描 `NSApp.windows` 中类名含 `tooltip` 的窗口（系统 tooltip 窗口类固定为 `NSToolTip`），把它们的 `appearance` 改成与主窗口实际主题一致（主窗口通过 `preferredColorScheme` 反映用户选择的白天/夜间，故用主窗口 `effectiveAppearance` 判断亮/暗，而非 `NSApp.effectiveAppearance`）。
-- `fitWindowsToVisibleScreen()` 跳过 tooltip 窗口，避免把 tooltip 的 `backgroundColor` 误设为 `.clear`。
-- 不改动菜单栏黑底修复（CALayer swizzle 根因层仍保留），tooltip 修复独立于菜单栏逻辑。
+- 鼠标悬停在控件（上一首/下一首/返回等）上时，tooltip 显示为黑/灰空方块、没有文字。根因是为修菜单栏黑底而设置的全局 `NSApp.appearance = .darkAqua`，系统 tooltip 在浅色主题下文字与背景配色错乱。
+- 用户确认软件内已不需要悬停提示，最终方案为**全局禁用 tooltip**（中途曾尝试把 tooltip 窗口 appearance 校正为跟随主题，实测仍不显示文字，已弃用该方案）。
+- 实现：启动时 `disableAllToolTips()` 用 method swizzling 把 NSView 的两个 tooltip 入口都替换为空实现——`setToolTip:`（toolTip 属性）与 `addToolTip:rect:`（tracking rect 路径，**SwiftUI `.help()` 的 AppKit 后端实际走这条**；只拦 setter 时实测仍会生成 NSToolTip 窗口）。拦截后系统不创建 tooltip 追踪区与 NSToolTip 窗口，悬停时什么都不会弹出。
+- 菜单栏歌词由自定义 `LyricBarView`（NSTextField）渲染，不经过 tooltip，完全不受影响；菜单栏黑底的 CALayer swizzle 根因层也未改动。
+- `.help()` 调用保留在代码中（不再产生任何界面效果），以后若恢复提示只需移除 swizzle。
 
 ### 主窗口固定启动位置与尺寸（分支 codex/fixed-window-frame）
 

@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import ObjectiveC
 
 @main
 struct HarmonyPlayerApp: App {
@@ -104,10 +105,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         Self.installScrollbarHider()
 
-        // 全局 darkAqua 用于修菜单栏黑底，但会让 tooltip 继承深色外观，
-        // 在浅色界面上文字看不见（表现为黑/灰空方块）。这里持续把 tooltip 窗口
-        // 的 appearance 校正为与当前主题一致。
-        Self.installTooltipAppearanceFixer()
+        // 全局禁用控件 tooltip（.help 悬停提示）：早期版本需要，现在产品上
+        // 不再展示；且全局 darkAqua 下 tooltip 文字会不可见（黑/灰空方块）。
+        // 必须在 SwiftUI 窗口创建视图之前装好。
+        Self.disableAllToolTips()
 
         MenuBarPlayerController.shared.syncWithSetting()
 
@@ -172,46 +173,37 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    // MARK: - Tooltip 外观校正
+    // MARK: - 全局禁用 tooltip
 
-    /// 全局 `NSApp.appearance = .darkAqua`（菜单栏黑底修复）会让系统 tooltip
-    /// 继承深色外观，在浅色界面上文字与背景配色错乱，表现为黑/灰空方块、没有文字。
-    /// 这里以 0.25s 扫描所有窗口，把 tooltip 窗口的 appearance 改成与主窗口
-    /// 实际主题一致（主窗口通过 preferredColorScheme 反映用户选择的白天/夜间）。
-    private static func installTooltipAppearanceFixer() {
-        let tick: () -> Void = { applyTooltipAppearance() }
-        Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { _ in tick() }
-        // 窗口成为主窗口时立即校正一次，减少首次悬停的等待。
-        NotificationCenter.default.addObserver(
-            forName: NSWindow.didBecomeMainNotification,
-            object: nil,
-            queue: .main
-        ) { _ in tick() }
-    }
-
-    private static func applyTooltipAppearance() {
-        // 主窗口（titled）的 effectiveAppearance 才是用户实际看到的主题：
-        // preferredColorScheme 会覆盖全局 darkAqua，不能用 NSApp.effectiveAppearance。
-        let isDark: Bool
-        if let mainWindow = NSApp.windows.first(where: { $0.styleMask.contains(.titled) }) {
-            isDark = mainWindow.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-        } else {
-            isDark = false
+    /// 应用内所有控件不再显示悬停提示（SwiftUI `.help()` / AppKit `toolTip`）。
+    /// 产品上已不需要该提示；且 `NSApp.appearance` 被强制 darkAqua 后，系统
+    /// tooltip 在浅色主题下文字不可见，表现为黑/灰空方块。
+    /// 做法：同时拦截 NSView 的两个 tooltip 入口——`setToolTip:`（toolTip 属性）
+    /// 与 `addToolTip:rect:`（tracking rect，SwiftUI `.help()` 的 AppKit 后端
+    /// 实际走这条），均替换为空实现。系统拿不到提示文本就不会创建 NSToolTip
+    /// 窗口，悬停时什么都不会弹出。菜单栏歌词由自定义 LyricBarView
+    /// （NSTextField）渲染，不经过 tooltip，完全不受影响。
+    private static func disableAllToolTips() {
+        // 入口 1：-[NSView setToolTip:]（AppKit toolTip 属性）。
+        if let method = class_getInstanceMethod(NSView.self, #selector(setter: NSView.toolTip)) {
+            // IMP 形如 (id self, NSString *tip)，imp_implementationWithBlock
+            // 的 block 隐式接收 self 作为第一个参数。
+            let block: @convention(block) (AnyObject?, String?) -> Void = { _, _ in }
+            method_setImplementation(method, imp_implementationWithBlock(block))
         }
-        let targetAppearance = NSAppearance(named: isDark ? .darkAqua : .aqua)
 
-        for window in NSApp.windows {
-            // 识别 tooltip 窗口：系统 tooltip 窗口类名固定为 NSToolTip。
-            guard window.className.localizedCaseInsensitiveContains("tooltip") else { continue }
-            // 只在确实不同时赋值，避免无谓重绘。
-            if window.appearance != targetAppearance {
-                window.appearance = targetAppearance
-            }
+        // 入口 2：-[NSView addToolTip:rect:]（基于 tracking rect 的老式 API，
+        // SwiftUI 的 .help() 在 AppKit 后端实际走这条路径，实测只拦 setToolTip:
+        // 仍会生成 NSToolTip 窗口）。返回值为 tooltip tag，空实现返回 0。
+        let addSelector = Selector(("addToolTip:rect:"))
+        if let method = class_getInstanceMethod(NSView.self, addSelector) {
+            let block: @convention(block) (AnyObject?, String?, NSRect) -> Int = { _, _, _ in 0 }
+            method_setImplementation(method, imp_implementationWithBlock(block))
         }
     }
 
     private static func fitWindowsToVisibleScreen() {
-        for window in NSApp.windows where window.isVisible && !window.className.localizedCaseInsensitiveContains("tooltip") {
+        for window in NSApp.windows where window.isVisible {
             window.toolbar = nil
             window.titlebarAppearsTransparent = true
             window.titleVisibility = .hidden
