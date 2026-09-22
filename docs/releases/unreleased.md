@@ -5,6 +5,18 @@
 - 上一稳定版本：`v3.12.0`
 - 当前 `VERSION`：`3.13.0-beta5`
 
+## 本轮摘要（2026-09-22，分支 `codex/stress-crash-fixes`：发布前极限排雷）
+
+正式版发布前的稳定性总验收，目标是找出并消除会导致**闪退、打不开**的严重问题。先分析全部历史崩溃日志，再做冷启动、异常数据、UI 风暴、内存泄漏多维极限测试，静态扫描全代码库的致命陷阱，最后修复并全量回归。
+
+- **用户可见变化**：正常使用无界面/交互变化；两类罕见但致命的闪退路径被消除（布局重入 trap、音频 Tap 创建失败即崩），异常资料库不再导致打不开。
+- **历史崩溃日志分析**（`~/Library/Logs/DiagnosticReports`，13 份均为旧 build 210）：① 7 份签名相同的 `EXC_BREAKPOINT/SIGTRAP`，栈顶 SwiftUI `NSViewPlatformViewDefinition.initView → makeView`，发生在 NSHostingView.layout 期间创建 NSViewRepresentable 宿主时——应用符号已内联，结合代码定位到音量控件 `FrameReporterView` 在 AppKit layout pass 中**同步**执行 `onFrameHandler` 闭包，而 [PlayerBar.swift](../../Sources/HarmonyPlayer/Views/PlayerBar.swift) 两处闭包回写 SwiftUI 状态（`BarVolumeControl.controlFrame` 真 @State、播放页 `volumeState.hotFrame` 间接驱动更新），重入 SwiftUI ViewUpdater 即可能触发该 trap；② 6 份 `-[NSApplication _crashOnException:]`（17 点五连发 + 9-17 一份），`-[NSWindow(NSFullScreen) _inFullScreen]` 消息发给野对象、CATransaction commit 布局期间窗口 use-after-free——现版本压测未复现，代码侧菜单栏 popover 释放顺序正确（先 close 再置 nil 再 removeStatusItem），作为残余风险记录观察。
+- **技术变更（修复 ①：布局重入）**：[NowPlayingView.swift](../../Sources/HarmonyPlayer/Views/NowPlayingView.swift) 的 `FrameReporterView` 新增 `lastReportedFrame`/`isReportScheduled`，`viewDidMoveToWindow()`、`layout()`、`reportFrame()`（updateNSView）统一走 `scheduleReport()`：合并到 `DispatchQueue.main.async` 下一轮 runloop 再算 `convert(bounds, to: nil)` 并回调，彻底跳出 AppKit layout pass 与 SwiftUI update；每轮 runloop 最多上报一次，相同 frame 去重，window 为 nil 时上报 nil。音量热区仅延迟一个 runloop 就绪，悬停滚轮/点击外部收起行为实测不变。
+- **技术变更（修复 ②：EQ tap 致命错误）**：[Equalizer.swift](../../Sources/HarmonyPlayer/Services/Equalizer.swift) 的 `EQTap.makeTap` 签名由非可选改为 `MTAudioProcessingTap?`，`MTAudioProcessingTapCreate` 失败时释放 `passRetained` 的 context（+1 平衡，防泄漏）、写 NSLog 并返回 nil；`EQTap.attach` 用 `guard let tap` 提前返回。失败时该曲目仅跳过 EQ/频谱，不再 `precondition`/`fatalError` 崩溃（原调用点在 loadTracks 后台回调链上，失败即闪退）。
+- **异常数据启动验证**：对真实库备份后注入四种损坏——`head -c 400` 截断、300 字节随机二进制、空文件、`{"tracks":"not-an-array"...}` 错结构——冷启动均成功开窗、零崩溃；截断版显示保护提示「资料库文件损坏，已暂停修改以保护原文件」（LibraryStore `.failed` → isPersistenceSuppressed=true，不会覆写原文件）。保存走 `data.write(to:options:.atomic)` 原子写，`kill -9` 不会写坏库。测试后真实库已还原（400 首、JSON 合法）。
+- **兼容性**：无数据/设置/库结构迁移；两个修复均为内部行为，界面、交互、音频链路在正常路径下完全不变。
+- **验证**：`swift test --disable-sandbox` 110/110 通过（8.3s，0 failures）；`scripts/build-app.sh` release 打包 + ad-hoc 签名成功（仅既有 DockArtworkController actor warning）。冷启动 `pkill -9` 后重开 11 轮全部 ALIVE、窗口数=1、零新崩溃报告；UI 压力共 8 轮（修复前 5 轮 + 含修复新包 3 轮，每轮狂切侧栏四页、三处甩滚、播放/暂停×8、切歌×8、随机/红心/队列、EQ 面板、歌词、搜索打字、播放页歌词甩滚）全部存活、终态界面正常；3.5 分钟播放+切歌+狂切页 churn，RSS 走平（约 +1MB 分配器抖动）、physical footprint 约 130MB、`leaks` 两次均 0 leaks / 0 bytes。音量控件专项：经 NSLog 坐标诊断确认滚轮事件能被本地监视器接收且热区判定正确（此前一次"滚轮无效"是测试注入点比真实热区高 17pt 的测试误差，非产品 bug），主播放条与播放页喇叭滚轮（45→90 等）、滑条拖动/点击跳值、点击静音/恢复、播放页滑块展开/点外收起均实测正常。静态全库扫描其余强解包均安全（IBOutlet 延迟初始化、已校验 count 的数组强解包、vDSP baseAddress），无 `try!`。
+
 ## 本轮摘要（2026-09-22，分支 `codex/perf-fast-scroll-artwork`：快速滑动封面秒出 + 播放 CPU 优化）
 
 正式版前性能优化工程的第一步：先保用户体验不降级，再修性能。针对主人反馈「歌曲界面/专辑界面快速滑动时封面显示不出来」做根因修复；验证中顺带定位并修复了播放进度条导致的持续高 CPU（主线程空布局）。

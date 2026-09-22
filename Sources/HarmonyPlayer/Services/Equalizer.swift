@@ -666,8 +666,10 @@ enum EQTap {
     static func attach(to item: AVPlayerItem, equalizer: Equalizer) {
         item.asset.loadTracks(withMediaType: .audio) { tracks, _ in
             guard let track = tracks?.first else { return }
+            // tap 创建失败（极端资源状况）只跳过 EQ/频谱，绝不让播放器崩溃。
+            guard let tap = makeTap(equalizer: equalizer) else { return }
             let parameters = AVMutableAudioMixInputParameters(track: track)
-            parameters.audioTapProcessor = makeTap(equalizer: equalizer)
+            parameters.audioTapProcessor = tap
             let mix = AVMutableAudioMix()
             mix.inputParameters = [parameters]
             item.audioMix = mix
@@ -680,7 +682,8 @@ enum EQTap {
 
     /// 创建 tap（CM_RETURNS_RETAINED：+1 引用交给 ARC，
     /// 赋给 audioTapProcessor 属性后所有权归音频管线，finalize 回调释放上下文）。
-    static func makeTap(equalizer: Equalizer) -> MTAudioProcessingTap {
+    /// 失败返回 nil（调用方跳过 EQ/频谱），不用 precondition/fatalError 让 App 崩溃。
+    static func makeTap(equalizer: Equalizer) -> MTAudioProcessingTap? {
         let context = EQTapContext(equalizer: equalizer, spectrumRing: equalizer.spectrumRing)
         let contextPointer = Unmanaged
             .passRetained(context)
@@ -701,9 +704,11 @@ enum EQTap {
             kMTAudioProcessingTapCreationFlag_PostEffects,
             &tapOut
         )
-        precondition(status == noErr, "MTAudioProcessingTapCreate 失败：\(status)")
-        guard let tap = tapOut else {
-            fatalError("MTAudioProcessingTapCreate 未返回 tap")
+        guard status == noErr, let tap = tapOut else {
+            // 没有 tap 接管，+1 的 context 必须在此释放，避免泄漏。
+            Unmanaged<EQTapContext>.fromOpaque(contextPointer).release()
+            NSLog("[HarmonyPlayer] MTAudioProcessingTapCreate 失败 status=\(status)，本曲跳过 EQ/频谱")
+            return nil
         }
         return tap
     }

@@ -2,6 +2,13 @@
 
 ## Unreleased（3.13.0 正式版准备中）
 
+### 稳定性：发布前极限排雷（分支 codex/stress-crash-fixes）
+
+#### 修复（闪退隐患）
+
+- 修复音量控件在界面布局过程中同步回写 SwiftUI 状态、可能触发 `NSViewPlatformViewDefinition` 初始化 trap（SIGTRAP）导致闪退的隐患：喇叭/滑条热区的坐标上报改为合并到下一轮 runloop 异步派发（每轮最多一次、相同坐标去重），不再重入布局流程；音量悬停滚轮、点击外部收起滑块等行为保持不变。
+- 修复均衡器音频处理 Tap（MTAudioProcessingTap）创建失败时因 `precondition`/`fatalError` 直接崩溃的问题：失败时仅对该曲目跳过均衡器与实时频谱（并输出系统日志），播放与其他功能不受影响。
+
 ### 性能：快速滑动封面秒出 + 播放 CPU 大幅下降（分支 codex/perf-fast-scroll-artwork）
 
 #### 改进（用户可感知）

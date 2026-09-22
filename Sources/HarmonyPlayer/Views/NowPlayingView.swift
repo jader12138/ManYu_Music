@@ -686,22 +686,40 @@ struct VolumeFrameReporter: NSViewRepresentable {
     final class FrameReporterView: NSView {
         var onFrameHandler: ((CGRect?) -> Void)?
 
+        /// 最近一次已上报的 frame：.none=尚未上报；.some(nil)=已上报无窗口态；
+        /// .some(rect)=已上报某 frame。相同值不重复回调。
+        private var lastReportedFrame: CGRect?? = .none
+        private var isReportScheduled = false
+
         override func viewDidMoveToWindow() {
-            reportFrame()
+            scheduleReport()
         }
 
         override func layout() {
             super.layout()
-            reportFrame()
+            scheduleReport()
         }
 
         func reportFrame() {
-            guard let window else {
-                onFrameHandler?(nil)
-                return
+            scheduleReport()
+        }
+
+        /// 绝不在 AppKit layout pass / SwiftUI update 过程中同步回调：
+        /// 闭包会写 SwiftUI @State（如 BarVolumeControl.controlFrame），同步写
+        /// 会重入 SwiftUI ViewUpdater，历史崩溃栈为 SIGTRAP @
+        /// NSViewPlatformViewDefinition.initView（build 210 连发 7 次）。
+        /// 合并到下一个 runloop 再发，每轮最多一次，并去重相同 frame。
+        private func scheduleReport() {
+            guard !isReportScheduled else { return }
+            isReportScheduled = true
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                self.isReportScheduled = false
+                let frame = self.window.map { _ in self.convert(self.bounds, to: nil) }
+                guard self.lastReportedFrame != .some(frame) else { return }
+                self.lastReportedFrame = .some(frame)
+                self.onFrameHandler?(frame)
             }
-            // convert(to: nil) 自动完成坐标系转换，零误差。
-            onFrameHandler?(convert(bounds, to: nil))
         }
     }
 }
