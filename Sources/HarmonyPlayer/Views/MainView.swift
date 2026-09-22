@@ -374,7 +374,8 @@ struct MainView: View {
                 isFocused: $searchIsFocused,
                 textColor: theme.appearance == .dark
                     ? NSColor(calibratedWhite: 0.92, alpha: 1)
-                    : NSColor(calibratedWhite: 0.10, alpha: 1),
+                    // 蓝色偏黑（深藏青）：比纯黑柔和，与主题蓝呼应。
+                    : NSColor(srgbRed: 0.07, green: 0.13, blue: 0.26, alpha: 1),
                 placeholderColor: theme.appearance == .dark
                     ? NSColor(calibratedWhite: 0.60, alpha: 1)
                     : NSColor(calibratedWhite: 0.45, alpha: 1)
