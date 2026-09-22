@@ -596,12 +596,25 @@ struct PlaybackPressButtonStyle: ButtonStyle {
     }
 }
 
-/// 浮出式音量控件（原播放页音量控件，现迁至播放条右侧）：
-/// 点击喇叭从上方弹出竖向滑块、再点收起，收起时悬停滚轮调音量；滑块
-/// 悬浮在喇叭上方、不挤占控件行布局；展开期间点击热区之外自动收起
-/// （NSEvent 本地监视器，事件原样放行）。依赖的 VolumeFrameReporter /
-/// VolumeScrollCatcher 定义在 NowPlayingView.swift。
+/// 浮出式音量控件（播放条与播放页共用）：
+/// 点击喇叭弹出滑块、再点收起；收起时悬停滚轮调音量；滑块悬浮、不挤占
+/// 布局；展开期间点击热区之外自动收起（NSEvent 本地监视器，事件原样放行）。
+/// - .above：竖向滑块从喇叭**上方**弹出（底部播放条用）；
+/// - .trailing：横向滑块从喇叭**右方**弹出（播放页控制行用）。
+/// 滚轮调节同样走 NSEvent 本地监视器——不用 NSView 捕获层：原生视图盖在
+/// 图标上方时会成为 SwiftUI 命中测试的终点，图标自身的手势失效，点击会
+/// 漏给祖先容器（播放条"空白区域进播放页"）。依赖的 VolumeFrameReporter
+/// 与 HorizontalVolumeSlider 定义在 NowPlayingView.swift。
 struct PlayerVolumeControl: View {
+    enum PopDirection {
+        /// 竖向滑块向上弹出（底部播放条）。
+        case above
+        /// 横向滑块向右弹出（播放页控制行）。
+        case trailing
+    }
+
+    var direction: PopDirection = .above
+
     @EnvironmentObject private var player: AudioPlayer
     @State private var showsVolumeSlider = false
     /// 滑块共享状态（引用类型）：NSEvent 监视器闭包从 @State 读到的是旧快照，
@@ -612,6 +625,7 @@ struct PlayerVolumeControl: View {
     }
     @State private var volumeState = VolumeDismissState()
     @State private var volumeDismissMonitor: Any?
+    @State private var volumeScrollMonitor: Any?
 
     var body: some View {
         Image(systemName: volumeIconName)
@@ -627,38 +641,43 @@ struct PlayerVolumeControl: View {
                     .offset(y: 5)
                     .opacity(showsVolumeSlider ? 0 : 1)
             }
-            .overlay(alignment: .bottom) {
-                VerticalVolumeSlider(value: Binding(
-                    get: { player.volume },
-                    set: { player.volume = $0 }
-                ))
-                .scaleEffect(y: showsVolumeSlider ? 1 : 0.4, anchor: .bottom)
-                .opacity(showsVolumeSlider ? 1 : 0)
-                .offset(y: showsVolumeSlider ? -27 : -33)
-                .allowsHitTesting(showsVolumeSlider)
+            .overlay(alignment: direction == .trailing ? .leading : .bottom) {
+                volumeSlider
             }
             .onTapGesture {
-                // 点击喇叭切换展开/收起。必须走 SwiftUI 手势：NSView 捕获层若
-                // 吞掉 mouseUp，播放条"空白区域进播放页"的祖先 tap 会同时触发。
-                // 内层 SwiftUI 手势天然优先于祖先层（与播放条上其他按钮一致）。
+                // 点击喇叭切换展开/收起。滚轮捕获层已移除，SwiftUI 命中测试
+                // 直达图标，内层手势优先于祖先层（与播放条其他按钮一致）。
                 volumeState.isExpanded = !showsVolumeSlider
                 withAnimation(.easeInOut(duration: 0.24)) {
                     showsVolumeSlider.toggle()
                 }
             }
             .help("点击展开/收起音量滑块；收起时悬停滚动可调音量")
-            // 收起时才挂滚轮捕获层：仅滚轮调音量，点击一律交给 SwiftUI 手势；
-            // 展开后移除，滑块的点击与拖动手势不再被 NSView 拦截。
-            .overlay {
-                if !showsVolumeSlider {
-                    VolumeScrollCatcher(onScroll: { delta in
-                        let clamped = min(0.15, max(-0.15, delta))
-                        player.volume = min(1, max(0, player.volume + clamped))
-                    })
-                }
-            }
-            .onAppear { installDismissMonitor() }
-            .onDisappear { removeDismissMonitor() }
+            .onAppear { installMonitors() }
+            .onDisappear { removeMonitors() }
+    }
+
+    @ViewBuilder
+    private var volumeSlider: some View {
+        if direction == .trailing {
+            HorizontalVolumeSlider(value: Binding(
+                get: { player.volume },
+                set: { player.volume = $0 }
+            ))
+            .scaleEffect(x: showsVolumeSlider ? 1 : 0.4, anchor: .leading)
+            .opacity(showsVolumeSlider ? 1 : 0)
+            .offset(x: showsVolumeSlider ? 32 : 40)
+            .allowsHitTesting(showsVolumeSlider)
+        } else {
+            VerticalVolumeSlider(value: Binding(
+                get: { player.volume },
+                set: { player.volume = $0 }
+            ))
+            .scaleEffect(y: showsVolumeSlider ? 1 : 0.4, anchor: .bottom)
+            .opacity(showsVolumeSlider ? 1 : 0)
+            .offset(y: showsVolumeSlider ? -27 : -33)
+            .allowsHitTesting(showsVolumeSlider)
+        }
     }
 
     private var volumeIconName: String {
@@ -670,15 +689,13 @@ struct PlayerVolumeControl: View {
         }
     }
 
-    private func installDismissMonitor() {
+    private func installMonitors() {
         guard volumeDismissMonitor == nil else { return }
+
+        // 点击外部收起：热区外左键按下即收起，事件原样放行。
         volumeDismissMonitor = NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown) { event in
             if volumeState.isExpanded {
-                // 热区 = 喇叭按钮 frame 向上扩展（竖向滑块浮层所在区域）。
-                let hot = volumeState.hotFrame.map {
-                    CGRect(x: $0.minX, y: $0.minY - 96, width: $0.width, height: $0.height + 96)
-                }
-                let insideHotZone = hot?.contains(event.locationInWindow) ?? false
+                let insideHotZone = hotZone()?.contains(event.locationInWindow) ?? false
                 if !insideHotZone {
                     volumeState.isExpanded = false
                     withAnimation(.easeInOut(duration: 0.24)) {
@@ -688,12 +705,42 @@ struct PlayerVolumeControl: View {
             }
             return event
         }
+
+        // 悬停滚轮调音量：仅收起时、仅悬停在喇叭上时吞掉事件，
+        // 其余情况原样放行（不影响背后列表的正常滚动）。
+        volumeScrollMonitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { event in
+            if !showsVolumeSlider,
+               event.scrollingDeltaY != 0,
+               volumeState.hotFrame?.contains(event.locationInWindow) == true {
+                let delta = -event.scrollingDeltaY / (event.hasPreciseScrollingDeltas ? 40 : 8)
+                let clamped = min(0.15, max(-0.15, delta))
+                player.volume = min(1, max(0, player.volume + clamped))
+                return nil
+            }
+            return event
+        }
     }
 
-    private func removeDismissMonitor() {
+    /// 滑块热区：竖向弹出向上扩展、横向弹出向右扩展。
+    private func hotZone() -> CGRect? {
+        volumeState.hotFrame.map { icon in
+            switch direction {
+            case .above:
+                CGRect(x: icon.minX, y: icon.minY - 96, width: icon.width, height: icon.height + 96)
+            case .trailing:
+                CGRect(x: icon.minX, y: icon.minY, width: icon.width + 70, height: icon.height)
+            }
+        }
+    }
+
+    private func removeMonitors() {
         if let monitor = volumeDismissMonitor {
             NSEvent.removeMonitor(monitor)
             volumeDismissMonitor = nil
+        }
+        if let monitor = volumeScrollMonitor {
+            NSEvent.removeMonitor(monitor)
+            volumeScrollMonitor = nil
         }
     }
 }

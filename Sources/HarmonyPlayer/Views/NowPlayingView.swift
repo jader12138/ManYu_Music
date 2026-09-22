@@ -239,8 +239,8 @@ struct NowPlayingView: View {
                 }
                 .disabled(player.currentTrack == nil)
 
-                // 音量控件（与播放条右下角同一控件：点击喇叭上方弹出竖向滑块）。
-                PlayerVolumeControl()
+                // 音量控件（与播放条同一控件；播放页样式=从喇叭右方弹出横向滑块）。
+                PlayerVolumeControl(direction: .trailing)
             }
         }
         .padding(.horizontal, 4)
@@ -652,7 +652,8 @@ struct NowPlayingView: View {
     }
 }
 
-/// 上报所在位置的窗口坐标（AppKit 坐标系），供"点击热区外收起滑块"的判断使用。
+/// 上报所在位置的窗口坐标（AppKit 坐标系），供"点击热区外收起滑块"与
+/// "悬停滚轮调音量"两个 NSEvent 监视器判断使用。
 struct VolumeFrameReporter: NSViewRepresentable {
     let onFrame: (CGRect?) -> Void
 
@@ -690,32 +691,43 @@ struct VolumeFrameReporter: NSViewRepresentable {
     }
 }
 
-/// 捕获悬停区域内的滚轮调整音量（收起状态专用，
-/// 滑块展开后该层整体移除，避免拦截滑块的拖动手势）。
-/// 点击（展开/收起）由 SwiftUI 手势处理，本层只负责滚轮——NSView 层若吞掉
-/// mouseUp，祖先容器（播放条空白区域）的 tap 手势与展开逻辑无法做互斥裁决。
-struct VolumeScrollCatcher: NSViewRepresentable {
-    let onScroll: (Double) -> Void
+/// 横向音量滑块（播放页音量控件用）：点击轨道跳转、按住拖动均可调整
+/// （右侧为最大音量）。
+struct HorizontalVolumeSlider: View {
+    @Binding var value: Double
 
-    func makeNSView(context: Context) -> ScrollCatcherView {
-        let view = ScrollCatcherView()
-        view.onScrollHandler = onScroll
-        return view
-    }
+    var body: some View {
+        GeometryReader { proxy in
+            let trackWidth = proxy.size.width
+            let thumbSize: CGFloat = 8
 
-    func updateNSView(_ nsView: ScrollCatcherView, context: Context) {
-        nsView.onScrollHandler = onScroll
-    }
+            ZStack {
+                Capsule()
+                    .fill(Color.hpTextPrimary.opacity(0.16))
+                    .frame(height: 3.5)
 
-    final class ScrollCatcherView: NSView {
-        var onScrollHandler: ((Double) -> Void)?
+                Capsule()
+                    .fill(Color.hpAccent)
+                    .frame(width: max(4, trackWidth * value), height: 3.5)
+                    .frame(maxWidth: .infinity, alignment: .leading)
 
-        override func scrollWheel(with event: NSEvent) {
-            guard event.scrollingDeltaY != 0 else { return }
-            // 上滚增大音量；普通滚轮一格约 0.1，触控板细粒度滚动按比例缩放。
-            let delta = -event.scrollingDeltaY / (event.hasPreciseScrollingDeltas ? 40 : 8)
-            onScrollHandler?(delta)
+                Circle()
+                    .fill(Color.gray)
+                    .frame(width: thumbSize, height: thumbSize)
+                    .shadow(color: Color.black.opacity(0.2), radius: 2, y: 1)
+                    .offset(x: (trackWidth - thumbSize) * (value - 0.5))
+            }
+            .frame(height: 14)
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { gesture in
+                        value = min(1, max(0, gesture.location.x / trackWidth))
+                    }
+            )
         }
+        .frame(width: 65, height: 14)
+        .contentShape(Rectangle())
     }
 }
 
