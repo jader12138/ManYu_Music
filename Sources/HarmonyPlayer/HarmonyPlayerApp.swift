@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import ObjectiveC
 
 @main
 struct HarmonyPlayerApp: App {
@@ -104,6 +105,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         Self.installScrollbarHider()
 
+        // 全局禁用控件 tooltip（.help 悬停提示）：早期版本需要，现在产品上
+        // 不再展示；且全局 darkAqua 下 tooltip 文字会不可见（黑/灰空方块）。
+        // 必须在 SwiftUI 窗口创建视图之前装好。
+        Self.disableAllToolTips()
+
         MenuBarPlayerController.shared.syncWithSetting()
 
         // 一次性清掉历史窗口自动存档（含被写坏的 185×24 框架与
@@ -164,6 +170,103 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         for subview in view.subviews {
             hideScrollbars(in: subview)
+        }
+    }
+
+    // MARK: - 全局禁用 tooltip
+
+    /// 应用内所有控件不再显示悬停提示（SwiftUI `.help()` / AppKit `toolTip`）。
+    /// 产品上已不需要该提示；且 `NSApp.appearance` 被强制 darkAqua 后，系统
+    /// tooltip 在浅色主题下文字不可见，表现为黑/灰空方块。
+    ///
+    /// 实现为多层 method swizzling（均在启动早期、SwiftUI 窗口创建视图前执行一次）：
+    /// 1. NSView `setToolTip:` 与 `addToolTip:rect:` → 空实现，掐断常规入口；
+    /// 2. NSView `addTrackingArea:` → 丢弃 userInfo 带 ToolTip 键的追踪区
+    ///    （hover 高亮等普通追踪区不受影响）；
+    /// 3. NSWindow `orderWindow:relativeTo:`（所有窗口上屏动作的底层必经方法，
+    ///    `orderFront:` / `orderFrontRegardless` 最终都走它）连同
+    ///    `orderFront:` / `makeKeyAndOrderFront:` 一起拦截：系统 tooltip 窗口
+    ///    类固定为 `NSToolTipPanel`（实测，它不重写 orderWindow:relativeTo:），
+    ///    对其拒绝上屏——窗口对象会被系统预创建复用，但永远不可见，无闪烁。
+    /// 菜单栏歌词由自定义 LyricBarView（NSTextField）渲染，不经过 tooltip。
+    private static func disableAllToolTips() {
+        // 层 1a：-[NSView setToolTip:]
+        if let method = class_getInstanceMethod(NSView.self, #selector(setter: NSView.toolTip)) {
+            let block: @convention(block) (AnyObject?, String?) -> Void = { _, _ in }
+            method_setImplementation(method, imp_implementationWithBlock(block))
+        }
+
+        // 层 1b：-[NSView addToolTip:rect:]，返回 tooltip tag，空实现返回 0。
+        let addToolTipSelector = Selector(("addToolTip:rect:"))
+        if let method = class_getInstanceMethod(NSView.self, addToolTipSelector) {
+            let block: @convention(block) (AnyObject?, String?, NSRect) -> Int = { _, _, _ in 0 }
+            method_setImplementation(method, imp_implementationWithBlock(block))
+        }
+
+        // 层 2：-[NSView addTrackingArea:] 过滤 tooltip 追踪区。
+        if let method = class_getInstanceMethod(NSView.self, #selector(NSView.addTrackingArea(_:))) {
+            typealias OriginalIMP = @convention(c) (NSView, Selector, NSTrackingArea) -> Void
+            let originalIMP = unsafeBitCast(method_getImplementation(method), to: OriginalIMP.self)
+            let block: @convention(block) (NSView, NSTrackingArea) -> Void = { view, trackingArea in
+                if let userInfo = trackingArea.userInfo,
+                   userInfo.keys.contains(where: { ($0 as? String)?.localizedCaseInsensitiveContains("tooltip") == true }) {
+                    return
+                }
+                originalIMP(view, #selector(NSView.addTrackingArea(_:)), trackingArea)
+            }
+            method_setImplementation(method, imp_implementationWithBlock(block))
+        }
+
+        // 层 3：拒绝 tooltip 窗口上屏（末端、必经、无闪烁的关键拦截）。
+        let isTooltipWindow: (NSWindow) -> Bool = { window in
+            window.className.localizedCaseInsensitiveContains("tooltip")
+        }
+
+        // orderFront:
+        if let method = class_getInstanceMethod(NSWindow.self, #selector(NSWindow.orderFront(_:))) {
+            typealias OriginalIMP = @convention(c) (NSWindow, Selector, AnyObject?) -> Void
+            let originalIMP = unsafeBitCast(method_getImplementation(method), to: OriginalIMP.self)
+            let block: @convention(block) (NSWindow, AnyObject?) -> Void = { window, sender in
+                if isTooltipWindow(window) { return }
+                originalIMP(window, #selector(NSWindow.orderFront(_:)), sender)
+            }
+            method_setImplementation(method, imp_implementationWithBlock(block))
+        }
+
+        // orderFrontRegardless（无参）
+        if let method = class_getInstanceMethod(NSWindow.self, #selector(NSWindow.orderFrontRegardless)) {
+            typealias OriginalIMP = @convention(c) (NSWindow, Selector) -> Void
+            let originalIMP = unsafeBitCast(method_getImplementation(method), to: OriginalIMP.self)
+            let block: @convention(block) (NSWindow) -> Void = { window in
+                if isTooltipWindow(window) { return }
+                originalIMP(window, #selector(NSWindow.orderFrontRegardless))
+            }
+            method_setImplementation(method, imp_implementationWithBlock(block))
+        }
+
+        // makeKeyAndOrderFront:
+        let makeKeySelector = Selector(("makeKeyAndOrderFront:"))
+        if let method = class_getInstanceMethod(NSWindow.self, makeKeySelector) {
+            typealias OriginalIMP = @convention(c) (NSWindow, Selector, AnyObject?) -> Void
+            let originalIMP = unsafeBitCast(method_getImplementation(method), to: OriginalIMP.self)
+            let block: @convention(block) (NSWindow, AnyObject?) -> Void = { window, sender in
+                if isTooltipWindow(window) { return }
+                originalIMP(window, makeKeySelector, sender)
+            }
+            method_setImplementation(method, imp_implementationWithBlock(block))
+        }
+
+        // orderWindow:relativeTo: —— orderFront 系列的底层实现，实测唯一必经路径。
+        // mode: 1=above, 2=below, 0=out。仅拦截上屏，放行 orderOut（隐藏）。
+        let orderWindowSelector = Selector(("orderWindow:relativeTo:"))
+        if let method = class_getInstanceMethod(NSWindow.self, orderWindowSelector) {
+            typealias OriginalIMP = @convention(c) (NSWindow, Selector, UInt, Int) -> Void
+            let originalIMP = unsafeBitCast(method_getImplementation(method), to: OriginalIMP.self)
+            let block: @convention(block) (NSWindow, UInt, Int) -> Void = { window, mode, relativeTo in
+                if mode != 0 && isTooltipWindow(window) { return }
+                originalIMP(window, orderWindowSelector, mode, relativeTo)
+            }
+            method_setImplementation(method, imp_implementationWithBlock(block))
         }
     }
 

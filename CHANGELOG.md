@@ -2,6 +2,14 @@
 
 ## Unreleased（3.13.0 正式版准备中）
 
+### 移除：全局禁用控件悬停提示 tooltip（分支 codex/tooltip-appearance）
+
+- 鼠标悬停在控件（上一首/下一首/返回等）上时，tooltip 显示为黑/灰空方块、没有文字。根因是为修菜单栏黑底而设置的全局 `NSApp.appearance = .darkAqua`，系统 tooltip 在浅色主题下文字与背景配色错乱。
+- 用户确认软件内已不需要悬停提示，最终方案为**全局禁用 tooltip**（中途曾尝试把 tooltip 窗口 appearance 校正为跟随主题，实测仍不显示文字，已弃用该方案）。
+- 实现：启动时 `disableAllToolTips()` 用 method swizzling 多层拦截。**实测关键路径在窗口层而非视图层**——`setToolTip:` / `addToolTip:rect:` / `addTrackingArea:` 三层对 SwiftUI `.help()` 全部零命中（它绕过 NSView 基类）；系统 tooltip 窗口的真实类是 `NSToolTipPanel`（layer 103），系统会预创建该窗口对象复用，但它显示必经 `NSWindow.orderWindow:relativeTo:`（`orderFront:` / `orderFrontRegardless` 最终都走它，`NSToolTipPanel` 自身不重写该方法）。在该方法（连同 `orderFront:` / `makeKeyAndOrderFront:`）中对类名含 tooltip 的窗口拒绝上屏后，窗口对象仍存在但永远不可见，无闪烁。
+- 菜单栏歌词由自定义 `LyricBarView`（NSTextField）渲染，不经过 tooltip，完全不受影响；菜单栏黑底的 CALayer swizzle 根因层也未改动。
+- `.help()` 调用保留在代码中（不再产生任何界面效果），以后若恢复提示只需移除 swizzle。
+
 ### 主窗口固定启动位置与尺寸（分支 codex/fixed-window-frame）
 
 #### 新增（每次打开都在同一位置、同一尺寸）
