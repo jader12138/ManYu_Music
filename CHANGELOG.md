@@ -9,6 +9,16 @@
 - 搜索框回归顶栏原位置（夜间模式按钮左侧，236pt 胶囊样式），支持按歌名/艺人/专辑原文过滤；输入框改用原生 NSTextField 固定色值渲染（浅色蓝黑/深色浅灰白），彻底修复"输入文字看不见"的历史问题。
 - 新增拼音检索：输入全拼（如 "zhoujielun"、"qingt"）或首字母（如 "zjl"、"qt"）即可匹配中文歌名/艺人/专辑，基于 CFStringTransform 生成全拼与首字母键并按原文缓存，匹配在后台快照构建时进行、不阻塞界面。
 
+### 歌曲信息（分支 codex/track-audio-info）
+
+#### 新增（音频技术参数展示）
+
+- 歌曲信息弹层（三个点 → 歌曲信息）"格式"行后新增三行：**比特率**（"320 KBPS"、FLAC 1593 KBPS）、**采样率**（"44100 Hz"、"48000 Hz"、"96000 Hz"）、**通道**（"单声道" / "立体声" / "N 声道"）。
+- Track 模型新增 `bitrate / sampleRate / channels` 三个可选字段（旧 library.json 缺键解码为 nil，弹层显示"未知"）；首次扫描写入并随库持久化。
+- 实现来源：`AudioFileOpenURL` + `kAudioFilePropertyBitRate` + `kAudioFilePropertyDataFormat`（与 macOS 自带 `afinfo` 同款 AudioFile API，可靠支持 MP3/M4A/FLAC/WAV/AIFF/CAF），同步函数包在 `Task.detached(.utility)` 中跑不阻塞 UI。
+- TrackInfoView 弹层用 `.task(id: track.id)` 现场抽取，老库无需重新扫描即可显示真实值；加载中显示"读取中…"，读取失败显示"未知"。
+- 文件大小行保持不变（`ByteCountFormatter` 已以 MB 显示典型音频文件）。
+
 ### 界面调整（分支 codex/search-volume-rework）
 
 #### 调整

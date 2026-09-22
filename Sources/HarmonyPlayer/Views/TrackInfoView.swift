@@ -6,6 +6,12 @@ struct TrackInfoView: View {
     @EnvironmentObject private var library: LibraryStore
     @Environment(\.dismiss) private var dismiss
 
+    // 现场加载的音频技术参数（Track 已持久化就用持久化的，否则从 AVAsset 现读）
+    @State private var liveBitrate: Int?
+    @State private var liveSampleRate: Int?
+    @State private var liveChannels: Int?
+    @State private var isLoadingAudioTech: Bool = false
+
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
             HStack {
@@ -39,12 +45,25 @@ struct TrackInfoView: View {
                     .textSelection(.enabled)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
+            infoRow("比特率", formattedBitrate)
+            infoRow("采样率", formattedSampleRate)
+            infoRow("通道", formattedChannels)
             infoRow("播放次数", "\(library.playCount(for: track))")
             infoRow("文件大小", fileSize)
             infoRow("文件位置", track.url.path)
         }
         .padding(24)
         .frame(width: 520)
+        .task(id: track.id) {
+            // 已有持久化值就不重复读盘
+            guard track.bitrate == nil || track.sampleRate == nil || track.channels == nil else { return }
+            isLoadingAudioTech = true
+            let params = await AudioMetadataLoader.loadAudioTechParameters(for: track)
+            liveBitrate = params.bitrate
+            liveSampleRate = params.sampleRate
+            liveChannels = params.channels
+            isLoadingAudioTech = false
+        }
     }
 
     private func infoRow(_ title: String, _ value: String) -> some View {
@@ -67,5 +86,36 @@ struct TrackInfoView: View {
             return "未知"
         }
         return ByteCountFormatter.string(fromByteCount: Int64(bytes), countStyle: .file)
+    }
+
+    /// 比特率：bps → KBPS（千比特每秒）。320 kbps MP3 → "320 KBPS"，FLAC 1592745 bps → "1593 KBPS"。
+    private var formattedBitrate: String {
+        let bps = track.bitrate ?? liveBitrate
+        guard let bps, bps > 0 else {
+            return isLoadingAudioTech ? "读取中…" : "未知"
+        }
+        return "\(Int((Double(bps) / 1000).rounded())) KBPS"
+    }
+
+    /// 采样率：直接以 Hz 显示。44100 → "44100 Hz"，48000 → "48000 Hz"，96000 → "96000 Hz"。
+    private var formattedSampleRate: String {
+        let hz = track.sampleRate ?? liveSampleRate
+        guard let hz, hz > 0 else {
+            return isLoadingAudioTech ? "读取中…" : "未知"
+        }
+        return "\(hz) Hz"
+    }
+
+    /// 通道：1 → 单声道，2 → 立体声，其他 → "N 声道"。
+    private var formattedChannels: String {
+        let ch = track.channels ?? liveChannels
+        guard let ch, ch > 0 else {
+            return isLoadingAudioTech ? "读取中…" : "未知"
+        }
+        switch ch {
+        case 1: return "单声道"
+        case 2: return "立体声"
+        default: return "\(ch) 声道"
+        }
     }
 }

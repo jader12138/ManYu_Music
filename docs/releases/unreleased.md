@@ -14,6 +14,17 @@
 - **兼容性**：无设置/数据迁移；音量调节途径不变（控件滚轮/滑块、系统音量键）。
 - **验证**：Release 编译通过、单元测试全绿、应用启动后人工核对顶栏无搜索框、播放条音量控件展开/收起/滚轮调节正常。
 
+## 本轮摘要（2026-09-22，分支 `codex/track-audio-info`：歌曲信息弹层新增音频技术参数）
+
+歌曲信息弹层（三个点 → 歌曲信息）补充三项音频工程参数，便于查看每首曲目的码率/采样率/声道规格。
+
+- **新增（弹层展示）**：`TrackInfoView` 在"格式"行后插入三行——**比特率**（bps / 1000 取整 + " KBPS"，如 320 KBPS、FLAC 1593 KBPS）、**采样率**（直接以 "Hz" 显示，如 44100 Hz、48000 Hz、96000 Hz）、**通道**（1 → "单声道"、2 → "立体声"、其他 → "N 声道"）。未读取到时显示"未知"，加载中显示"读取中…"。
+- **实现**：`Track` 模型新增 `bitrate: Int?`（bps）/ `sampleRate: Int?`（Hz）/ `channels: Int?`（声道数）三个可选字段；`init` 增加三个默认 `nil` 参数，老调用点零改动；`Codable` 走 synthesized `decodeIfPresent`，旧 library.json 缺键解码为 nil。
+- **抽取来源**：[AudioMetadataLoader.swift](Sources/HarmonyPlayer/Services/AudioMetadataLoader.swift) 的 `loadAudioTechParameters(from:)` 用 **AudioFile API**（与 macOS 自带 `afinfo` 同源）：`AudioFileOpenURL` 打开文件 → `kAudioFilePropertyBitRate` 取整轨平均比特率（bps，VBR 也是平均值）→ `kAudioFilePropertyDataFormat` 取 `AudioStreamBasicDescription` 的 `mSampleRate` / `mChannelsPerFrame`。可靠支持 MP3/M4A/FLAC/WAV/AIFF/CAF 等全部支持格式；同步函数包在 `Task.detached(.utility)` 中跑，不阻塞 UI。
+- **现场加载**：`TrackInfoView` 用 `.task(id: track.id)` 调 `AudioMetadataLoader.loadAudioTechParameters(for:)` 现场抽取——Track 已持久化的字段优先用，缺的从 AudioFile 现读并取并集。**老库无需重新扫描**即可显示真实值，重新扫描后字段持久化（下次显示更快）。
+- **兼容性**：无设置/数据迁移；不影响播放、队列、歌词、恢复、推荐、均衡器任何业务路径。文件大小行不变（`ByteCountFormatter` 已以 MB 显示典型音频文件）。
+- **验证**：`afinfo` 对 FLAC "慢慢喜欢你 - 莫文蔚.flac" 报告 `2 ch / 48000 Hz / 1592745 bps`，软件弹层显示 `1593 KBPS / 48000 Hz / 立体声`（数学一致：1592745 / 1000 ≈ 1593）；`swift test --disable-sandbox` 94/94 通过；`swift build -c release --disable-sandbox` 通过。
+
 ## 本轮摘要（2026-09-22，分支 `codex/search-pinyin`：搜索回归 + 拼音检索）
 
 顶栏搜索框回归原位置并新增拼音检索。

@@ -1,5 +1,6 @@
 import AppKit
 import AVFoundation
+import AudioToolbox
 
 enum AudioMetadataLoader {
     static let supportedExtensions: Set<String> = [
@@ -36,6 +37,11 @@ enum AudioMetadataLoader {
         let metadataAlbum = await stringValue(for: .commonKeyAlbumName, in: metadata)
         let album = embedded?.album ?? metadataAlbum
 
+        // 音频技术参数：用 AudioFile API（与 afinfo 同款），同步函数放后台线程跑
+        let audioTech = await Task.detached(priority: .utility) {
+            loadAudioTechParameters(from: standardizedURL)
+        }.value
+
         return Track(
             id: id,
             url: standardizedURL,
@@ -43,8 +49,72 @@ enum AudioMetadataLoader {
             artist: artist ?? "",
             album: album ?? "",
             duration: duration.isFinite ? max(0, duration) : 0,
-            dateAdded: dateAdded
+            dateAdded: dateAdded,
+            bitrate: audioTech.bitrate,
+            sampleRate: audioTech.sampleRate,
+            channels: audioTech.channels
         )
+    }
+
+    /// 从 URL 现场抽取音频技术参数（用于 TrackInfoView 弹层，避免强制重新扫描 library）。
+    /// 优先返回 Track 已持久化的字段（重新扫描后会有），缺失则现场用 AudioFile API 读取。
+    static func loadAudioTechParameters(
+        for track: Track
+    ) async -> (bitrate: Int?, sampleRate: Int?, channels: Int?) {
+        // 已持久化的字段优先返回，避免重复磁盘 I/O
+        if track.bitrate != nil, track.sampleRate != nil, track.channels != nil {
+            return (track.bitrate, track.sampleRate, track.channels)
+        }
+        // 现场读取放后台线程，避免阻塞 UI
+        let live = await Task.detached(priority: .utility) {
+            loadAudioTechParameters(from: track.url)
+        }.value
+        return (
+            track.bitrate ?? live.bitrate,
+            track.sampleRate ?? live.sampleRate,
+            track.channels ?? live.channels
+        )
+    }
+
+    /// 用 AudioFile API（与 macOS `afinfo` 同款）从音频文件读取比特率/采样率/声道数。
+    /// - `kAudioFilePropertyBitRate`：整轨平均比特率（bps），VBR 文件也是平均值，与 afinfo 一致。
+    /// - `kAudioFilePropertyDataFormat`：AudioStreamBasicDescription，取 `mSampleRate` / `mChannelsPerFrame`。
+    /// 该函数同步、可能涉及少量磁盘 I/O，调用方应在后台线程跑。
+    static func loadAudioTechParameters(
+        from url: URL
+    ) -> (bitrate: Int?, sampleRate: Int?, channels: Int?) {
+        var audioFile: AudioFileID?
+        let status = AudioFileOpenURL(url as CFURL, .readPermission, 0, &audioFile)
+        guard status == noErr, let file = audioFile else {
+            return (nil, nil, nil)
+        }
+        defer { AudioFileClose(file) }
+
+        var bitrate: Int?
+        var sampleRate: Int?
+        var channels: Int?
+
+        // 比特率（bps）
+        var bitRate: UInt32 = 0
+        var bitRateSize = UInt32(MemoryLayout<UInt32>.size)
+        if AudioFileGetProperty(file, kAudioFilePropertyBitRate, &bitRateSize, &bitRate) == noErr,
+           bitRate > 0 {
+            bitrate = Int(bitRate)
+        }
+
+        // 数据格式（ASBD）：采样率 + 声道数
+        var asbd = AudioStreamBasicDescription()
+        var asbdSize = UInt32(MemoryLayout<AudioStreamBasicDescription>.size)
+        if AudioFileGetProperty(file, kAudioFilePropertyDataFormat, &asbdSize, &asbd) == noErr {
+            if asbd.mSampleRate > 0 {
+                sampleRate = Int(asbd.mSampleRate)
+            }
+            if asbd.mChannelsPerFrame > 0 {
+                channels = Int(asbd.mChannelsPerFrame)
+            }
+        }
+
+        return (bitrate, sampleRate, channels)
     }
 
     static func lyrics(for track: Track) async -> String? {
