@@ -5,6 +5,22 @@
 - 上一稳定版本：`v3.12.0`
 - 当前 `VERSION`：`3.13.0-beta5`
 
+## 本轮摘要（2026-09-22，分支 `codex/perf-fast-scroll-artwork`：快速滑动封面秒出 + 播放 CPU 优化）
+
+正式版前性能优化工程的第一步：先保用户体验不降级，再修性能。针对主人反馈「歌曲界面/专辑界面快速滑动时封面显示不出来」做根因修复；验证中顺带定位并修复了播放进度条导致的持续高 CPU（主线程空布局）。
+
+- **用户可见变化**：
+  1. 歌曲列表（400 首）、专辑网格（346 张）、艺术家网格（220 位）快速甩滚、甩到列表/网格底部、连续上下反向甩滚，滚动停下的瞬间所有可见封面均已完整显示，无灰块、无后补闪烁；慢滑与停留时的显示效果与之前一致（无封面专辑的「?」占位行为不变）。
+  2. 播放音乐期间整机更安静省电：同一台机器（400 首曲库、播放中、菜单栏歌词开启）`top` 瞬时 CPU 从修复前约 20% 降到 3.8~6.6%；暂停播放/空闲时 CPU 接近 0%（修复前暂停也持续约 20%）。播放进度走动、seek 拖动、暂停/恢复、菜单栏歌词均正常。
+- **根因（封面缺失）**：① 封面预热开关默认关闭，滚动全靠行进入可见区才发起加载；② `ArtworkPipeline` 单限并发池（4 槽），未命中需重新打开音频文件读取 MB 级内嵌图块并经 ImageIO 降采样，文件 I/O 一旦开始不可取消——快滑时 4 槽全被已滑走的行占住，停下后可见行只能排队等待，表现为长时间灰块；③ 原取消策略过激（最后一个等待者离开就取消整个 in-flight）；④ SwiftUI LazyVStack/LazyVGrid 没有 UIKit 式 prefetch 回调。
+- **技术变更（封面管线）**：
+  1. `ArtworkPipeline` 改双优先级池：urgent 池 4 槽（可见请求）、prefetch 池 2 槽（预取）；`artwork(for:pixelSize:urgent:)` 新增 urgent 参数（默认 true 保持既有调用语义）。InFlight 增加 urgent/started/token 字段：排队中的低优请求遇同 key urgent 请求会**升级**（取消旧排队 task、换新 urgent task，等待者取并集）；已 started 的不可中断 I/O 跑完后写入缓存（顺路暖缓存）；只有排队中的请求在最后等待者离开时取消。acquire/finish 以 token 校验，防止新 entry 被旧 task 误清。
+  2. 新增 [ArtworkWindowPrefetcher.swift](../../Sources/HarmonyPlayer/Services/ArtworkWindowPrefetcher.swift)：`ScrollArtworkWindow`（@MainActor ObservableObject）每次 body 配置 listID/count/pixelSize/lead/provider，行 onAppear 调 `report(_:)` 维护最近 40 个可见索引（去重保序），120ms 防抖后取 `[min−lead, max+lead]` 窗口交 `ArtworkWindowPrefetcher.shared.updateWindow`，后者用 UUID 签名去重、取消上一轮 utility Task 后顺序以 `urgent:false` 预热；listID 变化时清空状态。挂载：歌曲列表 lead 16/small 档，专辑网格 lead 12/medium 档（provider 取专辑代表曲），艺术家网格 lead 12/medium 档。
+  3. `LazyArtworkView`（AppTheme.swift）task await 返回后**以 ArtworkCache 为权威再查一次**写回 loadedImage，防止取消/合并竞态导致永久占位；无封面返回 nil 仍保持占位。`ArtworkPreloader` 两轮启动预热均改走低优池。
+- **技术变更（CPU）**：`PlaybackProgressRow` 原用 `TimelineView(.animation(minimumInterval: 1/30))` 做 0.25s 时钟 tick 之间的航位推算插值。`sample` 实测：只要该 TimelineView 挂载（播放中挂载，且暂停态不卸载），SwiftUI 宿主就进入持续渲染——120Hz 显示器上每秒约 130 次 CA commit / 88 次整窗 `layoutIfNeeded`，其中应用自身代码几乎不耗时，20% CPU 全耗在空布局；改 minimumInterval（30→15fps）与换 `.periodic` 时间表均无效（仍按显示链接订阅）。最终方案：暂停/快切冻结态渲染静态内容（时间为零 CPU），播放中挂载新增的私有 `ProgressTicker`（`Timer.publish(every:0.1).autoconnect()` 驱动自身 @State，仅该子树 10Hz 重算）；进度条每秒前进约 1pt，10Hz 步进约 0.1pt（小于一个物理像素），视觉连续。锚点重钉、seek、快切冻结、时钟漂移兜底等既有逻辑全部保留。
+- **兼容性**：无数据/设置/库结构迁移；`artwork(...)` 新参数有默认值，既有调用零改动；封面缓存键、tier 像素（128/384/768）、NSCache 限额（320 个/48MB）、无封面负缓存策略不变；进度条外观、帧率体感、拖动跟手逻辑不变（SmoothScrubber 仅更新注释，代码未动）。
+- **验证**：`swift build -c release` 通过（仅 DockArtworkController 既有 actor warning）；`swift test --disable-sandbox` 110/110 通过（8.3s）；`scripts/build-app.sh` 打包+ad-hoc 签名+重启。真机用 CGEvent scrollWheel（line 单位 + began/changed/ended phase，cghidEventTap）模拟甩滚：歌曲列表中速/分组快滑/单组 150 事件极限甩到第 ~300 首/连续往返甩四个场景，专辑网格与艺术家网格各两轮（含甩到底部），每个场景在刚停（~0.1s）/0.5~0.7s/1.5~2s 多点截图，封面均刚停即全亮、零灰块。`sample` 3s 调用栈对比确认修复前主线程 460/2415 帧在 CA flush+整窗布局、修复后播放中降到 3.8% 瞬时 CPU、暂停 0%；进度走动（多截图时间连续）、暂停冻结、恢复续走、scrubber seek、菜单栏歌词逐句更新、连播切歌均实测正常。
+
 ## 本轮摘要（2026-09-22，分支 `codex/tooltip-appearance`：全局禁用控件悬停 tooltip）
 
 用户反馈：鼠标悬停在控件（上一首/下一首/返回等）上时，tooltip 显示为黑色或灰色小方块，没有文字；尝试外观校正方案仍不显示字后，用户决定软件内不再需要 tooltip，要求全部去掉，但不得影响菜单栏歌词。

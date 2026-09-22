@@ -402,33 +402,48 @@ struct PlaybackProgressRow: View {
     @State private var anchorTime: Double = 0
     @State private var anchorWall = Date()
 
-    var body: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { context in
-            // 快切中即使 isPlaying 的 KVO 还没来得及翻成 false，也强制冻结：
-            // 不能把切歌占用的墙钟时间误记成播放进度。
-            let advancing = isPlaying && !isRapidSwitching
-            let raw = advancing ? anchorTime + context.date.timeIntervalSince(anchorWall) : anchorTime
-            let displayed = clock.duration > 0 ? min(max(raw, 0), clock.duration) : max(raw, 0)
-            HStack(spacing: 8) {
-                Text(Track.formatTime(displayed))
-                    .font(.system(size: 9, weight: fontWeight, design: .monospaced))
-                    .foregroundStyle(Color.hpTextPrimary.opacity(0.38))
-                    .frame(width: 40, alignment: .trailing)
-
-                SmoothScrubber(
-                    progress: clock.duration > 0 ? min(max(displayed / clock.duration, 0), 1) : 0,
-                    duration: clock.duration,
-                    isEnabled: isEnabled,
-                    seek: seek
-                )
-                .disabled(!isEnabled)
-
-                Text(clock.duration > 0 ? Track.formatTime(clock.duration) : "--:--")
-                    .font(.system(size: 9, weight: fontWeight, design: .monospaced))
-                    .foregroundStyle(Color.hpTextPrimary.opacity(0.38))
-                    .frame(width: 40, alignment: .leading)
+    /// 仅在真正推进播放时才按 10Hz 刷新进度。暂停/快切冻结态使用静态内容。
+    /// 不用 TimelineView：无论 `.animation` 还是 `.periodic`，挂载后都会让
+    /// SwiftUI 宿主进入持续渲染（120Hz 机型每秒上百次整窗 layout pass），
+    /// 20% 空闲 CPU 全耗在空布局上。ProgressTicker 用普通 Timer 驱动自身
+    /// 子树重绘，10Hz 下进度条每步约 0.1pt（小于一个物理像素），视觉连续。
+    @ViewBuilder private var timelineContent: some View {
+        // 快切中即使 isPlaying 的 KVO 还没来得及翻成 false，也强制冻结：
+        // 不能把切歌占用的墙钟时间误记成播放进度。
+        if isPlaying && !isRapidSwitching {
+            ProgressTicker { now in
+                rowContent(raw: anchorTime + now.timeIntervalSince(anchorWall))
             }
+        } else {
+            rowContent(raw: anchorTime)
         }
+    }
+
+    private func rowContent(raw: Double) -> some View {
+        let displayed = clock.duration > 0 ? min(max(raw, 0), clock.duration) : max(raw, 0)
+        return HStack(spacing: 8) {
+            Text(Track.formatTime(displayed))
+                .font(.system(size: 9, weight: fontWeight, design: .monospaced))
+                .foregroundStyle(Color.hpTextPrimary.opacity(0.38))
+                .frame(width: 40, alignment: .trailing)
+
+            SmoothScrubber(
+                progress: clock.duration > 0 ? min(max(displayed / clock.duration, 0), 1) : 0,
+                duration: clock.duration,
+                isEnabled: isEnabled,
+                seek: seek
+            )
+            .disabled(!isEnabled)
+
+            Text(clock.duration > 0 ? Track.formatTime(clock.duration) : "--:--")
+                .font(.system(size: 9, weight: fontWeight, design: .monospaced))
+                .foregroundStyle(Color.hpTextPrimary.opacity(0.38))
+                .frame(width: 40, alignment: .leading)
+        }
+    }
+
+    var body: some View {
+        timelineContent
         .onAppear {
             anchorTime = clock.currentTime
             anchorWall = Date()
@@ -465,10 +480,24 @@ struct PlaybackProgressRow: View {
     }
 }
 
+/// 普通 Timer 驱动的轻量滴答容器：只让自己这棵子树按固定频率重算，
+/// 不订阅显示器刷新，避免 TimelineView 带来的整宿主持续渲染。
+private struct ProgressTicker<Content: View>: View {
+    @ViewBuilder var content: (Date) -> Content
+    @State private var now = Date()
+
+    var body: some View {
+        content(now)
+            .onReceive(
+                Timer.publish(every: 0.1, on: .main, in: .common).autoconnect()
+            ) { now = $0 }
+    }
+}
+
 /// Apple Music 风格的平滑进度条。
 ///
-/// 进度由 TimelineView 按帧插值后传入，这里不做任何进度动画，绘制即所见；
-/// 拖动时本地覆盖显示值并实时跟手，松手才 seek。
+/// 进度由 PlaybackProgressRow 的 ProgressTicker 以 10Hz 插值后传入，这里
+/// 不做任何进度动画，绘制即所见；拖动时本地覆盖显示值并实时跟手，松手才 seek。
 private struct SmoothScrubber: View {
     let progress: Double
     let duration: Double

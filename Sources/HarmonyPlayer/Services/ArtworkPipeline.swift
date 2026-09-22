@@ -158,24 +158,40 @@ private actor AsyncLimiter {
 }
 
 /// Cover art pipeline: caches per URL + tier, coalesces identical requests by
-/// reference count, cancels a shared load once its last waiter goes away, caps
-/// concurrent metadata reads, and briefly remembers "no artwork" results.
+/// reference count, splits visible ("urgent") and background prefetch work into
+/// two concurrency pools, can upgrade a queued prefetch to urgent, cancels a
+/// shared load only while it is still queued (running file reads cannot be
+/// interrupted anyway, so they finish and warm the cache), and briefly
+/// remembers "no artwork" results.
 actor ArtworkPipeline {
     static let shared = ArtworkPipeline()
 
     private struct InFlight {
         let task: Task<NSImage?, Never>
         var waiters: Set<UUID>
+        /// Pool the load was started in. A queued (not-yet-started) prefetch
+        /// can be replaced by an urgent load; once started it is shared as-is.
+        let urgent: Bool
+        var started = false
+        /// Identity of the owning load, so a replaced task never tears down a
+        /// newer in-flight entry.
+        let token: UUID
     }
 
-    private let limiter = AsyncLimiter(limit: 4)
+    /// Visible views (rows/cards currently on screen).
+    private let urgentLimiter = AsyncLimiter(limit: 4)
+    /// Scroll-window and startup prefetch. Kept separate so a prefetch backlog
+    /// can never starve artwork the user is actually looking at.
+    private let prefetchLimiter = AsyncLimiter(limit: 2)
     private var inFlight: [String: InFlight] = [:]
     private var missing = ArtworkMissingCache(limit: 512, ttl: 120)
 
     /// Observable for tests: size of the negative cache.
     var missingCount: Int { missing.count }
 
-    func artwork(for track: Track, pixelSize: Int) async -> NSImage? {
+    /// - Parameter urgent: visible on-screen requests pass `true` and use the
+    ///   high-priority pool; prefetch passes `false`.
+    func artwork(for track: Track, pixelSize: Int, urgent: Bool = true) async -> NSImage? {
         let url = track.url
         let tier = ArtworkPixelTier.normalize(pixelSize)
         let key = ArtworkCache.key(for: url, tier: tier)
@@ -189,18 +205,39 @@ actor ArtworkPipeline {
 
         let waiterID = UUID()
         let task: Task<NSImage?, Never>
-        if var entry = inFlight[key] {
-            entry.waiters.insert(waiterID)
-            inFlight[key] = entry
-            task = entry.task
+        if let existing = inFlight[key] {
+            // A prefetch that is still queued gets upgraded when a visible view
+            // asks for the same key: cancel the queued low-priority task and
+            // re-issue in the urgent pool, serving every waiter from the result.
+            if urgent, !existing.urgent, !existing.started {
+                existing.task.cancel()
+                let token = UUID()
+                let upgraded = Task<NSImage?, Never> { [weak self] in
+                    guard let self else { return nil }
+                    return await self.load(token: token, key: key, track: track, tier: tier, urgent: true)
+                }
+                inFlight[key] = InFlight(
+                    task: upgraded,
+                    waiters: existing.waiters.union([waiterID]),
+                    urgent: true,
+                    token: token
+                )
+                task = upgraded
+            } else {
+                var entry = existing
+                entry.waiters.insert(waiterID)
+                inFlight[key] = entry
+                task = existing.task
+            }
         } else {
             // Unstructured task: cancelling one caller never cancels the others, and
             // every remaining waiter still receives the finished image.
+            let token = UUID()
             task = Task<NSImage?, Never> { [weak self] in
                 guard let self else { return nil }
-                return await self.load(track: track, tier: tier)
+                return await self.load(token: token, key: key, track: track, tier: tier, urgent: urgent)
             }
-            inFlight[key] = InFlight(task: task, waiters: [waiterID])
+            inFlight[key] = InFlight(task: task, waiters: [waiterID], urgent: urgent, token: token)
         }
 
         defer { releaseWaiter(waiterID, key: key) }
@@ -211,12 +248,16 @@ actor ArtworkPipeline {
         }
     }
 
-    /// Drops one waiter. The last one to leave cancels a load that has not
-    /// produced anything yet, so scrolled-away rows do not keep reading files.
+    /// Drops one waiter. The last one to leave cancels a load that has not yet
+    /// claimed a worker slot, so scrolled-away rows leave the queue instantly.
+    /// A load already reading a file is left running: the read cannot be
+    /// interrupted and its image is inserted into the cache on completion,
+    /// turning the unavoidable I/O into prefetch warming. `load` removes its
+    /// own entry when it finishes.
     private func releaseWaiter(_ waiterID: UUID, key: String) {
         guard var entry = inFlight[key] else { return }
         guard entry.waiters.remove(waiterID) != nil else { return }
-        if entry.waiters.isEmpty {
+        if entry.waiters.isEmpty, !entry.started {
             inFlight[key] = nil
             entry.task.cancel()
         } else {
@@ -224,15 +265,29 @@ actor ArtworkPipeline {
         }
     }
 
-    private func load(track: Track, tier: ArtworkPixelTier) async -> NSImage? {
+    private func load(
+        token: UUID,
+        key: String,
+        track: Track,
+        tier: ArtworkPixelTier,
+        urgent: Bool
+    ) async -> NSImage? {
+        let limiter = urgent ? urgentLimiter : prefetchLimiter
         do {
             try await limiter.acquire()
         } catch {
+            // Cancelled while queued (scrolled past / window moved on). Only a
+            // replaced/cancelled task reaches here; never touch a newer entry.
+            await finish(key: key, token: token)
             return nil
         }
 
+        // Slot claimed: the entry (if it is still ours) is now un-cancellable by
+        // departing waiters.
+        await markStarted(key: key, token: token)
+
         // From here on there is no throwing call, so the single `release` below is
-        // guaranteed to run (defer equivalent) even when this task is cancelled.
+        // guaranteed to run even when this task is cancelled.
         let image: NSImage?
         if Task.isCancelled {
             image = nil
@@ -248,6 +303,18 @@ actor ArtworkPipeline {
             // A cancelled read must never be recorded as "this file has no artwork".
             missing.markMissing(track.url.path)
         }
+        await finish(key: key, token: token)
         return image
+    }
+
+    private func markStarted(key: String, token: UUID) {
+        guard var entry = inFlight[key], entry.token == token else { return }
+        entry.started = true
+        inFlight[key] = entry
+    }
+
+    private func finish(key: String, token: UUID) {
+        guard let entry = inFlight[key], entry.token == token else { return }
+        inFlight[key] = nil
     }
 }

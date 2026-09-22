@@ -555,14 +555,19 @@ struct LazyArtworkView: View {
                 // 缓存命中时 body 已经直接渲染，无需再做任何事。
                 guard ArtworkCache.shared.image(for: track.url, tier: tier) == nil else { return }
 
-                let loaded = await AudioMetadataLoader.artwork(for: track, pixelSize: tier.pixels)
-                guard !Task.isCancelled, let loaded else { return }
+                // 可见请求走 urgent 池；可能与滚动预取共享同一个合并任务。
+                _ = await AudioMetadataLoader.artwork(for: track, pixelSize: tier.pixels)
+
+                // 以缓存为权威：合并任务完成、取消竞态等情况下图可能已由别的路径
+                // 写入缓存。无封面文件缓存永远为 nil，保持占位图。
+                guard !Task.isCancelled else { return }
+                guard let resolved = ArtworkCache.shared.image(for: track.url, tier: tier) else { return }
 
                 if reduceMotion {
-                    loadedImage = loaded
+                    loadedImage = resolved
                 } else {
                     withAnimation(.easeOut(duration: 0.18)) {
-                        loadedImage = loaded
+                        loadedImage = resolved
                     }
                 }
                 loadedRequestID = requestID

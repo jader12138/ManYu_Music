@@ -24,11 +24,27 @@ struct TrackListView: View {
     @EnvironmentObject private var player: AudioPlayer
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
+    /// 快速滚动封面预取：随可见行位置提前解码前后一屏多的小档封面。
+    @StateObject private var artworkWindow = ScrollArtworkWindow()
+
     private let headerHeight: CGFloat = 28
     private let headerDividerHeight: CGFloat = 1
 
+    /// 列表内容指纹：搜索/排序/切列表导致首末曲目或数量变化时，预取窗口重置。
+    private var trackListID: String {
+        "songs-\(tracks.count)-\(tracks.first?.id.uuidString ?? "")-\(tracks.last?.id.uuidString ?? "")"
+    }
+
     var body: some View {
         GeometryReader { geometry in
+            let _ = artworkWindow.configure(
+                listID: trackListID,
+                count: tracks.count,
+                pixelSize: ArtworkPixelTier.small.pixels,
+                lead: 16
+            ) { index in
+                index < tracks.count ? tracks[index] : nil
+            }
             VStack(spacing: 0) {
                 if showsHeader {
                     header
@@ -38,7 +54,7 @@ struct TrackListView: View {
 
                 ScrollView {
                     LazyVStack(spacing: 0) {
-                        ForEach(tracks) { track in
+                        ForEach(Array(tracks.enumerated()), id: \.element.id) { index, track in
                             TrackRow(
                                 track: track,
                                 isCurrent: player.currentTrack?.id == track.id,
@@ -65,6 +81,7 @@ struct TrackListView: View {
                             )
                             .padding(.vertical, 1)
                             .padding(.horizontal, 10)
+                            .onAppear { artworkWindow.report(index) }
                         }
                     }
                 }
@@ -475,19 +492,35 @@ struct AlbumGridView: View {
     let onOpen: (AlbumGroup) -> Void
     let onPlay: (AlbumGroup) -> Void
 
+    /// 快速滚动封面预取（中档 384px 网格封面）。
+    @StateObject private var artworkWindow = ScrollArtworkWindow()
+
     private let columns = [
         GridItem(.adaptive(minimum: 156, maximum: 178), spacing: 22, alignment: .top)
     ]
 
+    private var albumListID: String {
+        "albums-\(albums.count)-\(albums.first?.id ?? "")-\(albums.last?.id ?? "")"
+    }
+
     var body: some View {
+        let _ = artworkWindow.configure(
+            listID: albumListID,
+            count: albums.count,
+            pixelSize: ArtworkPixelTier.medium.pixels,
+            lead: 12
+        ) { index in
+            index < albums.count ? albums[index].artworkTrack : nil
+        }
         ScrollView {
             LazyVGrid(columns: columns, spacing: 24) {
-                ForEach(albums) { album in
+                ForEach(Array(albums.enumerated()), id: \.element.id) { index, album in
                     AlbumCard(
                         album: album,
                         open: { onOpen(album) },
                         play: { onPlay(album) }
                     )
+                    .onAppear { artworkWindow.report(index) }
                 }
             }
             .padding(.horizontal, 24)
@@ -661,19 +694,35 @@ struct ArtistGridView: View {
     let onOpen: (ArtistGroup) -> Void
     let onPlay: (ArtistGroup) -> Void
 
+    /// 快速滚动封面预取（中档 384px 艺术家头像）。
+    @StateObject private var artworkWindow = ScrollArtworkWindow()
+
     private let columns = [
         GridItem(.adaptive(minimum: 150, maximum: 174), spacing: 20, alignment: .top)
     ]
 
+    private var artistListID: String {
+        "artists-\(artists.count)-\(artists.first?.id ?? "")-\(artists.last?.id ?? "")"
+    }
+
     var body: some View {
+        let _ = artworkWindow.configure(
+            listID: artistListID,
+            count: artists.count,
+            pixelSize: ArtworkPixelTier.medium.pixels,
+            lead: 12
+        ) { index in
+            index < artists.count ? artists[index].artworkTrack : nil
+        }
         ScrollView {
             LazyVGrid(columns: columns, spacing: 24) {
-                ForEach(artists) { artist in
+                ForEach(Array(artists.enumerated()), id: \.element.id) { index, artist in
                     ArtistCard(
                         artist: artist,
                         open: { onOpen(artist) },
                         play: { onPlay(artist) }
                     )
+                    .onAppear { artworkWindow.report(index) }
                 }
             }
             .padding(.horizontal, 24)
