@@ -180,10 +180,6 @@ extension Notification.Name {
     static let openSettings = Notification.Name("HarmonyPlayer.openSettings")
     /// 空库引导等入口：跳过设置页，直接弹出"添加文件或文件夹"面板。
     static let openImportPanel = Notification.Name("HarmonyPlayer.openImportPanel")
-    /// 打开「播放统计」独立窗口。
-    static let openStats = Notification.Name("HarmonyPlayer.openStats")
-    /// 触发已打开的统计窗口刷新数据（如播放完一首歌后）。
-    static let statsShouldRefresh = Notification.Name("HarmonyPlayer.statsShouldRefresh")
 }
 
 
@@ -227,6 +223,7 @@ enum LibraryDestination: Hashable, Identifiable {
     case section(LibrarySection)
     case playlist(UUID)
     case settings
+    case stats
 
     var id: String {
         switch self {
@@ -236,6 +233,8 @@ enum LibraryDestination: Hashable, Identifiable {
             return "playlist-\(id.uuidString)"
         case .settings:
             return "settings"
+        case .stats:
+            return "stats"
         }
     }
 }

@@ -1,14 +1,13 @@
 import AppKit
 import SwiftUI
 
-/// 播放统计与年度回顾入口：单独窗口承载。
+/// 播放统计页：嵌入主窗口内容区（侧栏「统计」入口），跟随白天/夜间主题。
 ///
 /// 顶部切换「今天 / 本周 / 本月 / 本年」时间维度；
 /// 主体列出该区间内每首歌的播放次数（按次数降序），
 /// 顶部汇总卡片显示区间总播放次数与覆盖歌曲数。
 struct StatsView: View {
     @EnvironmentObject private var library: LibraryStore
-    @EnvironmentObject private var theme: ThemeStore
     @EnvironmentObject private var player: AudioPlayer
 
     @State private var range: StatsRange = .week
@@ -17,71 +16,30 @@ struct StatsView: View {
     @State private var loadedAt: Date = .distantPast
 
     var body: some View {
-        ZStack {
-            Color.hpNavy.ignoresSafeArea()
+        VStack(spacing: 0) {
+            toolbar
+                .padding(.horizontal, 24)
+                .padding(.top, 14)
+                .padding(.bottom, 14)
 
-            VStack(spacing: 0) {
-                header
-                rangePicker
-                summaryCard
-                    .padding(.horizontal, 24)
-                    .padding(.top, 16)
-                Divider()
-                    .opacity(0.10)
-                    .padding(.top, 16)
-                if entries.isEmpty {
-                    emptyState
-                } else {
-                    statsList
-                }
+            summaryCard
+                .padding(.horizontal, 24)
+
+            if entries.isEmpty {
+                emptyState
+            } else {
+                statsList
             }
-            .padding(.bottom, 16)
         }
-        .frame(minWidth: 720, minHeight: 540)
-        .background(Color.hpNavy)
         .onAppear { reload() }
         .onChange(of: range) { _, _ in reload() }
+        // 播放完一首歌后 recordPlay 会 bump revision，统计自动刷新。
         .onChange(of: library.revision) { _, _ in reload() }
-        .onReceive(NotificationCenter.default.publisher(for: .statsShouldRefresh)) { _ in
-            reload()
-        }
     }
 
-    // MARK: - 顶部标题栏
+    // MARK: - 工具行（维度切换 + 刷新）
 
-    private var header: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 10) {
-            Image(systemName: "chart.bar.xaxis.timeline")
-                .font(.system(size: 17, weight: .semibold))
-                .foregroundStyle(Color.hpAccent)
-            Text("播放统计")
-                .font(.system(size: 20, weight: .bold, design: .rounded))
-                .foregroundStyle(Color.hpTextPrimary)
-            Spacer()
-            Text("更新于 \(loadedAt.formatted(date: .omitted, time: .shortened))")
-                .font(.system(size: 10))
-                .foregroundStyle(Color.hpTextPrimary.opacity(0.45))
-            Button {
-                reload()
-            } label: {
-                Image(systemName: "arrow.clockwise")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(Color.hpTextPrimary.opacity(0.65))
-                    .frame(width: 22, height: 22)
-                    .background(Color.hpTextPrimary.opacity(0.06), in: Circle())
-            }
-            .buttonStyle(.plain)
-            .help("重新统计")
-            .keyboardShortcut("r", modifiers: .command)
-        }
-        .padding(.horizontal, 24)
-        .padding(.top, 22)
-        .padding(.bottom, 14)
-    }
-
-    // MARK: - 时间维度切换
-
-    private var rangePicker: some View {
+    private var toolbar: some View {
         HStack(spacing: 6) {
             ForEach(StatsRange.allCases) { option in
                 Button {
@@ -102,9 +60,25 @@ struct StatsView: View {
                 .buttonStyle(.plain)
                 .help(option.title)
             }
+
             Spacer()
+
+            Text("更新于 \(loadedAt.formatted(date: .omitted, time: .shortened))")
+                .font(.system(size: 10))
+                .foregroundStyle(Color.hpTextPrimary.opacity(0.45))
+            Button {
+                reload()
+            } label: {
+                Image(systemName: "arrow.clockwise")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(Color.hpTextPrimary.opacity(0.65))
+                    .frame(width: 22, height: 22)
+                    .background(Color.hpTextPrimary.opacity(0.06), in: Circle())
+            }
+            .buttonStyle(.plain)
+            .help("重新统计")
+            .keyboardShortcut("r", modifiers: .command)
         }
-        .padding(.horizontal, 24)
     }
 
     // MARK: - 汇总卡片
@@ -171,7 +145,8 @@ struct StatsView: View {
                 }
             }
             .padding(.horizontal, 24)
-            .padding(.top, 10)
+            .padding(.top, 12)
+            .padding(.bottom, 16)
         }
     }
 

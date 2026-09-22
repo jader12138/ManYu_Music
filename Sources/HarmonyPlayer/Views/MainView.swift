@@ -219,6 +219,9 @@ struct MainView: View {
 
             if destination == .settings {
                 SettingsView()
+            } else if destination == .stats {
+                StatsView()
+                    .transition(detailTransition)
             } else if let playlist = activePlaylist {
                 PlaylistDetailView(playlist: playlist) {
                     destination = .section(.home)
@@ -282,7 +285,7 @@ struct MainView: View {
             }
         }
         .overlay(alignment: .topTrailing) {
-            if browse.request != browseRequest && !library.isLoading && destination != .settings {
+            if browse.request != browseRequest && !library.isLoading && destination != .settings && destination != .stats {
                 ProgressView().controlSize(.mini).padding(.top, 26).padding(.trailing, 12)
                     .allowsHitTesting(false)
             }
@@ -452,7 +455,7 @@ struct MainView: View {
 
             Spacer(minLength: 18)
 
-            if destination != .settings {
+            if destination != .settings && destination != .stats {
                 searchField
             }
 
@@ -621,6 +624,9 @@ struct MainView: View {
         if destination == .settings {
             return "设置"
         }
+        if destination == .stats {
+            return "播放统计"
+        }
         if let playlist = activePlaylist {
             return playlist.name
         }
@@ -636,6 +642,9 @@ struct MainView: View {
     private var headerSubtitle: String {
         if destination == .settings {
             return "外观、图标、播放与资料库"
+        }
+        if destination == .stats {
+            return "今天 / 本周 / 本月 / 本年的播放次数"
         }
         if !normalizedSearch.isEmpty {
             return "找到 \(filteredTracks.count) 首歌曲"

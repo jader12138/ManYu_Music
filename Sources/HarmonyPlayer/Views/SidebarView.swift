@@ -262,23 +262,22 @@ struct SidebarView: View {
         .help("设置")
     }
 
-    /// 「统计」入口：点击不在主窗口内切 destination，而是发出通知
-    /// 让 AppDelegate 打开独立 NSWindow 承载 `StatsView`。
+    /// 「统计」入口：在主窗口内容区切换到播放统计页（与其他侧栏项一致）。
     private var statsButton: some View {
         Button {
-            NotificationCenter.default.post(name: .openStats, object: nil)
+            select(.stats)
         } label: {
             sidebarLabel(
                 title: "统计",
                 systemImage: "chart.bar.fill",
                 iconColor: Color.hpMint,
                 count: library.history.reduce(0) { $0 + $1.recentEvents.count },
-                selected: false
+                selected: destination == .stats
             )
         }
         .buttonStyle(HoverHighlightButtonStyle(cornerRadius: 10, hoverOpacity: 0.12))
         .padding(.horizontal, 10)
-        .help("打开播放统计")
+        .help("播放统计")
     }
 
     private func select(_ newDestination: LibraryDestination) {
