@@ -689,39 +689,31 @@ struct VolumeFrameReporter: NSViewRepresentable {
     }
 }
 
-/// 捕获悬停区域内的滚轮与点击：滚轮调音量、点击展开滑块（收起状态专用，
+/// 捕获悬停区域内的滚轮调整音量（收起状态专用，
 /// 滑块展开后该层整体移除，避免拦截滑块的拖动手势）。
+/// 点击（展开/收起）由 SwiftUI 手势处理，本层只负责滚轮——NSView 层若吞掉
+/// mouseUp，祖先容器（播放条空白区域）的 tap 手势与展开逻辑无法做互斥裁决。
 struct VolumeScrollCatcher: NSViewRepresentable {
     let onScroll: (Double) -> Void
-    var onClick: (() -> Void)?
 
     func makeNSView(context: Context) -> ScrollCatcherView {
         let view = ScrollCatcherView()
         view.onScrollHandler = onScroll
-        view.onClickHandler = onClick
         return view
     }
 
     func updateNSView(_ nsView: ScrollCatcherView, context: Context) {
         nsView.onScrollHandler = onScroll
-        nsView.onClickHandler = onClick
     }
 
     final class ScrollCatcherView: NSView {
         var onScrollHandler: ((Double) -> Void)?
-        var onClickHandler: (() -> Void)?
 
         override func scrollWheel(with event: NSEvent) {
             guard event.scrollingDeltaY != 0 else { return }
             // 上滚增大音量；普通滚轮一格约 0.1，触控板细粒度滚动按比例缩放。
             let delta = -event.scrollingDeltaY / (event.hasPreciseScrollingDeltas ? 40 : 8)
             onScrollHandler?(delta)
-        }
-
-        // 点击交给本层处理（SwiftUI 手势会被本层拦截），滑块展开后本层即移除。
-        override func mouseUp(with event: NSEvent) {
-            guard event.clickCount >= 1 else { return }
-            onClickHandler?()
         }
     }
 }

@@ -638,30 +638,23 @@ struct PlayerVolumeControl: View {
                 .allowsHitTesting(showsVolumeSlider)
             }
             .onTapGesture {
-                // 展开状态再点喇叭 = 收起（"返回"）；收起状态的展开由捕获层处理。
-                guard showsVolumeSlider else { return }
-                volumeState.isExpanded = false
+                // 点击喇叭切换展开/收起。必须走 SwiftUI 手势：NSView 捕获层若
+                // 吞掉 mouseUp，播放条"空白区域进播放页"的祖先 tap 会同时触发。
+                // 内层 SwiftUI 手势天然优先于祖先层（与播放条上其他按钮一致）。
+                volumeState.isExpanded = !showsVolumeSlider
                 withAnimation(.easeInOut(duration: 0.24)) {
-                    showsVolumeSlider = false
+                    showsVolumeSlider.toggle()
                 }
             }
             .help("点击展开/收起音量滑块；收起时悬停滚动可调音量")
-            // 收起时才挂滚轮捕获层：滚轮调音量、点击展开滑块；展开后移除，
-            // 滑块的点击与拖动手势不再被 NSView 拦截。
+            // 收起时才挂滚轮捕获层：仅滚轮调音量，点击一律交给 SwiftUI 手势；
+            // 展开后移除，滑块的点击与拖动手势不再被 NSView 拦截。
             .overlay {
                 if !showsVolumeSlider {
-                    VolumeScrollCatcher(
-                        onScroll: { delta in
-                            let clamped = min(0.15, max(-0.15, delta))
-                            player.volume = min(1, max(0, player.volume + clamped))
-                        },
-                        onClick: {
-                            volumeState.isExpanded = true
-                            withAnimation(.easeInOut(duration: 0.24)) {
-                                showsVolumeSlider = true
-                            }
-                        }
-                    )
+                    VolumeScrollCatcher(onScroll: { delta in
+                        let clamped = min(0.15, max(-0.15, delta))
+                        player.volume = min(1, max(0, player.volume + clamped))
+                    })
                 }
             }
             .onAppear { installDismissMonitor() }
