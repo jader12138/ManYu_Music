@@ -32,6 +32,8 @@ struct NowPlayingView: View {
     @AppStorage("ManyuMusic.lyricsColor") private var lyricsColorRaw = "auto"
     @AppStorage("ManyuMusic.lyricsLineSpacing") private var lyricsLineSpacing = 0.9
     @AppStorage("ManyuMusic.lyricsVisibleLines") private var lyricsVisibleLines = 9.0
+    /// 双语歌词开关：开启后对带译文的行在原文下方显示译文。
+    @AppStorage("ManyuMusic.lyricsBilingual") private var lyricsBilingual = false
 
     var body: some View {
         ZStack {
@@ -596,7 +598,8 @@ struct NowPlayingView: View {
                         textColor: lyricsTextColor,
                         lineSpacingScale: CGFloat(lyricsLineSpacing),
                         visibleLineCount: Int(lyricsVisibleLines),
-                        lyricOffset: player.lyricOffset
+                        lyricOffset: player.lyricOffset,
+                        showTranslation: lyricsBilingual
                     )
                     .transition(.opacity)
                 } else {
@@ -625,6 +628,18 @@ struct NowPlayingView: View {
                 Text("点击歌词可跳转")
                     .font(.system(size: 9, weight: .medium))
                     .foregroundStyle(Color.hpTextPrimary.opacity(0.24))
+
+                Button {
+                    lyricsBilingual.toggle()
+                } label: {
+                    Text("译")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(lyricsBilingual ? Color.hpAccent : Color.hpTextPrimary.opacity(0.58))
+                        .padding(.horizontal, 9)
+                        .frame(height: 26)
+                }
+                .buttonStyle(HoverHighlightButtonStyle(cornerRadius: 8))
+                .help(lyricsBilingual ? "关闭双语歌词" : "显示双语歌词")
 
                 Button {
                     showingLyricsStyle.toggle()

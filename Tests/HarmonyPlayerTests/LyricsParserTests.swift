@@ -72,4 +72,51 @@ final class LyricsParserTests: XCTestCase {
         XCTAssertNil(lines[0].time)
         XCTAssertEqual(lines.map(\.text), ["just", "plain", "lines"])
     }
+
+    /// 双语 LRC：相同时间戳的相邻两行（原文 + 译文）合并为一行，
+    /// 译文写入 translation 字段。
+    func testMergesBilingualPairByEqualTimestamp() {
+        let raw = """
+        [00:01.00]Hello world
+        [00:01.00]你好世界
+        [00:05.00]Second line
+        [00:05.00]第二行
+        """
+
+        let lines = LyricsParser.parse(raw)
+
+        XCTAssertEqual(lines.count, 2)
+        XCTAssertEqual(lines[0].text, "Hello world")
+        XCTAssertEqual(lines[0].translation, "你好世界")
+        XCTAssertEqual(lines[0].time ?? 0, 1.0, accuracy: 0.001)
+        XCTAssertEqual(lines[1].text, "Second line")
+        XCTAssertEqual(lines[1].translation, "第二行")
+        XCTAssertEqual(lines[1].time ?? 0, 5.0, accuracy: 0.001)
+    }
+
+    /// 单语 LRC：所有行 translation 应为 nil，行为不变。
+    func testMonolingualLyricsHaveNilTranslation() {
+        let raw = """
+        [00:01.00]only original
+        [00:05.00]another line
+        """
+
+        let lines = LyricsParser.parse(raw)
+
+        XCTAssertEqual(lines.count, 2)
+        XCTAssertNil(lines[0].translation)
+        XCTAssertNil(lines[1].translation)
+    }
+
+    /// 多时间戳同行（`[00:12.00][00:45.00]chorus`）不应被误判为双语：
+    /// 解析后两行 text 相同、time 不同，不合并。
+    func testDoesNotMergeMultiTimestampSameText() {
+        let raw = "[00:12.00][00:45.00]chorus line"
+
+        let lines = LyricsParser.parse(raw)
+        XCTAssertEqual(lines.count, 2)
+        XCTAssertNil(lines[0].translation)
+        XCTAssertNil(lines[1].translation)
+        XCTAssertEqual(lines.map(\.text), ["chorus line", "chorus line"])
+    }
 }

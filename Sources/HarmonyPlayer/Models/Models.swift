@@ -187,6 +187,16 @@ struct LyricLine: Identifiable, Hashable {
     let id: Int
     let time: Double?
     let text: String
+    /// 译文：双语 LRC 中与原文时间戳相同的相邻行的文本。
+    /// 单语歌词该字段为 nil。显示开关关闭时只渲染 text。
+    let translation: String?
+
+    init(id: Int, time: Double?, text: String, translation: String? = nil) {
+        self.id = id
+        self.time = time
+        self.text = text
+        self.translation = translation
+    }
 }
 
 struct AlbumGroup: Identifiable, Hashable {
