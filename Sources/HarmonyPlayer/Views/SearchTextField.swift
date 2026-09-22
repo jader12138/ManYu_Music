@@ -67,6 +67,28 @@ struct SearchTextField: NSViewRepresentable {
 
         func controlTextDidBeginEditing(_ obj: Notification) {
             bindings.isFocused.wrappedValue = true
+            dumpEditorDiagnostics(obj)
+        }
+
+        /// 临时诊断：字段编辑器真实状态落盘 /tmp/search-editor.log，
+        /// 用于排查"编辑文字不可见"根因（确认后移除）。
+        private func dumpEditorDiagnostics(_ obj: Notification) {
+            guard let tf = obj.object as? NSTextField,
+                  let editor = tf.window?.firstResponder as? NSTextView else { return }
+            let info = """
+            \(Date()): editor=\(type(of: editor)) textColor=\(String(describing: editor.textColor)) \
+            font=\(String(describing: editor.font)) frame=\(editor.frame) hidden=\(editor.isHidden) \
+            alpha=\(editor.alphaValue) appearance=\(editor.effectiveAppearance.name) \
+            string=\(editor.string) insertionColor=\(String(describing: editor.insertionPointColor))
+            """
+            if let handle = FileHandle(forWritingAtPath: "/tmp/search-editor.log") {
+                handle.seekToEndOfFile()
+                handle.write(Data((info + "\n").utf8))
+                try? handle.close()
+            } else {
+                try? (info + "\n").write(to: URL(fileURLWithPath: "/tmp/search-editor.log"),
+                                        atomically: true, encoding: .utf8)
+            }
         }
 
         func controlTextDidEndEditing(_ obj: Notification) {
