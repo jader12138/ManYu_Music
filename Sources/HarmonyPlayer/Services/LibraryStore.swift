@@ -195,6 +195,102 @@ final class LibraryStore: ObservableObject {
         }
     }
 
+    /// 启动加载完成后自动扫描已添加的来源，把新增音频文件入库。
+    /// 静默扫描：发现新歌时提示"自动扫描到 N 首新歌"，无新歌时不显示任何提示，
+    /// 不打扰用户。复用 `expandAndFilter` + `readTracks` 的增量 diff 流程，
+    /// 只对 sources 里现存的文件夹/文件做发现，不重复记录来源。
+    func rescanSourcesForNewTracks() {
+        guard canEdit else { return }
+        guard !sources.isEmpty, !isImporting else { return }
+
+        isImporting = true
+        importNotice = nil
+        removedDuringImport.removeAll()
+        removedSourcePathsDuringImport.removeAll()
+
+        let clear = clearGeneration
+        let sourceURLs = sources.map(\.url)
+
+        Task {
+            defer {
+                isImporting = false
+                removedDuringImport.removeAll()
+                removedSourcePathsDuringImport.removeAll()
+                clearNoticeAfterDelay()
+            }
+
+            let expandedURLs = await Task.detached(priority: .utility) { [blockedFolderPaths] in
+                Self.expandAndFilter(sourceURLs, blockedFolderPaths: blockedFolderPaths)
+            }.value
+
+            // A clear requested while this scan was in flight discards all of it.
+            guard clearGeneration == clear else { return }
+
+            let knownPaths = Set(tracks.map { Self.normalizedPath($0.url) })
+            let newURLs = expandedURLs.filter { url in
+                let path = Self.normalizedPath(url)
+                return !knownPaths.contains(path) && !self.isImportBlocked(path)
+            }
+
+            guard !newURLs.isEmpty else {
+                // 无新歌：静默，不显示提示，不打扰用户
+                importNotice = nil
+                return
+            }
+
+            let imported = await Task.detached(priority: .utility) {
+                await Self.readTracks(from: newURLs)
+            }.value
+
+            guard clearGeneration == clear else { return }
+
+            // Re-check against the live library right before committing.
+            let livePaths = Set(tracks.map { Self.normalizedPath($0.url) })
+            var accepted = imported.filter { track in
+                let path = Self.normalizedPath(track.url)
+                return !livePaths.contains(path) && !self.isImportBlocked(path)
+            }
+
+            // 过滤短音频
+            if filterShortAudio {
+                accepted = accepted.filter { $0.duration >= 60 }
+            }
+
+            guard !accepted.isEmpty else {
+                importNotice = nil
+                return
+            }
+
+            let baseGeneration = tracksGeneration
+            let updated = (tracks + accepted).sorted { $0.dateAdded > $1.dateAdded }
+
+            let cache = await Task.detached(priority: .utility) {
+                TrackDerivedCache.make(from: updated)
+            }.value
+
+            guard clearGeneration == clear else { return }
+
+            if tracksGeneration == baseGeneration {
+                preparedDerivedCache = cache
+                tracks = updated
+            } else {
+                // The library moved while the cache was built: re-merge against the live
+                // value so the concurrent edit survives.
+                let currentPaths = Set(tracks.map { Self.normalizedPath($0.url) })
+                var reconciled = tracks
+                reconciled.append(contentsOf: accepted.filter {
+                    let path = Self.normalizedPath($0.url)
+                    return !currentPaths.contains(path) && !self.isImportBlocked(path)
+                })
+                reconciled.sort { $0.dateAdded > $1.dateAdded }
+                tracks = reconciled
+            }
+
+            libraryContentDidChange()
+            importNotice = "自动扫描到 \(accepted.count) 首新歌。"
+        }
+    }
+
     func presentImportPanel() {
         guard canEdit else {
             presentUnavailableNotice()
@@ -534,6 +630,10 @@ final class LibraryStore: ObservableObject {
             sources = payload.sources
             blockedFolderPaths = payload.blockedFolderPaths
             revision &+= 1
+            // 加载成功：立即结束 loading，并异步扫描已添加来源，发现新歌就入库。
+            // 必须在调用前把 isLoading 置为 false，否则 canEdit 仍为 false 会被 guard 拦截。
+            isLoading = false
+            rescanSourcesForNewTracks()
         case .failed(let message):
             // Never overwrite the unreadable original file.
             isPersistenceSuppressed = true

@@ -14,6 +14,16 @@
 - **兼容性**：无设置/数据迁移；单语歌词 `translation` 为 nil，开关对其无影响；双语开关默认关闭，首次开启才显示译文。不影响内嵌歌词读取、缓存、预热、滚动定位任何既有路径。
 - **验证**：`swift test --disable-sandbox` 97/97 通过（新增 3 例：双语配对合并、单语 translation 为 nil、多时间戳同行不误合并）；`swift build -c release --disable-sandbox` 通过；`scripts/build-app.sh` 打包替换签名成功，dist 副本 `dist/漫域音乐-bilingual-lyrics.app`（CFBundleVersion 248）已重启。
 
+## 本轮摘要（2026-09-22，分支 `codex/auto-folder-rescan`：启动时自动扫描已添加文件夹）
+
+添加过文件夹后，软件每次启动自动遍历这些来源，把新增的音频文件入库到曲库，无需手动点"重新扫描"。
+
+- **功能（自动扫描入库）**：`LibraryStore.apply(_:)` 在 `.loaded` case 加载完 `library.json`、写完 `sources` 等状态并置 `isLoading = false` 后，调用新增的 `rescanSourcesForNewTracks()`——它收集 `sources.map(\.url)`，复用 `expandAndFilter` 递归枚举文件夹、过滤屏蔽目录与已知路径，再用 `readTracks` 并发构造新 Track，按 `filterShortAudio` 过滤后合并进 `tracks` 并 `libraryContentDidChange()` 保存。**增量 diff**：只对真正的新文件读 metadata，老文件不重读，启动开销可控。
+- **静默体验**：无新歌时 `importNotice` 置为 nil（不弹"没有发现新的可播放音频文件"，不打扰用户）；发现新歌时提示"自动扫描到 N 首新歌"。复用 `isImporting` 状态机与 `clearGeneration`/`tracksGeneration` 双重并发保护，与 `add(urls:)` 同款，启动后用户手动点"添加音乐"会被 `guard !isImporting` 拦截（启动扫描很快，可接受）。
+- **边界**：`library.json` 加载失败（`isPersistenceSuppressed`）时 `canEdit` 为 false，guard 拦截不扫描，保护原文件不被覆写；首次启动无 `library.json`（`.missing`）时 sources 为空，guard 拦截。
+- **兼容性**：无设置/数据迁移；不新增 UserDefaults 键；不影响播放、队列、歌词、恢复、推荐、均衡器任何业务路径。自动扫描是默认行为，未做成开关（用户原话"每次打开软件时自动扫描"）。
+- **验证**：`swift test` 94/94 通过；`swift build -c release` 通过。
+
 ## 本轮摘要（2026-09-22，分支 `codex/search-volume-rework`）
 
 主界面顶栏搜索框移除与音量控件搬家两项界面调整。
