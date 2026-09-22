@@ -651,45 +651,6 @@ struct NowPlayingView: View {
     }
 }
 
-/// 横向音量滑块：点击轨道跳转、按住拖动均可调整（右侧为最大音量）。
-struct HorizontalVolumeSlider: View {
-    @Binding var value: Double
-
-    var body: some View {
-        GeometryReader { proxy in
-            let trackWidth = proxy.size.width
-            let thumbSize: CGFloat = 8
-
-            ZStack {
-                Capsule()
-                    .fill(Color.hpTextPrimary.opacity(0.16))
-                    .frame(height: 3.5)
-
-                Capsule()
-                    .fill(Color.hpAccent)
-                    .frame(width: max(4, trackWidth * value), height: 3.5)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-
-                Circle()
-                    .fill(Color.gray)
-                    .frame(width: thumbSize, height: thumbSize)
-                    .shadow(color: Color.black.opacity(0.2), radius: 2, y: 1)
-                    .offset(x: (trackWidth - thumbSize) * (value - 0.5))
-            }
-            .frame(height: 14)
-            .contentShape(Rectangle())
-            .gesture(
-                DragGesture(minimumDistance: 0)
-                    .onChanged { gesture in
-                        value = min(1, max(0, gesture.location.x / trackWidth))
-                    }
-            )
-        }
-        .frame(width: 65, height: 14)
-        .contentShape(Rectangle())
-    }
-}
-
 /// 上报所在位置的窗口坐标（AppKit 坐标系），供"点击热区外收起滑块"的判断使用。
 struct VolumeFrameReporter: NSViewRepresentable {
     let onFrame: (CGRect?) -> Void

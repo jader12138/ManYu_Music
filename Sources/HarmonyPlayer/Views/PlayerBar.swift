@@ -597,10 +597,10 @@ struct PlaybackPressButtonStyle: ButtonStyle {
 }
 
 /// 浮出式音量控件（原播放页音量控件，现迁至播放条右侧）：
-/// 点击喇叭展开横向滑块、再点收起，收起时悬停滚轮调音量；滑块悬浮在
-/// 喇叭右侧、不挤占控件行布局；展开期间点击热区之外自动收起（NSEvent
-/// 本地监视器，事件原样放行）。依赖的 HorizontalVolumeSlider /
-/// VolumeFrameReporter / VolumeScrollCatcher 定义在 NowPlayingView.swift。
+/// 点击喇叭从上方弹出竖向滑块、再点收起，收起时悬停滚轮调音量；滑块
+/// 悬浮在喇叭上方、不挤占控件行布局；展开期间点击热区之外自动收起
+/// （NSEvent 本地监视器，事件原样放行）。依赖的 VolumeFrameReporter /
+/// VolumeScrollCatcher 定义在 NowPlayingView.swift。
 struct PlayerVolumeControl: View {
     @EnvironmentObject private var player: AudioPlayer
     @State private var showsVolumeSlider = false
@@ -627,14 +627,14 @@ struct PlayerVolumeControl: View {
                     .offset(y: 5)
                     .opacity(showsVolumeSlider ? 0 : 1)
             }
-            .overlay(alignment: .leading) {
-                HorizontalVolumeSlider(value: Binding(
+            .overlay(alignment: .bottom) {
+                VerticalVolumeSlider(value: Binding(
                     get: { player.volume },
                     set: { player.volume = $0 }
                 ))
-                .scaleEffect(x: showsVolumeSlider ? 1 : 0.4, anchor: .leading)
+                .scaleEffect(y: showsVolumeSlider ? 1 : 0.4, anchor: .bottom)
                 .opacity(showsVolumeSlider ? 1 : 0)
-                .offset(x: showsVolumeSlider ? 32 : 40)
+                .offset(y: showsVolumeSlider ? -34 : -40)
                 .allowsHitTesting(showsVolumeSlider)
             }
             .onTapGesture {
@@ -681,9 +681,9 @@ struct PlayerVolumeControl: View {
         guard volumeDismissMonitor == nil else { return }
         volumeDismissMonitor = NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown) { event in
             if volumeState.isExpanded {
-                // 热区 = 喇叭按钮 frame 向右扩展（滑块浮层所在区域）。
+                // 热区 = 喇叭按钮 frame 向上扩展（竖向滑块浮层所在区域）。
                 let hot = volumeState.hotFrame.map {
-                    CGRect(x: $0.minX, y: $0.minY, width: $0.width + 70, height: $0.height)
+                    CGRect(x: $0.minX, y: $0.minY - 118, width: $0.width, height: $0.height + 118)
                 }
                 let insideHotZone = hot?.contains(event.locationInWindow) ?? false
                 if !insideHotZone {
@@ -702,5 +702,46 @@ struct PlayerVolumeControl: View {
             NSEvent.removeMonitor(monitor)
             volumeDismissMonitor = nil
         }
+    }
+}
+
+/// 竖向音量滑块：点击轨道跳转、按住上下拖动均可调整（上方为最大音量），
+/// 轨道上居中一颗圆形拇指按钮随手势移动。
+struct VerticalVolumeSlider: View {
+    @Binding var value: Double
+
+    var body: some View {
+        GeometryReader { proxy in
+            let trackHeight = proxy.size.height
+            let thumbSize: CGFloat = 12
+
+            ZStack {
+                Capsule()
+                    .fill(Color.hpTextPrimary.opacity(0.16))
+                    .frame(width: 3.5)
+
+                Capsule()
+                    .fill(Color.hpAccent)
+                    .frame(height: max(4, trackHeight * value))
+                    .frame(maxHeight: .infinity, alignment: .bottom)
+                    .frame(width: 3.5)
+
+                Circle()
+                    .fill(Color.gray)
+                    .frame(width: thumbSize, height: thumbSize)
+                    .shadow(color: Color.black.opacity(0.2), radius: 2, y: 1)
+                    .offset(y: (trackHeight - thumbSize) * (0.5 - value))
+            }
+            .frame(width: 26)
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { gesture in
+                        value = min(1, max(0, 1 - Double(gesture.location.y / trackHeight)))
+                    }
+            )
+        }
+        .frame(width: 26, height: 108)
+        .contentShape(Rectangle())
     }
 }
