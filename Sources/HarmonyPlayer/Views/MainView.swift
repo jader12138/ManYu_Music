@@ -588,9 +588,12 @@ struct MainView: View {
         let tracks = library.tracks
         let favorites = library.favoriteIDs
         let recent = library.recentlyPlayedTracks(limit: 200)
+        // 重复过滤：开关关闭时传空集合，build 走快速路径不做过滤。
+        let hidden = library.duplicateFilterEnabled ? library.hiddenDuplicateIDs : []
         let work = Task.detached(priority: .userInitiated) {
             LibraryBrowseSnapshot.build(request: request, tracks: tracks,
-                                        favoriteIDs: favorites, recentTracks: recent)
+                                        favoriteIDs: favorites, recentTracks: recent,
+                                        hiddenDuplicateIDs: hidden)
         }
         let result = await withTaskCancellationHandler {
             await work.value

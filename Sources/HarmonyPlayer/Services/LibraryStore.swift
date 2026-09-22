@@ -30,6 +30,23 @@ final class LibraryStore: ObservableObject {
             UserDefaults.standard.set(filterShortAudio, forKey: "ManyuMusic.filterShortAudio")
         }
     }
+
+    /// 重复歌曲过滤开关：打开后列表浏览会隐藏 `hiddenDuplicateIDs` 中的歌曲。
+    /// 关闭时不过滤，全部可见。开关状态持久化到 UserDefaults。
+    @Published var duplicateFilterEnabled: Bool = UserDefaults.standard.bool(
+        forKey: "ManyuMusic.duplicateFilter"
+    ) {
+        didSet {
+            UserDefaults.standard.set(duplicateFilterEnabled, forKey: "ManyuMusic.duplicateFilter")
+            // 开关切换即刷新浏览快照，确保过滤行为立即生效或撤销。
+            revision &+= 1
+        }
+    }
+
+    /// 已被用户在重复歌曲审查中判定为「不保留」的歌曲 id 集合。
+    /// 仅用于显示过滤，不从 library.json 删除，关闭开关即可恢复可见。
+    @Published private(set) var hiddenDuplicateIDs: Set<UUID> = []
+
     @Published private(set) var isImporting = false
     @Published var importNotice: String?
 
@@ -100,6 +117,11 @@ final class LibraryStore: ObservableObject {
     private static let suppressedNotice = "资料库文件损坏，已暂停修改以保护原文件。"
     private static let saveDebounceInterval = DispatchTimeInterval.milliseconds(400)
 
+    /// UserDefaults 键：重复过滤开关。
+    static let duplicateFilterKey = "ManyuMusic.duplicateFilter"
+    /// UserDefaults 键：已隐藏的重复歌曲 UUID 列表（字符串形式持久化）。
+    private static let hiddenDuplicateIDsKey = "ManyuMusic.hiddenDuplicateIDs"
+
     init(libraryURL: URL? = nil) {
         if let libraryURL {
             self.libraryURL = libraryURL
@@ -123,6 +145,10 @@ final class LibraryStore: ObservableObject {
                 }
             }
             .store(in: &cancellables)
+
+        // 从 UserDefaults 恢复已隐藏的重复歌曲 id，重启后过滤状态保持。
+        let rawIDs = UserDefaults.standard.stringArray(forKey: Self.hiddenDuplicateIDsKey) ?? []
+        hiddenDuplicateIDs = Set(rawIDs.compactMap { UUID(uuidString: $0) })
 
         startLoading()
     }
@@ -474,7 +500,46 @@ final class LibraryStore: ObservableObject {
         favoriteIDs.removeAll()
         playlists.removeAll()
         history.removeAll()
+        // 清库时一并清掉已隐藏的重复集合，避免悬空 id 长期留在 UserDefaults。
+        hiddenDuplicateIDs.removeAll()
+        UserDefaults.standard.removeObject(forKey: Self.hiddenDuplicateIDsKey)
         libraryContentDidChange()
+    }
+
+    // MARK: - 重复歌曲检测
+
+    /// 检测当前曲库中的重复歌曲组。
+    ///
+    /// 检测范围：尚未被隐藏的 tracks（已隐藏的不再参与检测，避免每次都弹同样的旧组）。
+    /// 返回值：每个子数组是一组重复歌曲（≥2 首），组内按 dateAdded 降序、组间按组首 dateAdded 降序。
+    func detectDuplicateGroups() -> [[Track]] {
+        let visible = tracks.filter { !hiddenDuplicateIDs.contains($0.id) }
+        return DuplicateDetector.detectGroups(in: visible)
+    }
+
+    /// 把指定 id 加入「已隐藏重复歌曲」集合，并持久化到 UserDefaults。
+    /// 仅影响显示过滤，不修改 library.json 与磁盘文件。
+    func hideDuplicates(_ ids: Set<UUID>) {
+        guard !ids.isEmpty else { return }
+        let additions = ids.filter { !hiddenDuplicateIDs.contains($0) }
+        guard !additions.isEmpty else { return }
+        hiddenDuplicateIDs.formUnion(additions)
+        persistHiddenDuplicateIDs()
+        // 触发浏览快照刷新：开关打开时立即应用过滤。
+        revision &+= 1
+    }
+
+    /// 清空已隐藏的重复歌曲集合，恢复全部歌曲可见。
+    func clearHiddenDuplicates() {
+        guard !hiddenDuplicateIDs.isEmpty else { return }
+        hiddenDuplicateIDs.removeAll()
+        persistHiddenDuplicateIDs()
+        revision &+= 1
+    }
+
+    private func persistHiddenDuplicateIDs() {
+        let raw = Array(hiddenDuplicateIDs.map(\.uuidString))
+        UserDefaults.standard.set(raw, forKey: Self.hiddenDuplicateIDsKey)
     }
 
     func toggleFavorite(_ track: Track) {

@@ -26,17 +26,30 @@ struct LibraryBrowseSnapshot: Sendable {
         request: LibraryBrowseRequest,
         tracks: [Track],
         favoriteIDs: Set<UUID>,
-        recentTracks: [Track]
+        recentTracks: [Track],
+        hiddenDuplicateIDs: Set<UUID> = []
     ) -> Self {
         var result = Self(request: request)
         guard !Task.isCancelled else { return result }
 
+        // 重复歌曲过滤：仅过滤显示，不从 library.json 删除。
+        // 空集合时直接走原数组避免无谓拷贝。
+        let visibleTracks: [Track]
+        let visibleRecent: [Track]
+        if hiddenDuplicateIDs.isEmpty {
+            visibleTracks = tracks
+            visibleRecent = recentTracks
+        } else {
+            visibleTracks = tracks.filter { !hiddenDuplicateIDs.contains($0.id) }
+            visibleRecent = recentTracks.filter { !hiddenDuplicateIDs.contains($0.id) }
+        }
+
         if request.section == .home, request.search.isEmpty {
-            result.tracks = tracks
-            result.favorites = tracks.filter { favoriteIDs.contains($0.id) }
-            result.recentTracks = Array(recentTracks.prefix(20))
+            result.tracks = visibleTracks
+            result.favorites = visibleTracks.filter { favoriteIDs.contains($0.id) }
+            result.recentTracks = Array(visibleRecent.prefix(20))
             // The store already keeps tracks newest-first. Preserve that ordering inside albums.
-            let grouped = Dictionary(grouping: tracks) { AlbumKey(title: $0.displayAlbum, artist: $0.displayArtist) }
+            let grouped = Dictionary(grouping: visibleTracks) { AlbumKey(title: $0.displayAlbum, artist: $0.displayArtist) }
             result.homeAlbums = grouped.map { key, songs in
                 AlbumGroup(title: key.title, artist: key.artist, tracks: songs)
             }.sorted {
@@ -47,9 +60,9 @@ struct LibraryBrowseSnapshot: Sendable {
 
         let source: [Track]
         switch request.section {
-        case .favorites: source = tracks.filter { favoriteIDs.contains($0.id) }
-        case .history: source = recentTracks
-        default: source = tracks
+        case .favorites: source = visibleTracks.filter { favoriteIDs.contains($0.id) }
+        case .history: source = visibleRecent
+        default: source = visibleTracks
         }
         let query = request.search.trimmingCharacters(in: .whitespacesAndNewlines)
         let loweredQuery = query.lowercased()
