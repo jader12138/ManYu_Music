@@ -5,6 +5,19 @@
 - 上一稳定版本：`v3.12.0`
 - 当前 `VERSION`：`3.13.0-beta5`
 
+## 本轮摘要（2026-09-23，分支 `codex/settings-appearance-previews`：设置页外观预览图 + 下拉框收窄）
+
+主人在发布前验收截图时提出的两处设置页外观调整。
+
+- **用户可见变化**：
+  1. 设置 → 外观的「跟随系统 / 白天模式 / 夜间模式」三个选项，由原来的灰色/深色小色块 + play 图标占位，升级为**真实界面截图缩略图**（132×88pt，3:2）：跟随系统是同一主界面左明右暗对半合成、白天模式是全浅色界面、夜间模式是全深色界面；选中态仍为 hpAccent 2pt 圆角描边 + 标签变色，点击即时切换外观（已实测浅↔深切换与持久化正常）。
+  2. 设置 → 播放的「歌词切换效果」下拉菜单此前宽度占满整行右侧（SwiftUI menu Picker 在 HStack 中默认吃满可用宽度），现固定为 88pt，贴合最长四字选项 + 箭头；七个选项里最长的「像素溶解/从左揭开/从右推入」闭合态完整显示不截断（弹出菜单本身按最长项自适应，不受控件宽度影响）。
+- **技术变更**：
+  1. 主人提供的三张 2120×1412 原图降采样到 600×400 存入 `Resources/AppearanceSystem.png`、`AppearanceLight.png`、`AppearanceDark.png`（每张约 195KB）；[build-app.sh](../../scripts/build-app.sh) 增加三条 install 打进 `Contents/Resources`（本项目无 asset catalog，图片资源一贯由打包脚本安装、运行时 `Bundle.main.url(forResource:)` 加载）。
+  2. [SettingsView.swift](../../Sources/HarmonyPlayer/Views/SettingsView.swift) 的 `AppAppearance` 私有扩展新增 `previewImage: NSImage?`（按模式映射资源名，Bundle 取不到时回退旧色块占位）；外观选择器 label 由 70×46 色块改为 132×88 圆角裁剪截图。歌词效果 Picker 增加 `.frame(width: 88)` 与注释。
+- **兼容性**：无设置/数据迁移，无新增 UserDefaults 键；三个模式枚举、标签（跟随系统/白天模式/夜间模式）与选中逻辑不变；Bundle 缺图时回退旧占位，不会白屏。
+- **验证**：`swift build -c release` + `scripts/build-app.sh` 打包签名通过（无新增警告）；`swift test --disable-sandbox` 110/110 通过（8.6s）。真机截图验收：浅色设置页三缩略图清晰、选中描边正确；点击「夜间模式」整窗即时变深色且缩略图选中态跟随、再点「白天模式」恢复（`ManyuMusic.appearance` 持久化值 light 确认）；把 `ManyuMusic.lyricTransition` 直接置为最长的 `dissolve` 重启后，88pt 闭合控件内「像素溶解」四字 + 箭头完整无截断。注：合成 CGEvent 点击无法展开 NSPopUpButton 的跟踪菜单（测试注入限制，真实鼠标不受影响），故以"预置最长值看重置闭合态"方式验证宽度。
+
 ## 本轮摘要（2026-09-22，分支 `codex/stress-crash-fixes`：发布前极限排雷）
 
 正式版发布前的稳定性总验收，目标是找出并消除会导致**闪退、打不开**的严重问题。先分析全部历史崩溃日志，再做冷启动、异常数据、UI 风暴、内存泄漏多维极限测试，静态扫描全代码库的致命陷阱，最后修复并全量回归。

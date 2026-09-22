@@ -35,6 +35,9 @@ install -m 644 "$ROOT_DIR/Resources/AppIconDark.png" "$APP_PATH/Contents/Resourc
 install -m 644 "$ROOT_DIR/Resources/AppIconLight.png" "$APP_PATH/Contents/Resources/AppIconLight.png"
 install -m 644 "$ROOT_DIR/Resources/AppIconDark.icns" "$APP_PATH/Contents/Resources/AppIconDark.icns"
 install -m 644 "$ROOT_DIR/Resources/AppIconLight.icns" "$APP_PATH/Contents/Resources/AppIconLight.icns"
+install -m 644 "$ROOT_DIR/Resources/AppearanceSystem.png" "$APP_PATH/Contents/Resources/AppearanceSystem.png"
+install -m 644 "$ROOT_DIR/Resources/AppearanceLight.png" "$APP_PATH/Contents/Resources/AppearanceLight.png"
+install -m 644 "$ROOT_DIR/Resources/AppearanceDark.png" "$APP_PATH/Contents/Resources/AppearanceDark.png"
 
 /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $APP_MARKETING_VERSION" "$APP_PATH/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $BUILD_NUMBER" "$APP_PATH/Contents/Info.plist"

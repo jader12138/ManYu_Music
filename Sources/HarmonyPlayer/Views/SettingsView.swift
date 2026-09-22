@@ -170,26 +170,30 @@ struct SettingsView: View {
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(Color.hpTextPrimary.opacity(0.7))
 
-                HStack(spacing: 14) {
+                HStack(alignment: .top, spacing: 18) {
                     ForEach(AppAppearance.allCases) { mode in
                         Button {
                             withAnimation(.easeInOut(duration: 0.25)) {
                                 theme.appearance = mode
                             }
                         } label: {
-                            VStack(spacing: 6) {
+                            VStack(spacing: 7) {
                                 ZStack {
-                                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                        .fill(mode.previewBackground)
-                                    Image(systemName: "play.fill")
-                                        .font(.system(size: 14))
-                                        .foregroundStyle(
-                                            mode == .light
-                                                ? Color.black.opacity(0.35)
-                                                : Color.white.opacity(0.55)
-                                        )
+                                    if let preview = mode.previewImage {
+                                        Image(nsImage: preview)
+                                            .resizable()
+                                            .interpolation(.high)
+                                            .aspectRatio(contentMode: .fill)
+                                            .frame(width: 132, height: 88)
+                                            .clipped()
+                                    } else {
+                                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                            .fill(mode.previewBackground)
+                                            .frame(width: 132, height: 88)
+                                    }
                                 }
-                                .frame(width: 70, height: 46)
+                                .frame(width: 132, height: 88)
+                                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                                 .overlay(
                                     RoundedRectangle(cornerRadius: 8, style: .continuous)
                                         .stroke(
@@ -356,6 +360,8 @@ struct SettingsView: View {
                 .pickerStyle(.menu)
                 .labelsHidden()
                 .controlSize(.small)
+                // 宽度贴合最长选项「从左揭开」四字+箭头，不再占满整行。
+                .frame(width: 88)
             }
 
             Divider().opacity(0.08)
@@ -877,6 +883,21 @@ private extension AppAppearance {
         case .dark: return Color(white: 0.1)
         case .system: return Color.gray.opacity(0.3)
         }
+    }
+
+    /// 设置页外观预览缩略图（Resources/Appearance{System,Light,Dark}.png，
+    /// 打包脚本安装进 Bundle）。取不到时回退到旧色块占位。
+    var previewImage: NSImage? {
+        let name: String
+        switch self {
+        case .system: name = "AppearanceSystem"
+        case .light: name = "AppearanceLight"
+        case .dark: name = "AppearanceDark"
+        }
+        if let url = Bundle.main.url(forResource: name, withExtension: "png") {
+            return NSImage(contentsOf: url)
+        }
+        return NSImage(named: name)
     }
 }
 
