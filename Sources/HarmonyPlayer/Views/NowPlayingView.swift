@@ -238,6 +238,9 @@ struct NowPlayingView: View {
                     }
                 }
                 .disabled(player.currentTrack == nil)
+
+                // 音量控件（与播放条右下角同一控件：点击喇叭上方弹出竖向滑块）。
+                PlayerVolumeControl()
             }
         }
         .padding(.horizontal, 4)
@@ -330,8 +333,6 @@ struct NowPlayingView: View {
             }
         }
     }
-
-    /// 音量控件已迁至底部播放条（PlayerBar.PlayerVolumeControl），播放页不再重复放置。
 
     private var isCurrentFavorite: Bool {
         player.currentTrack.map { library.isFavorite($0) } ?? false
