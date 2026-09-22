@@ -6,6 +6,12 @@ struct TrackInfoView: View {
     @EnvironmentObject private var library: LibraryStore
     @Environment(\.dismiss) private var dismiss
 
+    // 现场加载的音频技术参数（Track 已持久化就用持久化的，否则从 AVAsset 现读）
+    @State private var liveBitrate: Int?
+    @State private var liveSampleRate: Int?
+    @State private var liveChannels: Int?
+    @State private var isLoadingAudioTech: Bool = false
+
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
             HStack {
@@ -48,6 +54,16 @@ struct TrackInfoView: View {
         }
         .padding(24)
         .frame(width: 520)
+        .task(id: track.id) {
+            // 已有持久化值就不重复读盘
+            guard track.bitrate == nil || track.sampleRate == nil || track.channels == nil else { return }
+            isLoadingAudioTech = true
+            let params = await AudioMetadataLoader.loadAudioTechParameters(for: track)
+            liveBitrate = params.bitrate
+            liveSampleRate = params.sampleRate
+            liveChannels = params.channels
+            isLoadingAudioTech = false
+        }
     }
 
     private func infoRow(_ title: String, _ value: String) -> some View {
@@ -74,7 +90,10 @@ struct TrackInfoView: View {
 
     /// 比特率：bps → kbps / Mbps。320 kbps MP3、1411 kbps CD- WAV、≥1 Mbps 用 Mbps。
     private var formattedBitrate: String {
-        guard let bps = track.bitrate, bps > 0 else { return "未知" }
+        let bps = track.bitrate ?? liveBitrate
+        guard let bps, bps > 0 else {
+            return isLoadingAudioTech ? "读取中…" : "未知"
+        }
         if bps >= 1_000_000 {
             return String(format: "%.2f Mbps", Double(bps) / 1_000_000)
         }
@@ -83,7 +102,10 @@ struct TrackInfoView: View {
 
     /// 采样率：Hz → kHz。44100 → "44.1 kHz"，48000 → "48 kHz"，96000 → "96 kHz"。
     private var formattedSampleRate: String {
-        guard let hz = track.sampleRate, hz > 0 else { return "未知" }
+        let hz = track.sampleRate ?? liveSampleRate
+        guard let hz, hz > 0 else {
+            return isLoadingAudioTech ? "读取中…" : "未知"
+        }
         if hz % 1000 == 0 {
             return "\(hz / 1000) kHz"
         }
@@ -92,7 +114,10 @@ struct TrackInfoView: View {
 
     /// 通道：1 → 单声道，2 → 立体声，其他 → "N 声道"。
     private var formattedChannels: String {
-        guard let ch = track.channels, ch > 0 else { return "未知" }
+        let ch = track.channels ?? liveChannels
+        guard let ch, ch > 0 else {
+            return isLoadingAudioTech ? "读取中…" : "未知"
+        }
         switch ch {
         case 1: return "单声道"
         case 2: return "立体声"

@@ -53,6 +53,25 @@ enum AudioMetadataLoader {
         )
     }
 
+    /// 从 URL 现场抽取音频技术参数（用于 TrackInfoView 弹层，避免强制重新扫描 library）。
+    /// 优先返回 Track 已持久化的字段（重新扫描后会有），缺失则现场从 AVAsset 读取。
+    static func loadAudioTechParameters(
+        for track: Track
+    ) async -> (bitrate: Int?, sampleRate: Int?, channels: Int?) {
+        // 已持久化的字段优先返回，避免重复磁盘 I/O
+        if track.bitrate != nil, track.sampleRate != nil, track.channels != nil {
+            return (track.bitrate, track.sampleRate, track.channels)
+        }
+        let asset = AVURLAsset(url: track.url, options: [AVURLAssetPreferPreciseDurationAndTimingKey: true])
+        let live = await loadAudioTechParameters(from: asset)
+        // 与 Track 持久化字段取并集（Track 有就用 Track 的，缺的用现场读的）
+        return (
+            track.bitrate ?? live.bitrate,
+            track.sampleRate ?? live.sampleRate,
+            track.channels ?? live.channels
+        )
+    }
+
     /// 从 AVAsset 的首个音频轨道读取比特率/采样率/声道数。
     /// - estimatedDataRate 单位是 bits per second；VBR 文件为平均值。
     /// - 采样率与声道数取自首个 CMAudioFormatDescription 的 AudioStreamBasicDescription。
