@@ -634,7 +634,7 @@ struct PlayerVolumeControl: View {
                 ))
                 .scaleEffect(y: showsVolumeSlider ? 1 : 0.4, anchor: .bottom)
                 .opacity(showsVolumeSlider ? 1 : 0)
-                .offset(y: showsVolumeSlider ? -34 : -40)
+                .offset(y: showsVolumeSlider ? -27 : -33)
                 .allowsHitTesting(showsVolumeSlider)
             }
             .onTapGesture {
@@ -683,7 +683,7 @@ struct PlayerVolumeControl: View {
             if volumeState.isExpanded {
                 // 热区 = 喇叭按钮 frame 向上扩展（竖向滑块浮层所在区域）。
                 let hot = volumeState.hotFrame.map {
-                    CGRect(x: $0.minX, y: $0.minY - 118, width: $0.width, height: $0.height + 118)
+                    CGRect(x: $0.minX, y: $0.minY - 96, width: $0.width, height: $0.height + 96)
                 }
                 let insideHotZone = hot?.contains(event.locationInWindow) ?? false
                 if !insideHotZone {
@@ -741,7 +741,7 @@ struct VerticalVolumeSlider: View {
                     }
             )
         }
-        .frame(width: 26, height: 108)
+        .frame(width: 26, height: 84)
         .contentShape(Rectangle())
     }
 }
