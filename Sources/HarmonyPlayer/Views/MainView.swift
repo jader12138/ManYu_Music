@@ -6,7 +6,6 @@ struct MainView: View {
     @EnvironmentObject private var player: AudioPlayer
     @EnvironmentObject private var theme: ThemeStore
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Environment(\.colorScheme) private var colorScheme
 
     @State private var destination: LibraryDestination = .section(.home)
     @State private var selectedAlbum: AlbumGroup?
@@ -366,13 +365,21 @@ struct MainView: View {
                 .font(.system(size: 11, weight: .medium))
                 .foregroundStyle(Color.hpTextPrimary.opacity(0.40))
 
-            TextField("搜索歌曲、艺人和专辑", text: $searchText)
-                .textFieldStyle(.plain)
-                .font(.system(size: 12))
-                // macOS 上 .foregroundStyle 对 TextField 输入文字不可靠，
-                // 必须用 .foregroundColor 按外观显式设色（深色白/浅色黑）。
-                .foregroundColor(colorScheme == .dark ? .white : .black)
-                .focused($searchIsFocused)
+            // 原生 NSTextField：SwiftUI TextField 的输入文字颜色受系统字段编辑器
+            // 影响（本应用 NSApp 外观被强制 darkAqua，env colorScheme 不可信），
+            // 改用固定色值的 AppKit 文本框——字段编辑器继承控件 textColor，
+            // 编辑中的文字颜色 100% 生效。
+            SearchTextField(
+                text: $searchText,
+                isFocused: $searchIsFocused,
+                textColor: theme.appearance == .dark
+                    ? NSColor(calibratedWhite: 0.92, alpha: 1)
+                    : NSColor(calibratedWhite: 0.10, alpha: 1),
+                placeholderColor: theme.appearance == .dark
+                    ? NSColor(calibratedWhite: 0.60, alpha: 1)
+                    : NSColor(calibratedWhite: 0.45, alpha: 1)
+            )
+            .frame(maxWidth: .infinity)
 
             if !searchText.isEmpty {
                 Button {
