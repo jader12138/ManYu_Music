@@ -157,22 +157,13 @@ struct StatsView: View {
                 .foregroundStyle(Color.hpTextPrimary.opacity(0.4))
                 .frame(width: 24, alignment: .trailing)
 
-            if let artwork = ArtworkCache.shared.image(for: item.track.url, tier: .small) {
-                Image(nsImage: artwork)
-                    .resizable()
-                    .aspectRatio(contentMode: .fill)
-                    .frame(width: 36, height: 36)
-                    .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
-            } else {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 6, style: .continuous)
-                        .fill(Color.hpTextPrimary.opacity(0.06))
-                    Image(systemName: "music.note")
-                        .font(.system(size: 14))
-                        .foregroundStyle(Color.hpTextPrimary.opacity(0.35))
-                }
-                .frame(width: 36, height: 36)
-            }
+            // 统一走 LazyArtworkView：缓存命中首帧直接出图，未命中（如新播过的歌、
+            // 缓存被淘汰）会异步从文件抽取封面后刷新，避免永久停留在占位符。
+            LazyArtworkView(
+                track: item.track,
+                size: 36,
+                cornerRadius: ArtworkLayout.cornerRadius(for: 36)
+            )
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(item.track.displayTitle)
@@ -213,10 +204,6 @@ struct StatsView: View {
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
-        .background(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(Color.hpTextPrimary.opacity(0.03))
-        )
         .contentShape(Rectangle())
         .onTapGesture(count: 2) {
             play(item.track)
