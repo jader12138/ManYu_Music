@@ -325,25 +325,8 @@ struct PlayerBar: View {
 
             sleepTimerMenu
 
-            // 简化版音量控件：喇叭 + 下方数字（不带%）+ 悬停滚轮调音量。
-            ZStack {
-                Image(systemName: player.volume == 0 ? "speaker.slash.fill" : "speaker.wave.2.fill")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(Color.hpTextPrimary.opacity(0.48))
-                    .frame(width: 28, height: 28)
-
-                Text("\(Int((player.volume * 100).rounded()))")
-                    .font(.system(size: 7, weight: .medium))
-                    .foregroundStyle(Color.hpTextPrimary.opacity(0.42))
-                    .offset(y: 5)
-
-                VolumeScrollCatcher { delta in
-                    let clamped = min(0.15, max(-0.15, delta))
-                    player.volume = min(1, max(0, player.volume + clamped))
-                }
-            }
-            .frame(width: 28)
-            .help("悬停滚轮调整音量")
+            // 音量控件：喇叭 + 右侧常驻滑条（拖动/悬停滚轮均可调）。
+            BarVolumeControl()
 
             IconButton(
                 systemName: "list.bullet",
@@ -364,15 +347,7 @@ struct PlayerBar: View {
 
             sleepTimerMenu
 
-            Image(systemName: player.volume == 0 ? "speaker.slash.fill" : "speaker.wave.2.fill")
-                .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(Color.hpTextPrimary.opacity(0.44))
-                .frame(width: 18)
-
-            Slider(value: $player.volume, in: 0...1)
-                .controlSize(.mini)
-                .frame(width: 76)
-                .tint(.hpAccent)
+            BarVolumeControl()
 
             IconButton(
                 systemName: "list.bullet",
@@ -615,5 +590,185 @@ struct PlaybackPressButtonStyle: ButtonStyle {
                 reduceMotion ? nil : .spring(response: 0.24, dampingFraction: 0.72),
                 value: configuration.isPressed
             )
+    }
+}
+
+/// 浮出式音量控件（播放页控制行用）：点击喇叭从**右方**弹出横向滑块、
+/// 再点收起；收起时悬停滚轮调音量；滑块悬浮、不挤占按钮行布局；展开
+/// 期间点击热区之外自动收起（NSEvent 本地监视器，事件原样放行）。
+/// 滚轮调节同样走 NSEvent 本地监视器——不用 NSView 捕获层：原生视图盖在
+/// 图标上方时会成为 SwiftUI 命中测试的终点，图标自身的手势失效，点击会
+/// 漏给祖先容器。依赖的 VolumeFrameReporter 与 HorizontalVolumeSlider
+/// 定义在 NowPlayingView.swift。
+struct PlayerVolumeControl: View {
+    @EnvironmentObject private var player: AudioPlayer
+    @State private var showsVolumeSlider = false
+    /// 滑块共享状态（引用类型）：NSEvent 监视器闭包从 @State 读到的是旧快照，
+    /// 必须经由 class 引用才能保证监视器始终读到最新的展开状态与热区位置。
+    private final class VolumeDismissState {
+        var isExpanded = false
+        var hotFrame: CGRect?
+    }
+    @State private var volumeState = VolumeDismissState()
+    @State private var volumeDismissMonitor: Any?
+    @State private var volumeScrollMonitor: Any?
+
+    var body: some View {
+        Image(systemName: volumeIconName)
+            .font(.system(size: 13, weight: .medium))
+            .foregroundStyle(Color.hpTextPrimary.opacity(0.55))
+            .frame(width: 32, height: 32)
+            .contentShape(Rectangle())
+            .background(VolumeFrameReporter { volumeState.hotFrame = $0 })
+            .overlay(alignment: .bottom) {
+                Text("\(Int((player.volume * 100).rounded()))")
+                    .font(.system(size: 7, weight: .medium))
+                    .foregroundStyle(Color.hpTextPrimary.opacity(0.42))
+                    .offset(y: 5)
+                    .opacity(showsVolumeSlider ? 0 : 1)
+            }
+            .overlay(alignment: .leading) {
+                HorizontalVolumeSlider(value: Binding(
+                    get: { player.volume },
+                    set: { player.volume = $0 }
+                ))
+                .scaleEffect(x: showsVolumeSlider ? 1 : 0.4, anchor: .leading)
+                .opacity(showsVolumeSlider ? 1 : 0)
+                .offset(x: showsVolumeSlider ? 32 : 40)
+                .allowsHitTesting(showsVolumeSlider)
+            }
+            .onTapGesture {
+                // 点击喇叭切换展开/收起。滚轮捕获层已移除，SwiftUI 命中测试
+                // 直达图标，内层手势优先于祖先层。
+                volumeState.isExpanded = !showsVolumeSlider
+                withAnimation(.easeInOut(duration: 0.24)) {
+                    showsVolumeSlider.toggle()
+                }
+            }
+            .help("点击展开/收起音量滑块；收起时悬停滚动可调音量")
+            .onAppear { installMonitors() }
+            .onDisappear { removeMonitors() }
+    }
+
+    private var volumeIconName: String {
+        switch player.volume {
+        case 0: "speaker.slash.fill"
+        case ..<0.34: "speaker.fill"
+        case ..<0.67: "speaker.wave.2.fill"
+        default: "speaker.wave.3.fill"
+        }
+    }
+
+    private func installMonitors() {
+        guard volumeDismissMonitor == nil else { return }
+
+        // 点击外部收起：热区外左键按下即收起，事件原样放行。
+        volumeDismissMonitor = NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown) { event in
+            if volumeState.isExpanded {
+                let insideHotZone = hotZone()?.contains(event.locationInWindow) ?? false
+                if !insideHotZone {
+                    volumeState.isExpanded = false
+                    withAnimation(.easeInOut(duration: 0.24)) {
+                        showsVolumeSlider = false
+                    }
+                }
+            }
+            return event
+        }
+
+        // 悬停滚轮调音量：仅收起时、仅悬停在喇叭上时吞掉事件，
+        // 其余情况原样放行（不影响背后列表的正常滚动）。
+        volumeScrollMonitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { event in
+            if !showsVolumeSlider,
+               event.scrollingDeltaY != 0,
+               volumeState.hotFrame?.contains(event.locationInWindow) == true {
+                let delta = -event.scrollingDeltaY / (event.hasPreciseScrollingDeltas ? 40 : 8)
+                let clamped = min(0.15, max(-0.15, delta))
+                player.volume = min(1, max(0, player.volume + clamped))
+                return nil
+            }
+            return event
+        }
+    }
+
+    /// 滑块热区：向右扩展（横向滑块浮层所在区域）。
+    private func hotZone() -> CGRect? {
+        volumeState.hotFrame.map { icon in
+            CGRect(x: icon.minX, y: icon.minY, width: icon.width + 70, height: icon.height)
+        }
+    }
+
+    private func removeMonitors() {
+        if let monitor = volumeDismissMonitor {
+            NSEvent.removeMonitor(monitor)
+            volumeDismissMonitor = nil
+        }
+        if let monitor = volumeScrollMonitor {
+            NSEvent.removeMonitor(monitor)
+            volumeScrollMonitor = nil
+        }
+    }
+}
+
+/// 播放条音量控件：喇叭（下方音量数字）+ 右侧常驻横向滑条，
+/// 点击轨道跳转、按住拖动调节；悬停滚轮同样可调（NSEvent 监视器按
+/// 控件窗口坐标判断，事件吞掉、不影响背后列表滚动）。
+struct BarVolumeControl: View {
+    @EnvironmentObject private var player: AudioPlayer
+    @State private var controlFrame: CGRect?
+    @State private var volumeScrollMonitor: Any?
+
+    var body: some View {
+        HStack(spacing: 2) {
+            Image(systemName: volumeIconName)
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(Color.hpTextPrimary.opacity(0.55))
+                .frame(width: 32, height: 32)
+                .overlay(alignment: .bottom) {
+                    Text("\(Int((player.volume * 100).rounded()))")
+                        .font(.system(size: 7, weight: .medium))
+                        .foregroundStyle(Color.hpTextPrimary.opacity(0.42))
+                        .offset(y: 5)
+                }
+
+            HorizontalVolumeSlider(value: Binding(
+                get: { player.volume },
+                set: { player.volume = $0 }
+            ))
+        }
+        .background(VolumeFrameReporter { controlFrame = $0 })
+        .help("拖动滑条或悬停滚轮调整音量")
+        .onAppear { installScrollMonitor() }
+        .onDisappear { removeScrollMonitor() }
+    }
+
+    private var volumeIconName: String {
+        switch player.volume {
+        case 0: "speaker.slash.fill"
+        case ..<0.34: "speaker.fill"
+        case ..<0.67: "speaker.wave.2.fill"
+        default: "speaker.wave.3.fill"
+        }
+    }
+
+    private func installScrollMonitor() {
+        guard volumeScrollMonitor == nil else { return }
+        volumeScrollMonitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { event in
+            if event.scrollingDeltaY != 0,
+               controlFrame?.contains(event.locationInWindow) == true {
+                let delta = -event.scrollingDeltaY / (event.hasPreciseScrollingDeltas ? 40 : 8)
+                let clamped = min(0.15, max(-0.15, delta))
+                player.volume = min(1, max(0, player.volume + clamped))
+                return nil
+            }
+            return event
+        }
+    }
+
+    private func removeScrollMonitor() {
+        if let monitor = volumeScrollMonitor {
+            NSEvent.removeMonitor(monitor)
+            volumeScrollMonitor = nil
+        }
     }
 }

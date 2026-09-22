@@ -10,6 +10,7 @@ struct MainView: View {
     @State private var destination: LibraryDestination = .section(.home)
     @State private var selectedAlbum: AlbumGroup?
     @State private var selectedArtist: ArtistGroup?
+    // 顶栏搜索框 UI 已移除（搜索功能待重新设计）；过滤逻辑与焦点通知暂时保留复用。
     @State private var searchText = ""
     @State private var showQueue = false
     @State private var showNowPlaying = false
@@ -390,37 +391,6 @@ struct MainView: View {
             }
 
             Spacer(minLength: 18)
-
-            if destination != .settings {
-            HStack(spacing: 7) {
-                Image(systemName: "magnifyingglass")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(Color.hpTextPrimary.opacity(0.40))
-
-                TextField("搜索歌曲、艺人和专辑", text: $searchText)
-                    .textFieldStyle(.plain)
-                    .font(.system(size: 12))
-                    .foregroundStyle(Color.hpTextPrimary)
-                    .focused($searchIsFocused)
-
-                if !searchText.isEmpty {
-                    Button {
-                        searchText = ""
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .foregroundStyle(Color.hpTextPrimary.opacity(0.32))
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-            .padding(.horizontal, 11)
-            .frame(width: 236, height: 34)
-            .background(Color.hpTextPrimary.opacity(0.055), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .stroke(searchIsFocused ? Color.hpAccent.opacity(0.62) : Color.hpTextPrimary.opacity(0.07), lineWidth: 1)
-            }
-            }
 
             IconButton(
                 systemName: theme.appearance == .dark ? "sun.max.fill" : "moon.stars.fill",
