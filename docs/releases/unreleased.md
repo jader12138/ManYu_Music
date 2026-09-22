@@ -5,6 +5,15 @@
 - 上一稳定版本：`v3.12.0`
 - 当前 `VERSION`：`3.13.0-beta5`
 
+## 本轮摘要（2026-09-22，分支 `codex/bilingual-lyrics`：播放页双语歌词识别 + 右下角开关）
+
+播放页歌词支持识别双语 LRC 文件，并加一个右下角开关控制是否显示译文。
+
+- **新增（双语识别）**：`LyricLine` 模型新增 `translation: String?` 字段（默认 nil，向后兼容所有现有构造点）；`LyricsParser.parse` 在按时间戳排序后做一轮双语合并——**相同 time 的相邻两行**（原文在前、译文在后）合并为一行，译文写入 `translation`。合并条件严格：仅当 `next.time == current.time` 且 `next.text != current.text` 且原文非空时配对；多时间戳同行（`[00:12.00][00:45.00]chorus`，解析后 text 相同、time 不同）不会被误判为双语；三行同 time 时前两行配对、第三行单独保留。无时间轴的纯文本歌词不参与合并。
+- **新增（右下角开关）**：`LyricTimelineView` 新增 `showTranslation: Bool` 参数；`NowPlayingView` 歌词面板右下角 HStack（"点击歌词可跳转" + "Aa" 设置钮）在 "Aa" 左侧加「译」按钮——点击切换 `@AppStorage("ManyuMusic.lyricsBilingual")`（默认关闭），开启态用主题色 `hpAccent` 高亮，关闭态用半透明灰。渲染：`showTranslation && line.translation != nil` 时在原文下方以 `baseFontSize * 0.78` 字号、`medium` 字重、较淡透明度（当前行 0.62 / 非当前行按距离衰减 ×0.62）渲染译文；VStack 整体随原文一起 `scaleEffect` 放大/缩小，行高由 `GeometryReader` 测量自动反映到滚动定位（`centerActive` 无需改动）。
+- **兼容性**：无设置/数据迁移；单语歌词 `translation` 为 nil，开关对其无影响；双语开关默认关闭，首次开启才显示译文。不影响内嵌歌词读取、缓存、预热、滚动定位任何既有路径。
+- **验证**：`swift test --disable-sandbox` 97/97 通过（新增 3 例：双语配对合并、单语 translation 为 nil、多时间戳同行不误合并）；`swift build -c release --disable-sandbox` 通过；`scripts/build-app.sh` 打包替换签名成功，dist 副本 `dist/漫域音乐-bilingual-lyrics.app`（CFBundleVersion 248）已重启。
+
 ## 本轮摘要（2026-09-22，分支 `codex/search-volume-rework`）
 
 主界面顶栏搜索框移除与音量控件搬家两项界面调整。

@@ -101,15 +101,41 @@ enum LyricsParser {
         }
 
         if hasTimeline {
-            parsedLines = parsedLines
+            let sorted = parsedLines
                 .filter { $0.time != nil }
                 .sorted {
                     if $0.time == $1.time { return $0.id < $1.id }
                     return ($0.time ?? 0) < ($1.time ?? 0)
                 }
+            // 双语合并：相同 time 的相邻两行（原文在前、译文在后）合并为一行，
+            // 译文写入 translation。只合并 text 不同且原文非空的相邻对；
+            // 多出的第三行（三行同 time）作为独立行单独保留，不参与配对。
+            var merged: [LyricLine] = []
+            merged.reserveCapacity(sorted.count)
+            var i = 0
+            while i < sorted.count {
+                let current = sorted[i]
+                let next: LyricLine? = (i + 1 < sorted.count) ? sorted[i + 1] : nil
+                if let next,
+                   next.time == current.time,
+                   !current.text.isEmpty,
+                   next.text != current.text {
+                    merged.append(LyricLine(
+                        id: current.id,
+                        time: current.time,
+                        text: current.text,
+                        translation: next.text
+                    ))
+                    i += 2
+                } else {
+                    merged.append(current)
+                    i += 1
+                }
+            }
+            parsedLines = merged
                 .enumerated()
                 .map { index, line in
-                    LyricLine(id: index, time: line.time, text: line.text)
+                    LyricLine(id: index, time: line.time, text: line.text, translation: line.translation)
                 }
         } else {
             parsedLines = parsedLines

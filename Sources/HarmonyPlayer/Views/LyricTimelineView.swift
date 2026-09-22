@@ -22,6 +22,9 @@ struct LyricTimelineView: View {
     var visibleLineCount: Int = 9
     /// 歌词时间轴偏移（秒）：正 = 歌词延后显示，负 = 提前显示。
     var lyricOffset: Double = 0
+    /// 双语开关：true 时在原文下方渲染译文；false 时只显示原文。
+    /// 仅对带 translation 的行生效，单语歌词不受影响。
+    var showTranslation: Bool = false
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var activeIndex: Int = -1
@@ -207,22 +210,36 @@ struct LyricTimelineView: View {
         } label: {
             // 字号与字重保持恒定：只靠 scaleEffect 做强调，行高不随播放变化，
             // 测量好的行位置始终有效。
-            Text(line.text)
-                .font(.system(size: baseFontSize, weight: .semibold, design: fontDesign))
-                .foregroundStyle(lineForegroundStyle(isCurrent: isCurrent, opacity: visibleOpacity))
-                .multilineTextAlignment(.center)
-                .lineSpacing(max(3, baseFontSize * 0.22))
-                .padding(.horizontal, 14)
-                .padding(.vertical, max(1.5, baseFontSize * 0.12 * lineSpacingScale))
-                .scaleEffect(isCurrent ? 1.30 : max(0.92, 1 - CGFloat(distance) * 0.012))
-                // 放大/缩小用渐变过渡：动画紧贴 scaleEffect，确保生效。
-                .animation(reduceMotion ? nil : .easeInOut(duration: 0.45), value: isCurrent)
-                .frame(maxWidth: .infinity)
-                .contentShape(Rectangle())
+            VStack(spacing: max(2, baseFontSize * 0.28)) {
+                Text(line.text)
+                    .font(.system(size: baseFontSize, weight: .semibold, design: fontDesign))
+                    .foregroundStyle(lineForegroundStyle(isCurrent: isCurrent, opacity: visibleOpacity))
+                if showTranslation, let translation = line.translation, !translation.isEmpty {
+                    Text(translation)
+                        .font(.system(size: baseFontSize * 0.78, weight: .medium, design: fontDesign))
+                        .foregroundStyle(translationForegroundStyle(isCurrent: isCurrent, opacity: visibleOpacity))
+                }
+            }
+            .multilineTextAlignment(.center)
+            .lineSpacing(max(3, baseFontSize * 0.22))
+            .padding(.horizontal, 14)
+            .padding(.vertical, max(1.5, baseFontSize * 0.12 * lineSpacingScale))
+            .scaleEffect(isCurrent ? 1.30 : max(0.92, 1 - CGFloat(distance) * 0.012))
+            // 放大/缩小用渐变过渡：动画紧贴 scaleEffect，确保生效。
+            .animation(reduceMotion ? nil : .easeInOut(duration: 0.45), value: isCurrent)
+            .frame(maxWidth: .infinity)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.50), value: activeIndex)
         .help(line.time == nil ? "" : "点击跳到这一句")
+    }
+
+    private func translationForegroundStyle(isCurrent: Bool, opacity: Double) -> AnyShapeStyle {
+        if isCurrent {
+            return AnyShapeStyle(textColor.opacity(0.62))
+        }
+        return AnyShapeStyle(textColor.opacity(max(0.06, opacity * 0.62)))
     }
 
     private func lineForegroundStyle(isCurrent: Bool, opacity: Double) -> AnyShapeStyle {
