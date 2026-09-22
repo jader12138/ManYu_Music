@@ -88,6 +88,9 @@ struct SidebarView: View {
                         .padding(.horizontal, 18)
                         .padding(.vertical, 10)
 
+                    statsButton
+                        .padding(.bottom, 4)
+
                     settingsButton
                         .padding(.bottom, 14)
                 }
@@ -257,6 +260,25 @@ struct SidebarView: View {
         .buttonStyle(HoverHighlightButtonStyle(cornerRadius: 10, hoverOpacity: 0.12))
         .padding(.horizontal, 10)
         .help("设置")
+    }
+
+    /// 「统计」入口：点击不在主窗口内切 destination，而是发出通知
+    /// 让 AppDelegate 打开独立 NSWindow 承载 `StatsView`。
+    private var statsButton: some View {
+        Button {
+            NotificationCenter.default.post(name: .openStats, object: nil)
+        } label: {
+            sidebarLabel(
+                title: "统计",
+                systemImage: "chart.bar.fill",
+                iconColor: Color.hpMint,
+                count: library.history.reduce(0) { $0 + $1.recentEvents.count },
+                selected: false
+            )
+        }
+        .buttonStyle(HoverHighlightButtonStyle(cornerRadius: 10, hoverOpacity: 0.12))
+        .padding(.horizontal, 10)
+        .help("打开播放统计")
     }
 
     private func select(_ newDestination: LibraryDestination) {

@@ -2,6 +2,16 @@
 
 ## Unreleased（3.13.0 正式版准备中）
 
+### 播放统计入口与时间维度统计（分支 codex/play-stats）
+
+#### 新增（侧栏统计入口 + 独立窗口 + 天/周/月/年维度）
+
+- 主页左侧侧栏底部「设置」按钮上方新增「统计」入口（图标 `chart.bar.fill`，着色 hpMint，右侧角标显示总播放事件数）。点击不在主窗口内切 destination，而是发出 `.openStats` 通知，由 `AppDelegate` 创建/聚焦独立的 `NSWindow` 承载 `StatsView`——窗口尺寸 880×620（最小 720×540），位置/大小通过 `ManyuMusic.statsWindow` autosave 持久化，红黄绿三键与主窗口一致右移 6pt/下移 6pt，深色 appearance 避免状态栏黑底。
+- 新窗口顶部「今天 / 本周 / 本月 / 本年」四段切换（默认本周），点击切换立即重算；右上角有「重新统计」按钮（Cmd+R）与「更新于 HH:mm」时间戳。窗口内三张汇总卡片：总播放次数、覆盖歌曲数、区间起点（按 `Calendar.current` 的 startOfDay / weekOfYear / month / year 区间）。
+- 主体列表按播放次数从多到少排列：每行展示排名、36pt 封面（命中 `ArtworkCache.small` 缓存则取，否则占位符）、标题 + 歌手·专辑、右侧「N 次」次数（hpAccent 加粗）+ 「播放」圆按钮（点击以当前可见列表为队列从该曲开始播放，双击行同效）。空状态显示「{区间}还没有播放记录」+ 引导文案。
+- 数据扩展：`PlayHistoryEntry` 新增 `recentEvents: [Date]` 字段记录每次播放时间戳，老 library.json 无该字段解码为空数组（自定义 init(from:) 兼容，旧的 lastPlayedAt/playCount 仍保留）。`recordPlay` 在更新 lastPlayedAt + playCount 同时往 recentEvents 追加 `.now`，每次追加后裁剪到最近 365 天；history 上限由 300 提到 1000 首不同的歌。
+- 查询接口：`LibraryStore.playStats(for: StatsRange)` 返回 `[(track: Track, count: Int)]`，按次数降序、id 升序稳定排序，仅返回当前曲库仍存在的歌曲；`totalPlayCount(for:)` 返回区间内总播放次数（含已不在曲库的歌曲）。`StatsView` 内部独立 reload 抓 history 快照避免并发修改，监听 `library.revision` 与 `.statsShouldRefresh` 通知自动刷新（如播放完一首歌后）。
+
 ### 重复歌曲检测（分支 codex/duplicate-detect）
 
 #### 新增（设置-资料库开关 + 手动选择保留 + 隐藏过滤）

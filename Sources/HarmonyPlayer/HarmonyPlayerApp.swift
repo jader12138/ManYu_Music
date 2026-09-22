@@ -15,6 +15,13 @@ struct HarmonyPlayerApp: App {
                 .environmentObject(player)
                 .environmentObject(theme)
                 .preferredColorScheme(theme.appearance.colorScheme)
+                .onAppear {
+                    // 主窗口首帧绘制后，把环境对象注入 AppDelegate，
+                    // 供后续由 AppDelegate 创建的独立窗口（如「统计」窗口）使用。
+                    appDelegate.library = library
+                    appDelegate.player = player
+                    appDelegate.theme = theme
+                }
         }
         .windowStyle(.hiddenTitleBar)
         .defaultSize(width: 1080, height: 650)
@@ -80,6 +87,16 @@ struct HarmonyPlayerApp: App {
 }
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
+    /// 由 SwiftUI 主窗口 onAppear 注入，供独立窗口（统计窗口等）共享。
+    /// SwiftUI 的 @StateObject 在应用生命周期内持有强引用，这里 weak 即可。
+    weak var library: LibraryStore?
+    weak var player: AudioPlayer?
+    weak var theme: ThemeStore?
+
+    /// 「播放统计」独立窗口。nil 表示当前未打开；关闭后置 nil 以便下次重建。
+    private var statsWindow: NSWindow?
+    private var statsObserver: NSObjectProtocol?
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         // —— 状态栏黑底根因级修复 ——
         // 告诉系统整个 App 是深色 appearance，系统就不会给状态栏宿主 window
@@ -105,6 +122,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Self.installScrollbarHider()
 
         MenuBarPlayerController.shared.syncWithSetting()
+
+        // 监听「打开播放统计」通知：侧栏点「统计」按钮或菜单项触发。
+        statsObserver = NotificationCenter.default.addObserver(
+            forName: .openStats,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.showStatsWindow()
+        }
 
         DispatchQueue.main.async {
             Self.fitWindowsToVisibleScreen()
@@ -259,6 +285,71 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             forKey: AudioPlayer.keepPlayingAfterWindowCloseKey
         )
         return !keepPlaying
+    }
+
+    // MARK: - 播放统计窗口
+
+    /// 打开或聚焦「播放统计」独立窗口。
+    /// 主窗口的环境对象由 onAppear 注入；首次打开时若尚未注入（启动极早期），
+    /// 会延迟到下一 runloop 再试。
+    func showStatsWindow() {
+        if let window = statsWindow, window.isVisible {
+            window.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+            NotificationCenter.default.post(name: .statsShouldRefresh, object: nil)
+            return
+        }
+
+        guard let library, let player, let theme else {
+            // 环境对象未注入：延后一帧再试。
+            DispatchQueue.main.async { [weak self] in
+                self?.showStatsWindow()
+            }
+            return
+        }
+
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 880, height: 620),
+            styleMask: [.titled, .fullSizeContentView, .closable, .miniaturizable, .resizable],
+            backing: .buffered,
+            defer: false
+        )
+        window.title = "播放统计"
+        window.titlebarAppearsTransparent = true
+        window.titleVisibility = .hidden
+        window.titlebarSeparatorStyle = .none
+        window.isOpaque = false
+        window.backgroundColor = .clear
+        window.isExcludedFromWindowsMenu = false
+        window.isReleasedWhenClosed = false
+        window.minSize = NSSize(width: 720, height: 540)
+        window.center()
+        window.setFrameAutosaveName("ManyuMusic.statsWindow")
+
+        let rootView = StatsView()
+            .environmentObject(library)
+            .environmentObject(player)
+            .environmentObject(theme)
+        window.contentView = NSHostingView(rootView: rootView)
+
+        // 应用与主窗口一致的红黄绿三键偏移与外观设置。
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            // 与主窗口同样的深色 appearance：避免状态栏/标题栏出现黑底。
+            window.appearance = NSAppearance(named: .darkAqua)
+            Self.offsetTrafficLights(of: window)
+            window.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+        }
+
+        statsWindow = window
+    }
+
+    /// 退出时移除统计观察者，避免悬挂 KVO 与 NotificationCenter 引用。
+    deinit {
+        if let statsObserver {
+            NotificationCenter.default.removeObserver(statsObserver)
+        }
     }
 
     /// 点击 Dock 图标重新打开主窗口（后台播放模式下关闭窗口后，Dock 仍可唤回）。

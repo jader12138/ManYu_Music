@@ -5,6 +5,17 @@
 - 上一稳定版本：`v3.12.0`
 - 当前 `VERSION`：`3.13.0-beta5`
 
+## 本轮摘要（2026-09-22，分支 `codex/play-stats`：侧栏统计入口 + 独立窗口 + 天/周/月/年维度统计）
+
+按用户三段式需求中的「1. 入口设置」+「2. 播放统计」实现（「3. 年度回顾」本轮不做）。侧栏底部新增「统计」按钮，点击打开独立 NSWindow 承载 StatsView；窗口内按天/周/月/年切换时间维度，统计总播放次数与每首歌的具体播放次数，按次数从多到少排列。
+
+- **入口（侧栏 + AppDelegate + 独立窗口）**：`SidebarView` 在「设置」按钮上方插入 `statsButton`（图标 `chart.bar.fill`、着色 hpMint、右侧角标为 `library.history.reduce(0) { $0 + $1.recentEvents.count }` 总播放事件数）。点击不在主窗口切 destination，而是 `NotificationCenter.default.post(name: .openStats)`。`AppDelegate` 在 `applicationDidFinishLaunching` 注册 `.openStats` 观察者，回调 `showStatsWindow()`：若 `statsWindow` 已存在则 `makeKeyAndOrderFront` + 发 `.statsShouldRefresh` 让窗口内 `StatsView` 重新拉数；否则创建新 `NSWindow`（880×620、`.titled + .fullSizeContentView + .closable + .miniaturizable + .resizable`、`titleVisibility = .hidden`、`backgroundColor = .clear`、`isExcludedFromWindowsMenu = false`、`minSize 720×540`、`center()`、`setFrameAutosaveName("ManyuMusic.statsWindow")`），`contentView = NSHostingView(rootView: StatsView().environmentObject(...))`，主 runloop 异步设深色 appearance + offsetTrafficLights + makeKeyAndOrderFront。`AppDelegate` 持有 `weak var library/player/theme`，由 `HarmonyPlayerApp.body` 的 `.onAppear` 注入（首次启动极早期若未注入，`showStatsWindow` 会延后一帧重试）。`deinit` 移除观察者。
+- **数据扩展（PlayHistoryEntry）**：`Models.swift` 中 `PlayHistoryEntry` 新增 `var recentEvents: [Date]`，自定义 `init(from:)` 用 `decodeIfPresent` 兼容老 library.json（缺字段回退为空数组，旧 `lastPlayedAt` / `playCount` 不动），自定义 `encode(to:)` 同步写入。新增 `enum StatsRange: String, CaseIterable, Identifiable { case day/week/month/year }` 提供 `title`（"今天/本周/本月/本年"）与 `intervalStart: Date`（按 `Calendar.current` 的 `startOfDay` / `dateInterval(of: .weekOfYear)` / `.month` / `.year` 起始时刻）。同时新增 `Notification.Name.openStats` 与 `.statsShouldRefresh`。
+- **LibraryStore 接入**：`recordPlay(_:)` 在更新 `lastPlayedAt` / `playCount` 同时往 `recentEvents.append(.now)`，调用私有 `trimRecentEvents(&events)` 从头部丢弃早于 `now - 365*24*3600` 的事件避免无限增长；`history` 上限由 300 提到 1000 首不同的歌。新增 `playStats(for: StatsRange) -> [(track: Track, count: Int)]`：遍历 `history`，把 `entry.recentEvents` 中 `>= range.intervalStart` 的事件按 `trackID` 计数，仅保留 `derivedCache.tracksByID` 中仍存在的歌曲，按 count 降序、id 升序稳定排序。新增 `totalPlayCount(for:) -> Int` 返回区间内总播放次数（含已不在曲库的歌曲，仍反映真实播放量）。
+- **StatsView（新窗口根视图）**：`Sources/HarmonyPlayer/Views/StatsView.swift` 新建。`@State range = .week`（默认本周），`entries: [(track, count)]`、`total: Int`、`loadedAt: Date`。布局：顶部标题栏「播放统计」+ 更新时间 + 重新统计按钮（Cmd+R）；下方四段 segmented 切换；三张汇总卡片（总播放次数/覆盖歌曲数/区间起点）按 hpAccent/hpPink/hpMint 着色；主体 ScrollView 列出每行：排名 + 36pt 封面（`ArtworkCache.shared.image(for: track.url, tier: .small)` 命中即用，否则占位符）+ 标题/歌手·专辑 + 右侧「N 次」+ 「播放」圆按钮；空状态显示「{区间}还没有播放记录」+ 引导文案。`reload()` 抓一份 `library.history.map { $0 }` 不可变快照避免渲染期间并发修改，监听 `library.revision` 变化与 `.statsShouldRefresh` 通知自动刷新（如播放完一首歌后）。`play(_:)` 以当前 `entries` 为队列调用 `player.play(_:in:)`，列表行双击同效。
+- **兼容性**：`PlayHistoryEntry` 自定义 Codable 向后兼容老 library.json（缺 `recentEvents` 解码为 []），旧 `lastPlayedAt` / `playCount` 不动，老版本写的 history 在新版本仍可读、可写；新增 UserDefaults 键仅 `ManyuMusic.statsWindow`（窗口位置存档，NSWindow 自动管理），无业务偏好新增。`LibraryBrowseSnapshot.build` 等既有调用零改动。
+- **验证**：`swift test` 110/110 通过（10.4 秒，无新增单测因本轮纯 UI + 数据接入，行为靠运行时验收）；`swift build -c release` 通过；dist 副本 `dist/漫域音乐-play-stats.app`（CFBundleVersion 252）已签名并 `pkill` + `open` 重启，等主人验收侧栏入口、独立窗口、四段切换、按次数降序列表与播放按钮。
+
 ## 本轮摘要（2026-09-22，分支 `codex/duplicate-detect`：重复歌曲检测 + 手动保留 + 显示过滤）
 
 设置 → 资料库新增「过滤重复歌曲」开关；开启后可点「重新检测」唤起审查面板，对所有重复组手动选择保留哪一首，未保留项从浏览列表隐藏（不从 library.json 删除、不删源文件，可逆）。

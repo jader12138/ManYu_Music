@@ -180,6 +180,10 @@ extension Notification.Name {
     static let openSettings = Notification.Name("HarmonyPlayer.openSettings")
     /// 空库引导等入口：跳过设置页，直接弹出"添加文件或文件夹"面板。
     static let openImportPanel = Notification.Name("HarmonyPlayer.openImportPanel")
+    /// 打开「播放统计」独立窗口。
+    static let openStats = Notification.Name("HarmonyPlayer.openStats")
+    /// 触发已打开的统计窗口刷新数据（如播放完一首歌后）。
+    static let statsShouldRefresh = Notification.Name("HarmonyPlayer.statsShouldRefresh")
 }
 
 
@@ -259,8 +263,89 @@ struct PlayHistoryEntry: Identifiable, Codable, Hashable {
     let trackID: UUID
     var lastPlayedAt: Date
     var playCount: Int
+    /// 每次播放的时间戳，用于按天/周/月/年聚合统计。
+    /// 老版本 library.json 没有该字段，解码时默认为空数组，
+    /// 旧的 lastPlayedAt + playCount 仍保留兼容。
+    var recentEvents: [Date]
 
     var id: UUID { trackID }
+
+    init(
+        trackID: UUID,
+        lastPlayedAt: Date,
+        playCount: Int,
+        recentEvents: [Date] = []
+    ) {
+        self.trackID = trackID
+        self.lastPlayedAt = lastPlayedAt
+        self.playCount = playCount
+        self.recentEvents = recentEvents
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case trackID, lastPlayedAt, playCount, recentEvents
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        trackID = try c.decode(UUID.self, forKey: .trackID)
+        lastPlayedAt = try c.decode(Date.self, forKey: .lastPlayedAt)
+        playCount = try c.decode(Int.self, forKey: .playCount)
+        // 老数据无 recentEvents 字段时回退为空数组，不影响旧的 playCount/lastPlayedAt。
+        recentEvents = try c.decodeIfPresent([Date].self, forKey: .recentEvents) ?? []
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(trackID, forKey: .trackID)
+        try c.encode(lastPlayedAt, forKey: .lastPlayedAt)
+        try c.encode(playCount, forKey: .playCount)
+        try c.encode(recentEvents, forKey: .recentEvents)
+    }
+}
+
+/// 播放统计的时间范围维度。
+enum StatsRange: String, CaseIterable, Identifiable {
+    case day
+    case week
+    case month
+    case year
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .day: "今天"
+        case .week: "本周"
+        case .month: "本月"
+        case .year: "本年"
+        }
+    }
+
+    /// 当前时间所属区间的起始时刻。
+    var intervalStart: Date {
+        let calendar = Calendar.current
+        let now = Date()
+        switch self {
+        case .day:
+            return calendar.startOfDay(for: now)
+        case .week:
+            guard let interval = calendar.dateInterval(of: .weekOfYear, for: now) else {
+                return calendar.startOfDay(for: now)
+            }
+            return interval.start
+        case .month:
+            guard let interval = calendar.dateInterval(of: .month, for: now) else {
+                return calendar.startOfDay(for: now)
+            }
+            return interval.start
+        case .year:
+            guard let interval = calendar.dateInterval(of: .year, for: now) else {
+                return calendar.startOfDay(for: now)
+            }
+            return interval.start
+        }
+    }
 }
 
 enum TrackSortOrder: String, CaseIterable, Identifiable {
