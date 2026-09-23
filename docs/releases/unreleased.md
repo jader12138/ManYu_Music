@@ -1,11 +1,41 @@
-# 下一版本（v1.1.0-beta2 测试版或 v1.1.0 正式版准备中）
+# 下一版本（v1.11.0-beta2 测试版或 v1.11.0 正式版准备中）
 
-- 发布状态：**v1.1.0-beta1 已于 2026-09-23 发布**（GitHub Releases，prerelease，不顶替 v0.5 稳定版；见文末附录）。
-- 已发布 1.1 内测：`v1.1.0-beta1`。
+- 发布状态：**v1.11.0-beta1 已于 2026-09-23 发布**（GitHub Releases，prerelease，不顶替 v0.5 稳定版；见文末附录）。
+- 已发布 1.11 内测：`v1.11.0-beta1`。
 - 上一稳定版本：`v0.5`（原 v3.12.0）
-- 当前 `VERSION`：`1.1.0-beta1`（已随 beta1 发布）
+- 当前 `VERSION`：`1.11.0-beta1`（已随 beta1 发布）
 
-## 本轮摘要（2026-09-23，分支 `codex/v1.1-beta1`：封面转场动画优化 + 改号 1.1）
+## 本轮摘要（2026-09-23，分支 `codex/artist-clickable`：歌手名可点击 + 改号 1.11）
+
+### 用户可见变化
+
+- 播放条和播放页的歌手名现在可点击。点击后进入该艺术家的详情页，页面展示该艺术家全部歌曲，可直接选歌播放。
+- 播放页点击歌手名后自动关闭播放页，回到主界面展示艺术家详情；播放条点击则直接在主界面展示。
+- 设置 → 关于页显示版本号 `1.11.0-beta1`。
+
+### 技术变更
+
+- **新增 `.openArtist` 通知**（`Models.swift`）：与现有 `.openSettings` / `.openImportPanel` 同一 NotificationCenter 通信模式，`object` 传艺术家名 String。
+- **`MainView` 监听 `.openArtist`**：从 `library.tracks` 按 `displayArtist` 过滤，构造 `ArtistGroup` 并设置 `selectedArtist` 展示已有的 `ArtistDetailView`；同时设 `showNowPlaying = false` 关闭播放页。
+- **`PlayerBar.swift`**：歌手名从 `Text` 改为 `Button`，`.buttonStyle(.plain)` 保持原视觉，`.help("查看艺术家")` 添加 tooltip。
+- **`NowPlayingView.swift`**：歌手名同样改为 `Button`；无歌曲时仍显示占位文字「选择一首歌曲开始」。
+- 复用已有 `ArtistDetailView`（`TrackListView.swift:786`）和 `ArtistGroup`（`Models.swift:214`），未新建任何文件。
+
+### 兼容性
+
+- 无数据格式变更，`library.json` 和 UserDefaults 完全兼容。
+- 无新增系统权限需求。
+
+### 验证
+
+- `swift build` 编译通过。
+- `swift test --disable-sandbox` 全部通过（0 failures）。
+- `scripts/build-app.sh` release 打包成功，`codesign --verify --deep --strict` 通过。
+- 真机启动后点击播放条歌手名 → 进入艺术家详情页，歌曲列表正确。
+- 进入播放页 → 点击歌手名 → 播放页关闭，主界面展示艺术家详情页。
+- 艺术家详情页中点歌能正常播放。
+
+## 历史摘要：v1.1.0-beta1（2026-09-23，分支 `codex/v1.1-beta1`：封面转场动画优化 + 改号 1.1）
 
 ### 用户可见变化
 

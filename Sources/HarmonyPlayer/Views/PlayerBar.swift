@@ -147,10 +147,14 @@ struct PlayerBar: View {
                                     formatBadge(for: track)
                                         .offset(y: 5)
                                 }
-                                Text(track.displayArtist)
-                                    .font(.system(size: 11))
-                                    .foregroundStyle(Color.hpTextPrimary.opacity(0.44))
-                                    .lineLimit(1)
+                                Button(track.displayArtist) {
+                                    NotificationCenter.default.post(name: .openArtist, object: track.displayArtist)
+                                }
+                                .buttonStyle(.plain)
+                                .font(.system(size: 11))
+                                .foregroundStyle(Color.hpTextPrimary.opacity(0.44))
+                                .lineLimit(1)
+                                .help("查看艺术家")
                             }
                             .frame(maxWidth: .infinity, alignment: .leading)
                         }

@@ -1,6 +1,20 @@
 # 更新日志
 
-## Unreleased（下一版本：v1.1.0-beta2 测试版或 v1.1.0 正式版）
+## Unreleased（下一版本：v1.11.0-beta2 测试版或 v1.11.0 正式版）
+
+## v1.11.0-beta1（2026-09-23，内部测试版）
+
+> 歌手名可点击进入艺术家详情页。GitHub：https://github.com/jader12138/ManYu_Music/releases/tag/v1.11.0-beta1 ，prerelease、不顶替 v0.5 稳定版。
+
+### 新功能：点击歌手名进入艺术家详情页
+
+- 播放条和播放页的歌手名现在可点击。点击后进入该艺术家的详情页，页面展示该艺术家全部歌曲，可直接选歌播放。
+- 复用已有的 `ArtistDetailView` 和 `ArtistGroup` 组件，通过 `NotificationCenter` 通信模式（与 `.openSettings` / `.openImportPanel` 一致）实现跨组件导航。
+- 播放页点击歌手名后自动关闭播放页，回到主界面展示艺术家详情；播放条点击则直接在主界面展示。
+
+### 软件本体版本号升级为 1.11 测试版
+
+- `VERSION` 由 `1.1.0-beta1` 改为 `1.11.0-beta1`；`CFBundleShortVersionString` 为 `1.11.0`，`ManyuMusicReleaseName` 为 `1.11.0-beta1`。
 
 ## v1.1.0-beta1（2026-09-23，内部测试版）
 

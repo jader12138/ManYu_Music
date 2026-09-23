@@ -19,11 +19,11 @@
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
-    <string>1.1.0</string>
+    <string>1.11.0</string>
     <key>CFBundleVersion</key>
     <string>13</string>
     <key>ManyuMusicReleaseName</key>
-    <string>1.1.0-beta1</string>
+    <string>1.11.0-beta1</string>
     <key>NSHumanReadableCopyright</key>
     <string>© 2026 漫域音乐</string>
     <key>LSApplicationCategoryType</key>
