@@ -1,6 +1,10 @@
 # 更新日志
 
-## Unreleased（下一版本为 v1.0.0-beta1 测试版）
+## Unreleased（下一版本：v1.0.0-beta2 测试版或 v1.0.0 正式版）
+
+## v1.0.0-beta1（2026-09-23，内部测试版）
+
+> 版本线重排后首个 1.0 测试版：历史版本已重新编号为 v0.1~v0.10（v0.10 即原 v3.13.0-beta5）。GitHub：https://github.com/jader12138/ManYu_Music/releases/tag/v1.0.0-beta1 ，prerelease、不顶替 v0.5 稳定版；DMG `ManyuMusic-1.0.0-beta1.dmg`（10,857,682 字节，SHA-256 `e4c39c8ba4301a85e26d489360d413b89b7203c927f627aa7858a1d3b9246184`），tag `v1.0.0-beta1`（annotated 对象 e3ffe08）打在 main 合并提交 8b89fcd 上。
 
 ### 修复：侧栏左上角 Logo 偶尔显示远古测试版旧图标
 

@@ -1,9 +1,9 @@
-# 下一版本（v1.0.0-beta1 测试版准备中）
+# 下一版本（v1.0.0-beta2 测试版或 v1.0.0 正式版准备中）
 
-- 发布状态：截至 2026-09-20 的均衡器/音效增强/连播增强/频谱山峰/包边图标等改动已随 **`v3.13.0-beta4`** 内测预发布版发布（GitHub Releases，prerelease，不顶替 3.12.0 稳定版）；`CHANGELOG.md` 已归档 beta4 区块，本文件保留过程摘要与发布附录。
-- 已发布内测：`v3.13.0-beta1`、`v3.13.0-beta2`、`v3.13.0-beta3`、`v3.13.0-beta4`（见文末附录）
-- 上一稳定版本：`v3.12.0`
-- 当前 `VERSION`：`1.0.0-beta1`（2026-09-23 由 `3.13.0-beta5` 改号，见下条本轮摘要）
+- 发布状态：**v1.0.0-beta1 已于 2026-09-23 发布**（GitHub Releases，prerelease，不顶替 v0.5 稳定版；见文末附录）。本文件保留过程摘要与发布附录。
+- 已发布 1.0 内测：`v1.0.0-beta1`；更早的内测在版本线重排后编号为 `v0.6`~`v0.10`（原 v3.13.0-beta1~beta5，见文中原附录）。
+- 上一稳定版本：`v0.5`（原 v3.12.0）
+- 当前 `VERSION`：`1.0.0-beta1`（已随 beta1 发布）
 
 > 注：2026-09-23 起 GitHub 版本线重排，上文及后文各历史摘要中的 `v3.x` 旧标签名与新编号对照见下节；仓库内 `docs/releases/v3.*.md` 按永久历史记录规则保留原文件名、不重命名。
 
@@ -422,6 +422,15 @@ beta3 之后最大的一次内测版本：引入 31 段参数均衡器（参考 
 - 封面与歌词仍为内存缓存（设计如此，可再生成）。
 - beta2 修复 beta1 内测发现的播放恢复、窄屏播放条与歌词格式识别问题；根据后续反馈继续修复，正式发布时版本号定为 3.13.0。
 - 继续执行一功能一分支，合并和发布完成后删除已用完的分支。
+
+## 附录：v1.0.0-beta1 发布记录（2026-09-23 已发布）
+
+- GitHub Release：https://github.com/jader12138/ManYu_Music/releases/tag/v1.0.0-beta1 ，prerelease=true、make_latest=false（「最新正式版」仍为 v0.5）。
+- 标签 `v1.0.0-beta1`（annotated，对象 `e3ffe08`）打在 main 合并提交 `8b89fcd` 上（合并分支 `codex/version-1.0-beta1`，内含版本线文档 `541f5db`、改号 `c2d6b5c`、侧栏旧 Logo 修复 `8506c04`）；功能分支合并后已从远端与本地删除。
+- 版本：`VERSION=1.0.0-beta1`，包内 `CFBundleShortVersionString=1.0.0`、`CFBundleVersion=269`、`ManyuMusicReleaseName=1.0.0-beta1`，设置 → 关于显示「1.0.0-beta1（build 269）/ 内部测试版」。
+- DMG 资产 `ManyuMusic-1.0.0-beta1.dmg`（10,857,682 字节，SHA-256 `e4c39c8ba4301a85e26d489360d413b89b7203c927f627aa7858a1d3b9246184`），UDZO 压缩、卷宗白色图标（`.VolumeIcon.icns` + SetFile C/V）；挂载校验含 app + Applications 软链、包内版本/签名（`codesign --verify --deep --strict`）通过、`lipo -archs` = arm64；发布后从 GitHub 回下载 SHA-256 一致。
+- 内容范围：自 v0.10（原 beta5）以来合入 main 的全部工作——播放 CPU/封面性能优化、发布前极限排雷两处闪退修复、侧栏旧代码 Logo 删除、设置外观预览缩略图、全局 tooltip 禁用、主窗口固定位置、播放统计、重复歌曲检测、双语歌词、启动自动扫库、拼音搜索、音频参数弹层、音量控件重做与静音、后台播放与迷你播放器打磨等（详见 CHANGELOG 的 v1.0.0-beta1 区块）。
+- 验证：`swift test --disable-sandbox` 全部套件 0 failures；release 打包 + ad-hoc 签名成功；合并后在 main 重新构建 `dist/漫域音乐.app` 并强杀旧进程（按 PID，中文名 pkill 会静默失败）启动新包，进程路径与侧栏新 Logo 实拍确认。
 
 ## 修订记录
 
