@@ -1,6 +1,21 @@
 # 更新日志
 
-## Unreleased（下一版本：v1.0.0-beta2 测试版或 v1.0.0 正式版）
+## Unreleased（下一版本：v1.1.0-beta2 测试版或 v1.1.0 正式版）
+
+## v1.1.0-beta1（2026-09-23，内部测试版）
+
+> 封面切换动画优化版。GitHub：https://github.com/jader12138/ManYu_Music/releases/tag/v1.1.0-beta1 ，prerelease、不顶替 v0.5 稳定版。
+
+### 优化：播放页切歌封面转场动画
+
+- **根因**：切歌时 `currentTrack?.id` 立即变化触发转场动画，但 `player.artwork` 在异步 `Task` 中延迟更新。即使 `ArtworkCache` 已有缓存，`await` 也让 `self.artwork` 赋值推迟到下一个 runloop，导致转场过程中图像突然切换产生视觉跳变。
+- **同步缓存命中**：`AudioPlayer.loadArtwork(for:)` 在 `Task { }` 之前先同步查 `ArtworkCache.shared`，命中即在同一 runloop 内设置 `self.artwork`，让转场动画第一帧就有正确封面图；缓存未命中时仍走异步路径，命中后跳过重复赋值。
+- **新动效：缩放渐入**：替换旧的 push-out（旧封面左滑+新封面上浮）为 `.scale(scale: 0.92).combined(with: .opacity)` 缩放渐入 + 旧封面原地淡出。因新旧视图共享同一个 `player.artwork`，push-out 下旧视图会显示新图导致违和感；缩放渐入在同位置渐变，对共享图属性不敏感。动画时长从 0.5s 缩短到 0.35s。
+- 删除不再引用的 `ArtworkPushInModifier` 和 `ArtworkFadeOutModifier` 自定义 ViewModifier。
+
+### 软件本体版本号升级为 1.1 测试版
+
+- `VERSION` 由 `1.0.0-beta1` 改为 `1.1.0-beta1`；`CFBundleShortVersionString` 为 `1.1.0`，`ManyuMusicReleaseName` 为 `1.1.0-beta1`。
 
 ## v1.0.0-beta1（2026-09-23，内部测试版）
 

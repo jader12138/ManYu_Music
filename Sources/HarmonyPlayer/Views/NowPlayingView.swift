@@ -97,25 +97,14 @@ struct NowPlayingView: View {
         VStack(spacing: 15) {
             // 封面+标题区：队列模式时隐藏，但控制栏位置不变。
             VStack(spacing: 15) {
-                // 切歌过渡：新封面从旧封面「后面」被顶出来——下层封面轻微上浮+放大+淡入，
-                // 前景的旧封面原地慢慢消散（不滑动）。ZStack 固定尺寸，不推动上下布局。
+                // 切歌过渡：新封面从 92% 缩放渐入，旧封面原地淡出，丝滑无位移。
                 ZStack {
                     ArtworkView(image: player.artwork, size: artworkSize, cornerRadius: 22)
                         .id(player.currentTrack?.id)
-                        .transition(
-                            reduceMotion
-                                ? .identity
-                                : .asymmetric(
-                                    insertion: .modifier(
-                                        active: ArtworkPushInModifier(progress: 1),
-                                        identity: ArtworkPushInModifier(progress: 0)
-                                    ),
-                                    removal: .modifier(
-                                        active: ArtworkFadeOutModifier(progress: 1),
-                                        identity: ArtworkFadeOutModifier(progress: 0)
-                                    )
-                                )
-                        )
+                        .transition(reduceMotion ? .identity : .asymmetric(
+                            insertion: .scale(scale: 0.92).combined(with: .opacity),
+                            removal: .opacity
+                        ))
                 }
                 .frame(width: artworkSize, height: artworkSize)
                 .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
@@ -128,7 +117,7 @@ struct NowPlayingView: View {
                     isSource: false
                 )
                 // 减弱动态效果时立即替换；进/出播放页的放大转场期间曲目不变，互不影响。
-                .animation(reduceMotion ? nil : .easeOut(duration: 0.5), value: player.currentTrack?.id)
+                .animation(reduceMotion ? nil : .easeInOut(duration: 0.35), value: player.currentTrack?.id)
 
                 VStack(spacing: 8) {
                     Text(player.currentTrack?.displayTitle ?? "还未播放")
@@ -976,34 +965,5 @@ struct NowPlayingHeaderControls: View {
         .contentShape(Rectangle())
         .onTapGesture(perform: close)
         .help("返回资料库")
-    }
-}
-
-// MARK: - 播放页封面切歌转场
-
-/// 新封面「从后面顶出来」：起始（progress=1）在下层、轻微偏下偏小且透明，
-/// 动画到 progress=0 时上浮放大到正位、完全显现。zIndex 固定为 0（在后景）。
-private struct ArtworkPushInModifier: ViewModifier {
-    let progress: Double
-
-    func body(content: Content) -> some View {
-        content
-            .scaleEffect(1.0 - 0.05 * progress)
-            .offset(y: 14 * progress)
-            .opacity(1.0 - progress)
-            .zIndex(0)
-    }
-}
-
-/// 旧封面「向左退散」：保持在前景（zIndex 1），随 progress 向左滑动并淡出，
-/// 呈现被后面的新封面顶替、朝左侧消散退去的观感。
-private struct ArtworkFadeOutModifier: ViewModifier {
-    let progress: Double
-
-    func body(content: Content) -> some View {
-        content
-            .offset(x: -36 * progress)
-            .opacity(1.0 - progress)
-            .zIndex(1)
     }
 }
