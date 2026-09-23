@@ -5,7 +5,7 @@ ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 APP_NAME="漫域音乐"
 APP_PATH="$ROOT_DIR/dist/$APP_NAME.app"
 APP_VERSION="$(tr -d '\n' < "$ROOT_DIR/VERSION")"
-# VERSION 允许带预发布后缀，如 3.13.0-beta1：CFBundleShortVersionString 必须是
+# VERSION 允许带预发布后缀，如 1.0.0-beta1：CFBundleShortVersionString 必须是
 # 纯数字三段，用 '-' 之前的部分；完整版本号写入 ManyuMusicReleaseName，
 # 设置页据此显示"内部测试版"标识。
 APP_MARKETING_VERSION="${APP_VERSION%%-*}"

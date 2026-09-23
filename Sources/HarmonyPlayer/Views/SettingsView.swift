@@ -846,7 +846,7 @@ private struct SleepTimerRow: View {
 // MARK: - AppInfo
 
 /// 从 Bundle 读取版本/构建信息。`ManyuMusicReleaseName` 由构建脚本写入，
-/// 形如 `3.13.0` 或内测期的 `3.13.0-beta1`；带 "-" 后缀时视为预发布版本。
+/// 形如 `1.0.0` 或内测期的 `1.0.0-beta1`；带 "-" 后缀时视为预发布版本。
 enum AppInfo {
     static var marketingVersion: String {
         Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.0.0"

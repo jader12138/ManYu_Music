@@ -2,6 +2,11 @@
 
 ## Unreleased（下一版本为 v1.0.0-beta1 测试版）
 
+### 软件本体版本号升级为 1.0 测试版（分支 codex/version-1.0-beta1）
+
+- `VERSION` 由 `3.13.0-beta5` 改为 `1.0.0-beta1`；打包后「设置 → 关于」显示完整版本号 **1.0.0-beta1**（预发布标识），系统 `CFBundleShortVersionString` 为纯数字三段 **1.0.0**，构建号仍按提交数自动生成。
+- `Resources/Info.plist` 模板占位同步为 1.0.0 / 1.0.0-beta1；构建脚本与设置页代码中的示例版本号注释一并更新。无功能与数据格式变更。
+
 ### 版本线整理：GitHub 历史版本统一改编号为 0.x（分支 codex/renumber-versions-0x）
 
 - 1.0 正式版尚未发布，既往 v3.x 编号作废重排（仅 GitHub Releases 与 Git 标签层面，应用本体无任何变化）：
