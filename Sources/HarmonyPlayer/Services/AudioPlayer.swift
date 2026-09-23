@@ -970,10 +970,17 @@ final class AudioPlayer: ObservableObject {
     }
 
     private func loadArtwork(for track: Track) {
+        // 同步缓存命中：在同一个 runloop 内设置封面，让转场动画第一帧就有正确图。
+        if let cached = ArtworkCache.shared.image(for: track.url, tier: .large) {
+            self.artwork = cached
+        }
         Task {
             let image = await AudioMetadataLoader.artwork(for: track)
             guard self.currentTrack?.id == track.id else { return }
-            self.artwork = image
+            // 缓存命中时跳过赋值，避免重复触发 @Published 更新。
+            if self.artwork == nil || self.artwork !== image {
+                self.artwork = image
+            }
             // 主色提取与背景模糊渲染并行，都在后台：切歌瞬间不再与转场动画抢占主线程。
             async let palette = Task.detached(priority: .userInitiated) {
                 image.map(ArtworkPaletteExtractor.palette(from:))
