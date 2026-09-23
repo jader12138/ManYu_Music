@@ -1,6 +1,14 @@
 # 更新日志
 
-## Unreleased（3.13.0 正式版准备中）
+## Unreleased（下一版本为 v1.0.0-beta1 测试版）
+
+### 版本线整理：GitHub 历史版本统一改编号为 0.x（分支 codex/renumber-versions-0x）
+
+- 1.0 正式版尚未发布，既往 v3.x 编号作废重排（仅 GitHub Releases 与 Git 标签层面，应用本体无任何变化）：
+  - `v3.8.0` → `v0.1`（原仅有标签、无 Release，已补建 Release，无安装包）；`v3.9.0` → `v0.2`；`v3.10.0` → `v0.3`；`v3.11.0` → `v0.4`；`v3.12.0` → `v0.5`（Latest 稳定版）。
+  - `v3.13.0-beta1` ~ `v3.13.0-beta5` → `v0.6` ~ `v0.10`（均保持 prerelease 预发布标记，不顶替稳定版）。
+- 新标签均为 annotated tag，指向的提交与标签日期与旧标签完全一致；6 个 DMG 安装包按新版本号重新挂载（文件名同步改为 `ManyuMusic-0.x.dmg`，字节级一致、SHA-256 与原包相同），Release 标题与正文中的旧版本号一并替换；旧 v3.x 标签与 Release 已从 GitHub 及本地全部删除。
+- 下一个发布版本将是 `v1.0.0-beta1`（1.0 测试版）。
 
 ### 外观：设置页外观预览图 + 歌词切换效果下拉框收窄（分支 codex/settings-appearance-previews）
 
