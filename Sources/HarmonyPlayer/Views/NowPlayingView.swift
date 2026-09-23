@@ -128,11 +128,23 @@ struct NowPlayingView: View {
                         .minimumScaleFactor(0.72)
                         .multilineTextAlignment(.center)
 
-                    Text(player.currentTrack?.displayArtist ?? "选择一首歌曲开始")
+                    if let artist = player.currentTrack?.displayArtist {
+                        Button(artist) {
+                            NotificationCenter.default.post(name: .openArtist, object: artist)
+                        }
+                        .buttonStyle(.plain)
                         .font(.system(size: 14, weight: .semibold))
                         .foregroundStyle(Color.hpTextPrimary.opacity(0.68))
                         .lineLimit(1)
                         .minimumScaleFactor(0.78)
+                        .help("查看艺术家")
+                    } else {
+                        Text("选择一首歌曲开始")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(Color.hpTextPrimary.opacity(0.68))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.78)
+                    }
 
                     if let album = player.currentTrack?.displayAlbum {
                         Text(album)

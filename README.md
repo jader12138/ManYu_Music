@@ -2,7 +2,7 @@
 
 漫域音乐是一款原生 macOS 本地音乐播放器，使用 SwiftUI、AVFoundation 和 MediaPlayer 构建。以本地资料库为核心，提供歌曲、专辑、艺术家、文件夹、歌单浏览、31 段参数均衡器、实时频谱、双语歌词、播放统计、重复歌曲检测等能力。
 
-当前版本为 **v1.0.0-beta1（内部测试版）**，最新稳定版为 [v0.5](https://github.com/jader12138/ManYu_Music/releases/tag/v0.5)。完整版本线见 [Releases](https://github.com/jader12138/ManYu_Music/releases)。
+当前版本为 **v1.11.0-beta1（内部测试版）**，最新稳定版为 [v0.5](https://github.com/jader12138/ManYu_Music/releases/tag/v0.5)。完整版本线见 [Releases](https://github.com/jader12138/ManYu_Music/releases)。
 
 ## 下载安装
 
@@ -19,6 +19,7 @@
 - 支持 MP3、M4A、AAC、FLAC、WAV、AIFF、CAF 等 macOS 可解码格式
 - 支持导入单个文件或整个文件夹，并支持拖拽导入
 - 提供歌曲、专辑、艺术家和文件夹四种浏览方式
+- 点击播放条或播放页的歌手名可直接进入艺术家详情页，查看该艺术家全部歌曲
 - 提供最近添加、最近播放、我喜欢和播放历史
 - 支持新建、重命名和删除歌单，并管理歌单歌曲
 - 支持全拼与首字母拼音检索，搜索框文字配色修复
@@ -46,6 +47,7 @@
 - 播放页根据专辑封面提取主色，并同步调整背景与控制区域
 - 首页显示当前专辑封面、实时歌词和播放状态
 - 支持从首页平滑进入沉浸式播放界面
+- 切歌时封面缩放渐入过渡，同步缓存命中消除视觉跳变
 
 ### 播放统计
 

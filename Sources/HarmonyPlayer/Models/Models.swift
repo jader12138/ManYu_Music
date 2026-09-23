@@ -180,6 +180,8 @@ extension Notification.Name {
     static let openSettings = Notification.Name("HarmonyPlayer.openSettings")
     /// 空库引导等入口：跳过设置页，直接弹出"添加文件或文件夹"面板。
     static let openImportPanel = Notification.Name("HarmonyPlayer.openImportPanel")
+    /// 点击歌手名进入艺术家详情页，object 传艺术家名 String。
+    static let openArtist = Notification.Name("HarmonyPlayer.openArtist")
 }
 
 

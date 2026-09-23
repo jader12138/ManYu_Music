@@ -171,6 +171,20 @@ struct MainView: View {
             // 空库引导：直接弹导入面板，不必先跳设置页。
             library.presentImportPanel()
         }
+        .onReceive(NotificationCenter.default.publisher(for: .openArtist)) { notification in
+            guard let artistName = notification.object as? String else { return }
+            let tracks = library.tracks.filter { $0.displayArtist == artistName }
+            guard !tracks.isEmpty else { return }
+            let group = ArtistGroup(
+                name: artistName,
+                tracks: tracks
+            )
+            withAnimation(reduceMotion ? nil : .easeOut(duration: 0.18)) {
+                if showNowPlaying { showNowPlaying = false }
+                selectedAlbum = nil
+                selectedArtist = group
+            }
+        }
         .onChange(of: destination) { _, _ in
             selectedAlbum = nil
             selectedArtist = nil
