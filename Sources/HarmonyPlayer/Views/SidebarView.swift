@@ -389,7 +389,7 @@ struct BrandMark: View {
                     .aspectRatio(contentMode: .fit)
                     .transition(reduceMotion ? .opacity : .opacity.combined(with: .scale(scale: 0.92)))
             } else {
-                fallbackMark
+                placeholderMark
             }
         }
         .id(iconVariantKey)
@@ -407,67 +407,15 @@ struct BrandMark: View {
         colorScheme == .dark ? "dark" : "light"
     }
 
-    private var fallbackMark: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(
-                    LinearGradient(
-                        colors: [
-                            Color(red: 0.008, green: 0.18, blue: 0.62),
-                            Color(red: 0.28, green: 0.08, blue: 0.72),
-                            Color(red: 0.82, green: 0.18, blue: 0.90)
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-
-            Path { path in
-                path.move(to: CGPoint(x: 7, y: 27))
-                path.addCurve(
-                    to: CGPoint(x: 31, y: 8),
-                    control1: CGPoint(x: 10, y: 14),
-                    control2: CGPoint(x: 22, y: 5)
-                )
+    /// 资源缺失时的中性占位：仅显示主题色音符圆角块。正常打包后不会走到
+    /// （AppIconLight/AppIconDark 由 build-app.sh 装进 Bundle）；绝不绘制任何旧版 Logo。
+    private var placeholderMark: some View {
+        RoundedRectangle(cornerRadius: 10, style: .continuous)
+            .fill(Color.hpAccent.opacity(0.14))
+            .overlay {
+                Image(systemName: "music.note")
+                    .font(.system(size: 20, weight: .semibold))
+                    .foregroundStyle(Color.hpAccent)
             }
-            .stroke(
-                LinearGradient(
-                    colors: [Color.hpAccent, .white],
-                    startPoint: .leading,
-                    endPoint: .trailing
-                ),
-                style: StrokeStyle(lineWidth: 3.4, lineCap: .round)
-            )
-
-            Path { path in
-                path.move(to: CGPoint(x: 13, y: 32))
-                path.addCurve(
-                    to: CGPoint(x: 33, y: 22),
-                    control1: CGPoint(x: 18, y: 35),
-                    control2: CGPoint(x: 28, y: 31)
-                )
-            }
-            .stroke(
-                LinearGradient(
-                    colors: [.white, Color(red: 0.98, green: 0.28, blue: 0.92)],
-                    startPoint: .leading,
-                    endPoint: .trailing
-                ),
-                style: StrokeStyle(lineWidth: 3.0, lineCap: .round)
-            )
-
-            Path { path in
-                path.move(to: CGPoint(x: 17, y: 14))
-                path.addLine(to: CGPoint(x: 27, y: 20))
-                path.addLine(to: CGPoint(x: 17, y: 27))
-                path.closeSubpath()
-            }
-            .fill(.white.opacity(0.94))
-        }
-        .overlay {
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .stroke(.white.opacity(0.16), lineWidth: 1)
-        }
-        .shadow(color: Color(red: 0.28, green: 0.10, blue: 0.70).opacity(0.28), radius: 8, y: 4)
     }
 }

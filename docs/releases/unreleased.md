@@ -1,9 +1,37 @@
-# 下一版本（v3.13.0 正式版准备中）
+# 下一版本（v1.0.0-beta1 测试版准备中）
 
 - 发布状态：截至 2026-09-20 的均衡器/音效增强/连播增强/频谱山峰/包边图标等改动已随 **`v3.13.0-beta4`** 内测预发布版发布（GitHub Releases，prerelease，不顶替 3.12.0 稳定版）；`CHANGELOG.md` 已归档 beta4 区块，本文件保留过程摘要与发布附录。
 - 已发布内测：`v3.13.0-beta1`、`v3.13.0-beta2`、`v3.13.0-beta3`、`v3.13.0-beta4`（见文末附录）
 - 上一稳定版本：`v3.12.0`
-- 当前 `VERSION`：`3.13.0-beta5`
+- 当前 `VERSION`：`1.0.0-beta1`（2026-09-23 由 `3.13.0-beta5` 改号，见下条本轮摘要）
+
+> 注：2026-09-23 起 GitHub 版本线重排，上文及后文各历史摘要中的 `v3.x` 旧标签名与新编号对照见下节；仓库内 `docs/releases/v3.*.md` 按永久历史记录规则保留原文件名、不重命名。
+
+## 本轮摘要（2026-09-23，分支 `codex/renumber-versions-0x`：GitHub 版本号统一为 0.x）
+
+主人决定：1.0 正式版尚未发布，以前的版本号都不算，GitHub 上全部历史版本改编号为 0.1 起的连续序列，下一步直接发布 1.0 测试版。
+
+- **用户可见变化**：仅 GitHub Releases / Git 标签层面，应用本体无任何改动。
+- **编号映射**（时间从旧到新）：
+
+  | 旧标签 | 新标签 | 指向提交 | 说明 |
+  | --- | --- | --- | --- |
+  | `v3.8.0` | `v0.1` | `f52ba86` | 原仅有标签无 Release，本次补建 Release（无安装包，说明据 `docs/releases/v3.8.0.md` 整理） |
+  | `v3.9.0` | `v0.2` | `526d1fa` | 稳定版 |
+  | `v3.10.0` | `v0.3` | `09c92dd` | 稳定版 |
+  | `v3.11.0` | `v0.4` | `daa8d34` | 稳定版 |
+  | `v3.12.0` | `v0.5` | `26b16e0` | 稳定版，Latest；DMG 改名 `ManyuMusic-0.5.dmg` |
+  | `v3.13.0-beta1` | `v0.6` | `cdd851e` | prerelease；DMG 改名 `ManyuMusic-0.6.dmg` |
+  | `v3.13.0-beta2` | `v0.7` | `e2cfa7e` | prerelease；DMG 改名 `ManyuMusic-0.7.dmg` |
+  | `v3.13.0-beta3` | `v0.8` | `b8125d0` | prerelease；DMG 改名 `ManyuMusic-0.8.dmg` |
+  | `v3.13.0-beta4` | `v0.9` | `a1f2632` | prerelease；DMG 改名 `ManyuMusic-0.9.dmg` |
+  | `v3.13.0-beta5` | `v0.10` | `6b4e352` | prerelease；DMG 改名 `ManyuMusic-0.10.dmg` |
+
+- **技术变更**：新标签全部为 annotated tag，指向与旧标签相同的提交，tagger 日期保留原值（2026-09-13 ~ 2026-09-21）；Release 按时间从旧到新重建（稳定版 `--latest=false`，最后由 GitHub 自动把 Latest 落到 v0.5），标题/正文中的旧版本号字符串整体替换，6 个 DMG 下载后以新文件名重新上传；校验回下载 v0.5/v0.9 的 SHA-256 与原包逐字节一致（`0c5b00f5…`、`20fb6a53…`）；旧 10 个标签与 9 个旧 Release 全部删除（远端 + 本地）。
+- **兼容性**：不改变任何代码、提交历史与资料库；旧 Release 链接（v3.x）失效，新链接为 `/releases/tag/v0.x`。
+
+  同日完成软件本体改号：`VERSION` 与 Info.plist 模板由 `3.13.0-beta5` 改为 `1.0.0-beta1`（系统版本号 1.0.0），详见 [CHANGELOG](../../CHANGELOG.md) 中「软件本体版本号升级为 1.0 测试版」一节；下一个发布即为 v1.0.0-beta1。
+- **验证**：`gh release list` 仅剩 10 个新 Release 且顺序/预发布标记正确；`git ls-remote --tags` 与本地 `git tag -l` 均仅剩 v0.1~v0.10；`releases/latest` 指向 v0.5；资产数量、文件名、字节数与迁移前一致。
 
 ## 本轮摘要（2026-09-23，分支 `codex/settings-appearance-previews`：设置页外观预览图 + 下拉框收窄）
 
